@@ -1,0 +1,162 @@
+{
+  "design_system": {
+    "identity": {
+      "name": "Swiss Mail",
+      "archetype": "Swiss & High-Contrast (Archetype 4)",
+      "vibe": "Objective, Rigid, Functional, Trustworthy",
+      "core_values": [
+        "Clarity over decoration",
+        "Content is King",
+        "Grid is Law",
+        "High Contrast"
+      ]
+    },
+    "typography": {
+      "font_strategy": "The Soft Utility (Swiss Style)",
+      "headings": {
+        "family": "Manrope",
+        "weights": ["400", "600", "800"],
+        "tracking": "tight",
+        "usage": "Use font-semibold or font-extrabold. Avoid Regular for headings."
+      },
+      "body": {
+        "family": "Public Sans",
+        "weights": ["400", "500"],
+        "leading": "relaxed",
+        "usage": "High legibility for data and text."
+      },
+      "mono": {
+        "family": "JetBrains Mono",
+        "usage": "For email addresses, API keys, and logs."
+      },
+      "rules": [
+        "CRITICAL: DO NOT use Inter for headings.",
+        "Headings must be strictly Left Aligned.",
+        "Use generous line-height for body text (leading-7 or leading-8)."
+      ]
+    },
+    "colors": {
+      "palette": {
+        "background": {
+          "default": "#FFFFFF",
+          "subtle": "#F8FAFC",
+          "dark": "#0F172A"
+        },
+        "foreground": {
+          "primary": "#0F172A",
+          "secondary": "#475569",
+          "muted": "#94A3B8"
+        },
+        "accent": {
+          "primary": "#2563EB", 
+          "cta": "#EA580C",
+          "success": "#16A34A",
+          "error": "#DC2626"
+        },
+        "border": {
+          "default": "#E2E8F0",
+          "strong": "#CBD5E1"
+        }
+      },
+      "usage_rules": [
+        "Primary CTA (Start Campaign, Upgrade) MUST use 'Signal Orange' (#EA580C) or 'Electric Blue' (#2563EB).",
+        "Dashboard graphs should use a monochrome scale with one accent color.",
+        "Avoid gradients. Use solid, flat colors.",
+        "Text on colored backgrounds must be white (#FFFFFF)."
+      ]
+    },
+    "layout": {
+      "grid_system": "The Bento Grid (Mode B)",
+      "spacing": {
+        "container_padding": "p-8 or p-12",
+        "internal_padding": "p-6 or p-8",
+        "gap": "gap-6 or gap-8"
+      },
+      "containers": {
+        "card_style": "Bordered, No Shadow",
+        "border_radius": "rounded-md (4px-6px)",
+        "border_color": "border-slate-200"
+      },
+      "navigation": {
+        "style": "Sidebar or Topbar with minimal items.",
+        "alignment": "Left aligned logo, right aligned profile."
+      }
+    },
+    "components": {
+      "buttons": {
+        "style": "Flat, sharp corners (rounded-sm or rounded-md).",
+        "hover": "translate-y-[-1px] transition-transform"
+      },
+      "inputs": {
+        "style": "bg-slate-50 border-slate-200 focus:ring-2 focus:ring-blue-500",
+        "height": "h-10 or h-12 for better touch targets"
+      },
+      "cards": {
+        "style": "bg-white border border-slate-200 p-6 rounded-lg",
+        "hover": "border-slate-300 transition-colors"
+      },
+      "toasts": {
+        "library": "sonner",
+        "position": "bottom-right",
+        "style": "clean white toast with black text"
+      },
+      "charts": {
+        "library": "recharts (via Shadcn)",
+        "style": "Minimal axes, tooltip enabled, monochromatic bars with active state highlight."
+      }
+    },
+    "visual_enhancers": {
+      "motion": {
+        "library": "framer-motion",
+        "transitions": "type: 'spring', stiffness: 300, damping: 30",
+        "micro_interactions": "Button hover lift, input focus ring expansion."
+      },
+      "icons": {
+        "library": "lucide-react",
+        "style": "Stroke width 1.5px or 2px. Color: slate-600."
+      },
+      "texture": {
+        "noise": "Optional subtle noise overlay on the sidebar or hero background to reduce digital flatness."
+      }
+    },
+    "accessibility": {
+      "contrast": "Ensure 4.5:1 contrast ratio for normal text.",
+      "focus": "Visible focus rings on all interactive elements.",
+      "attributes": "All interactive elements must have data-testid."
+    }
+  },
+  "content_strategy": {
+    "tone": "Professional, Direct, Reassuring.",
+    "microcopy": {
+      "success": "Campaign started successfully.",
+      "error": "We couldn't connect to that account.",
+      "empty_state": "No campaigns yet. Start your first rotation."
+    }
+  },
+  "media": {
+    "image_urls": {
+      "hero_background": "https://images.unsplash.com/photo-1640551497504-ec05b9e50b50?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwd29ya3NwYWNlJTIwbGFwdG9wfGVufDB8fHx8MTc3MTUyODY1Mnww&ixlib=rb-4.1.0&q=85",
+      "feature_business_owner": "https://images.unsplash.com/photo-1758598497635-48cbbb1f6555?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxjb25maWRlbnQlMjBidXNpbmVzcyUyMG93bmVyJTIwb2ZmaWNlfGVufDB8fHx8MTc3MTUyODY1MXww&ixlib=rb-4.1.0&q=85",
+      "about_team": "https://images.unsplash.com/photo-1581090124321-d19ad6d7cd5a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwzfHxkaXZlcnNlJTIwdGVhbSUyMG1lZXRpbmclMjB3aGl0ZWJvYXJkfGVufDB8fHx8MTc3MTUyODY1M3ww&ixlib=rb-4.1.0&q=85"
+    },
+    "placeholders": {
+      "logo": "Use a simple text logo 'ROTATION' in Manrope-ExtraBold."
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL FONTS: You MUST install '@fontsource/manrope', '@fontsource/public-sans', and '@fontsource/jetbrains-mono' immediately.",
+    "THEME SETUP: Ensure tailwind.config.js extends the font family to include these fonts.",
+    "LAYOUT: Use the 'Bento Grid' for the dashboard. Do not create a generic table layout.",
+    "COMPONENTS: Use Shadcn components for complex interactions (Dialog, Dropdown, Form). Customize them to remove the default rounded-xl and use rounded-md.",
+    "CHARTS: Use Recharts for the analytics. Keep them simple (BarChart, AreaChart).",
+    "PAGES: Create a Landing Page, Dashboard, Account Connection Page, and Campaign Creator.",
+    "TESTING: Add data-testid to every button, input, and link."
+  ],
+  "universal_guidelines": [
+    "Don't make generic centered layouts.",
+    "Create depth through subtle borders, not heavy shadows.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Every interaction needs micro-animations.",
+    "NEVER use AI assistant Emoji characters."
+  ]
+}
