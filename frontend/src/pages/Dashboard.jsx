@@ -268,45 +268,13 @@ export default function Dashboard({ user, setUser }) {
 
               <div className="space-y-4">
                 <div className={`flex items-center gap-4 p-4 rounded-md border ${
-                  needsSubscription ? "border-amber-200 bg-amber-50" : "border-green-200 bg-green-50"
-                }`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    needsSubscription ? "bg-amber-100" : "bg-green-100"
-                  }`}>
-                    {needsSubscription ? (
-                      <span className="text-amber-600 font-semibold">1</span>
-                    ) : (
-                      <CheckCircle2 size={18} className="text-green-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`font-medium ${needsSubscription ? "text-amber-800" : "text-green-800"}`}>
-                      Subscribe to Pro
-                    </p>
-                    <p className={`text-sm ${needsSubscription ? "text-amber-600" : "text-green-600"}`}>
-                      {needsSubscription ? "$99/year - Unlock all features" : "Subscription active"}
-                    </p>
-                  </div>
-                  {needsSubscription && (
-                    <Button
-                      size="sm"
-                      className="bg-amber-600 hover:bg-amber-700"
-                      onClick={() => navigate("/subscription")}
-                      data-testid="quick-subscribe-btn"
-                    >
-                      Subscribe
-                    </Button>
-                  )}
-                </div>
-
-                <div className={`flex items-center gap-4 p-4 rounded-md border ${
                   needsAccounts ? "border-slate-200" : "border-green-200 bg-green-50"
                 }`}>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                     needsAccounts ? "bg-slate-100" : "bg-green-100"
                   }`}>
                     {needsAccounts ? (
-                      <span className="text-slate-600 font-semibold">2</span>
+                      <span className="text-slate-600 font-semibold">1</span>
                     ) : (
                       <CheckCircle2 size={18} className="text-green-600" />
                     )}
@@ -319,7 +287,7 @@ export default function Dashboard({ user, setUser }) {
                       {needsAccounts ? "Add your sender accounts" : `${stats?.total_accounts} accounts connected`}
                     </p>
                   </div>
-                  {needsAccounts && !needsSubscription && (
+                  {needsAccounts && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -338,7 +306,7 @@ export default function Dashboard({ user, setUser }) {
                     needsList ? "bg-slate-100" : "bg-green-100"
                   }`}>
                     {needsList ? (
-                      <span className="text-slate-600 font-semibold">3</span>
+                      <span className="text-slate-600 font-semibold">2</span>
                     ) : (
                       <CheckCircle2 size={18} className="text-green-600" />
                     )}
