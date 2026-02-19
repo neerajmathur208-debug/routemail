@@ -131,18 +131,22 @@ class MultiSenderEmailAPITester:
         """Clean up test data from MongoDB"""
         print("\n🧹 Cleaning up test data...")
         
-        mongo_commands = f'''
-use test_database;
-db.users.deleteMany({{user_id: "{self.user_id}"}});
-db.user_sessions.deleteMany({{session_token: "{self.session_token}"}});
-db.email_accounts.deleteMany({{user_id: "{self.user_id}"}});
-db.email_lists.deleteMany({{user_id: "{self.user_id}"}});
-db.campaigns.deleteMany({{user_id: "{self.user_id}"}});
-db.payment_transactions.deleteMany({{user_id: "{self.user_id}"}});
-'''
-        
         try:
-            subprocess.run(['mongosh', '--quiet', '--eval', mongo_commands], timeout=10)
+            import pymongo
+            
+            client = pymongo.MongoClient("mongodb://localhost:27017")
+            db = client["test_database"]
+            
+            # Delete test data
+            db.users.delete_many({"user_id": self.user_id})
+            db.user_sessions.delete_many({"session_token": self.session_token})
+            if self.user_id:
+                db.email_accounts.delete_many({"user_id": self.user_id})
+                db.email_lists.delete_many({"user_id": self.user_id})
+                db.campaigns.delete_many({"user_id": self.user_id})
+                db.payment_transactions.delete_many({"user_id": self.user_id})
+            
+            client.close()
             print("✅ Test data cleaned up")
         except Exception as e:
             print(f"❌ Cleanup error: {str(e)}")
