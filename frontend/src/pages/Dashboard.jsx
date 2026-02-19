@@ -112,14 +112,6 @@ export default function Dashboard({ user, setUser }) {
             </h1>
             <p className="text-slate-500 mt-1">Overview of your email campaigns</p>
           </div>
-                className="bg-amber-600 hover:bg-amber-700 text-white"
-                onClick={() => navigate("/subscription")}
-                data-testid="subscribe-alert-btn"
-              >
-                Subscribe Now
-              </Button>
-            </motion.div>
-          )}
 
           {/* Stats Grid */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
