@@ -223,7 +223,7 @@ export default function LandingPage() {
               className="bg-signal-orange hover:bg-orange-600 text-white"
               data-testid="cta-get-started-btn"
             >
-              Start Free Trial
+              Get Started Free
               <ArrowRight size={18} className="ml-2" />
             </Button>
           </div>
