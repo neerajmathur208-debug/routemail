@@ -163,10 +163,10 @@ export default function Campaign({ user, setUser }) {
     }
   };
 
-  const needsSubscription = user?.subscription_status !== "active";
+  const needsSubscription = false; // Subscription removed - all features unlocked
   const hasAccounts = accounts.length > 0;
   const hasLists = lists.length > 0;
-  const canCreate = !needsSubscription && hasAccounts && hasLists && !currentCampaign;
+  const canCreate = hasAccounts && hasLists && !currentCampaign;
 
   if (loading) {
     return (
