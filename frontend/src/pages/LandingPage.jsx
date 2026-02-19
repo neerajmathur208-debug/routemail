@@ -159,15 +159,15 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 px-6">
+      {/* Features List Section */}
+      <section id="features-list" className="py-20 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-xl">
             <h2 className="font-heading font-semibold text-2xl sm:text-3xl text-slate-900 mb-4">
-              Simple, transparent pricing
+              Everything included, free
             </h2>
             <p className="text-slate-600">
-              One plan, everything included. No hidden fees, no complicated tiers.
+              All features unlocked. No payment required.
             </p>
           </div>
 
@@ -180,8 +180,7 @@ export default function LandingPage() {
           >
             <div className="bg-white border-2 border-slate-900 rounded-md p-8">
               <div className="flex items-baseline gap-2">
-                <span className="font-heading font-extrabold text-5xl text-slate-900">$99</span>
-                <span className="text-slate-500">/year</span>
+                <span className="font-heading font-extrabold text-5xl text-slate-900">Free</span>
               </div>
               <p className="mt-2 text-slate-600">Everything you need to rotate emails</p>
 
@@ -198,9 +197,9 @@ export default function LandingPage() {
                 onClick={handleLogin}
                 className="w-full mt-8 bg-slate-900 hover:bg-slate-800 text-white"
                 size="lg"
-                data-testid="pricing-get-started-btn"
+                data-testid="features-get-started-btn"
               >
-                Get Started
+                Get Started Free
                 <ArrowRight size={18} className="ml-2" />
               </Button>
             </div>
