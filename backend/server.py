@@ -740,6 +740,29 @@ async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, u
     
     return {"message": "Campaign resumed", "status": "running"}
 
+@api_router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: str, user: User = Depends(get_current_user)):
+    """Delete a campaign (only if draft or completed)"""
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if campaign["status"] == "running":
+        raise HTTPException(status_code=400, detail="Cannot delete running campaign. Pause it first.")
+    
+    # Delete queue items
+    await db.email_queue.delete_many({"campaign_id": campaign_id})
+    
+    # Delete campaign
+    await db.campaigns.delete_one({"campaign_id": campaign_id})
+    
+    return {"message": "Campaign deleted"}
+
+
 # ==================== SUPPRESSION LIST ====================
 
 @api_router.get("/suppression")
