@@ -219,18 +219,25 @@ async def exchange_session(request: SessionRequest, response: Response):
     
     if existing_user:
         user_id = existing_user["user_id"]
-        # Update user info
+        # Update user info and ensure subscription is active
         await db.users.update_one(
             {"user_id": user_id},
-            {"$set": {"name": name, "picture": picture}}
+            {"$set": {
+                "name": name, 
+                "picture": picture,
+                "subscription_status": "active",
+                "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+            }}
         )
     else:
-        # Create new user
+        # Create new user with active subscription (no payment required)
         new_user = User(
             user_id=user_id,
             email=email,
             name=name,
-            picture=picture
+            picture=picture,
+            subscription_status="active",
+            subscription_expires_at=datetime.now(timezone.utc) + timedelta(days=365)
         )
         user_dict = new_user.model_dump()
         user_dict["created_at"] = user_dict["created_at"].isoformat()
