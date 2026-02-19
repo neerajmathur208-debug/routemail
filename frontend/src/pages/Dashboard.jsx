@@ -96,7 +96,6 @@ export default function Dashboard({ user, setUser }) {
     );
   }
 
-  const needsSubscription = user?.subscription_status !== "active";
   const needsAccounts = stats?.total_accounts === 0;
   const needsList = stats?.total_lists === 0;
 
@@ -113,21 +112,6 @@ export default function Dashboard({ user, setUser }) {
             </h1>
             <p className="text-slate-500 mt-1">Overview of your email campaigns</p>
           </div>
-
-          {/* Alerts */}
-          {needsSubscription && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-amber-50 border border-amber-200 rounded-md p-4 flex items-center gap-4"
-            >
-              <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-amber-800 font-medium">Subscription required</p>
-                <p className="text-amber-700 text-sm">Subscribe to start sending emails</p>
-              </div>
-              <Button
-                size="sm"
                 className="bg-amber-600 hover:bg-amber-700 text-white"
                 onClick={() => navigate("/subscription")}
                 data-testid="subscribe-alert-btn"
