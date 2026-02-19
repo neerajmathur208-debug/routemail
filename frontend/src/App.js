@@ -162,14 +162,6 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/subscription"
-        element={
-          <ProtectedRoute>
-            {({ user, setUser }) => <Subscription user={user} setUser={setUser} />}
-          </ProtectedRoute>
-        }
-      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
