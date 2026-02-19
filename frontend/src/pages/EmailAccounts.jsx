@@ -100,7 +100,7 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
-  const needsSubscription = user?.subscription_status !== "active";
+  const needsSubscription = false; // Subscription removed - all features unlocked
 
   if (loading) {
     return (
