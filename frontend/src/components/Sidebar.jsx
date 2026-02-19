@@ -6,7 +6,6 @@ import {
   Mail,
   Upload,
   Send,
-  CreditCard,
   LogOut,
   Menu,
   X,
