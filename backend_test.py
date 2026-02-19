@@ -73,46 +73,54 @@ class MultiSenderEmailAPITester:
         """Create test user and session using MongoDB"""
         print("\n📋 Creating test user and session...")
         
-        timestamp = int(datetime.now().timestamp())
-        self.user_id = f"test-user-{timestamp}"
-        self.session_token = f"test_session_{timestamp}"
-        email = f"test.user.{timestamp}@example.com"
-        
-        # MongoDB commands to create test user and session
-        mongo_commands = f'''
-use test_database;
-db.users.insertOne({{
-  user_id: "{self.user_id}",
-  email: "{email}",
-  name: "Test User",
-  picture: "https://via.placeholder.com/150",
-  subscription_status: "active",
-  subscription_expires_at: "{(datetime.now(timezone.utc) + timedelta(days=365)).isoformat()}",
-  created_at: "{datetime.now(timezone.utc).isoformat()}"
-}});
-db.user_sessions.insertOne({{
-  user_id: "{self.user_id}",
-  session_token: "{self.session_token}",
-  expires_at: "{(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()}",
-  created_at: "{datetime.now(timezone.utc).isoformat()}"
-}});
-'''
-        
         try:
-            # Execute MongoDB commands
-            result = subprocess.run(
-                ['mongosh', '--quiet', '--eval', mongo_commands],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            import pymongo
             
-            if result.returncode == 0:
+            # Connect to MongoDB
+            client = pymongo.MongoClient("mongodb://localhost:27017")
+            db = client["test_database"]
+            
+            # Generate test data
+            timestamp = int(datetime.now().timestamp())
+            self.user_id = f"test-user-{timestamp}"
+            self.session_token = f"test_session_{timestamp}"
+            email = f"test.user.{timestamp}@example.com"
+            
+            # Create user document
+            user_doc = {
+                "user_id": self.user_id,
+                "email": email,
+                "name": "Test User",
+                "picture": "https://via.placeholder.com/150",
+                "subscription_status": "active",
+                "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Create session document
+            session_doc = {
+                "user_id": self.user_id,
+                "session_token": self.session_token,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Insert documents
+            db.users.insert_one(user_doc)
+            db.user_sessions.insert_one(session_doc)
+            
+            # Verify insertion
+            user_check = db.users.find_one({"user_id": self.user_id}, {"_id": 0})
+            session_check = db.user_sessions.find_one({"session_token": self.session_token}, {"_id": 0})
+            
+            client.close()
+            
+            if user_check and session_check:
                 print(f"✅ Test user created: {self.user_id}")
                 print(f"✅ Session token created: {self.session_token}")
                 return True
             else:
-                print(f"❌ MongoDB error: {result.stderr}")
+                print(f"❌ Failed to verify test user creation")
                 return False
                 
         except Exception as e:
