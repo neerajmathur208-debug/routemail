@@ -101,17 +101,8 @@ export default function LandingPage() {
                 className="bg-signal-orange hover:bg-orange-600 text-white px-8"
                 data-testid="hero-get-started-btn"
               >
-                Get Started
+                Get Started Free
                 <ArrowRight size={18} className="ml-2" />
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-slate-300"
-                onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="hero-pricing-btn"
-              >
-                View Pricing
               </Button>
             </div>
           </motion.div>
