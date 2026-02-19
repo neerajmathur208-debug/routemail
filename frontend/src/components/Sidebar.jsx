@@ -21,7 +21,6 @@ const navItems = [
   { path: "/accounts", label: "Email Accounts", icon: Mail },
   { path: "/upload", label: "Upload List", icon: Upload },
   { path: "/campaign", label: "Campaign", icon: Send },
-  { path: "/subscription", label: "Subscription", icon: CreditCard },
 ];
 
 export default function Sidebar({ user, setUser }) {
