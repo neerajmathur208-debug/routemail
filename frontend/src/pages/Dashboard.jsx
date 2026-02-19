@@ -319,7 +319,7 @@ export default function Dashboard({ user, setUser }) {
                       {needsList ? "Import your contacts via CSV" : `${stats?.total_contacts} contacts uploaded`}
                     </p>
                   </div>
-                  {needsList && !needsSubscription && (
+                  {needsList && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -333,13 +333,13 @@ export default function Dashboard({ user, setUser }) {
 
                 <div className="flex items-center gap-4 p-4 rounded-md border border-slate-200">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100">
-                    <span className="text-slate-600 font-semibold">4</span>
+                    <span className="text-slate-600 font-semibold">3</span>
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-slate-700">Start Campaign</p>
                     <p className="text-sm text-slate-500">Compose and send your emails</p>
                   </div>
-                  {!needsSubscription && !needsAccounts && !needsList && (
+                  {!needsAccounts && !needsList && (
                     <Button
                       size="sm"
                       className="bg-electric-blue hover:bg-blue-700"
