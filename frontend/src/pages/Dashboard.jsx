@@ -324,6 +324,17 @@ export default function Dashboard({ user, setUser }) {
                             Resume
                           </Button>
                         )}
+                        {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused") && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
+                            data-testid={`view-logs-${campaign.campaign_id}`}
+                          >
+                            <Eye size={14} className="mr-1" />
+                            Logs
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
