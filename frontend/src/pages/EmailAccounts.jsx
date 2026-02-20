@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Mail,
@@ -12,6 +13,8 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  ArrowLeft,
+  Save,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -47,33 +50,14 @@ import { api } from "../App";
 import { toast } from "sonner";
 
 const SMTP_PRESETS = {
-  gmail: {
-    host: "smtp.gmail.com",
-    port: 587,
-    encryption: "tls",
-    note: "Use App Password (not your regular password). Enable 2FA first."
-  },
-  outlook: {
-    host: "smtp.office365.com",
-    port: 587,
-    encryption: "tls",
-    note: "Use your Microsoft account password or app password."
-  },
-  yahoo: {
-    host: "smtp.mail.yahoo.com",
-    port: 587,
-    encryption: "tls",
-    note: "Generate an app password from Yahoo account security."
-  },
-  custom: {
-    host: "",
-    port: 587,
-    encryption: "tls",
-    note: "Enter your custom SMTP server details."
-  }
+  gmail: { host: "smtp.gmail.com", port: 587, encryption: "tls", note: "Use App Password (not your regular password). Enable 2FA first." },
+  outlook: { host: "smtp.office365.com", port: 587, encryption: "tls", note: "Use your Microsoft account password or app password." },
+  yahoo: { host: "smtp.mail.yahoo.com", port: 587, encryption: "tls", note: "Generate an app password from Yahoo account security." },
+  custom: { host: "", port: 587, encryption: "tls", note: "Enter your custom SMTP server details." }
 };
 
 export default function EmailAccounts({ user, setUser }) {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -82,6 +66,8 @@ export default function EmailAccounts({ user, setUser }) {
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingLimit, setEditingLimit] = useState({});
+  const [savingLimit, setSavingLimit] = useState({});
 
   const [formData, setFormData] = useState({
     preset: "custom",
@@ -92,12 +78,19 @@ export default function EmailAccounts({ user, setUser }) {
     smtp_username: "",
     smtp_password: "",
     smtp_encryption: "tls",
+    daily_limit: 50,
   });
 
   const fetchAccounts = async () => {
     try {
       const response = await api.get("/accounts");
       setAccounts(response.data);
+      // Initialize editing limits
+      const limits = {};
+      response.data.forEach(acc => {
+        limits[acc.account_id] = acc.daily_limit || 50;
+      });
+      setEditingLimit(limits);
     } catch (error) {
       console.error("Failed to fetch accounts:", error);
       toast.error("Failed to load accounts");
@@ -161,12 +154,6 @@ export default function EmailAccounts({ user, setUser }) {
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-
     setSubmitting(true);
     try {
       await api.post("/accounts/smtp", {
@@ -177,6 +164,7 @@ export default function EmailAccounts({ user, setUser }) {
         smtp_username: formData.smtp_username,
         smtp_password: formData.smtp_password,
         smtp_encryption: formData.smtp_encryption,
+        daily_limit: formData.daily_limit,
       });
       toast.success("Email account added successfully");
       setAddDialogOpen(false);
@@ -187,6 +175,25 @@ export default function EmailAccounts({ user, setUser }) {
       toast.error(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleUpdateLimit = async (accountId) => {
+    const newLimit = editingLimit[accountId];
+    if (newLimit < 10 || newLimit > 200) {
+      toast.error("Daily limit must be between 10 and 200");
+      return;
+    }
+
+    setSavingLimit({ ...savingLimit, [accountId]: true });
+    try {
+      await api.put(`/accounts/${accountId}/limit`, { daily_limit: newLimit });
+      toast.success("Daily limit updated");
+      fetchAccounts();
+    } catch (error) {
+      toast.error("Failed to update limit");
+    } finally {
+      setSavingLimit({ ...savingLimit, [accountId]: false });
     }
   };
 
@@ -214,6 +221,7 @@ export default function EmailAccounts({ user, setUser }) {
       smtp_username: "",
       smtp_password: "",
       smtp_encryption: "tls",
+      daily_limit: 50,
     });
     setShowPassword(false);
   };
@@ -235,9 +243,17 @@ export default function EmailAccounts({ user, setUser }) {
 
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
+          {/* Header with Back Button */}
+          <div className="flex items-center gap-4 mb-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/dashboard")}
+              data-testid="back-btn"
+            >
+              <ArrowLeft size={20} />
+            </Button>
+            <div className="flex-1">
               <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
                 Email Accounts
               </h1>
@@ -246,10 +262,7 @@ export default function EmailAccounts({ user, setUser }) {
               </p>
             </div>
             <Button
-              onClick={() => {
-                resetForm();
-                setAddDialogOpen(true);
-              }}
+              onClick={() => { resetForm(); setAddDialogOpen(true); }}
               className="bg-electric-blue hover:bg-blue-700"
               data-testid="add-account-btn"
             >
@@ -264,8 +277,7 @@ export default function EmailAccounts({ user, setUser }) {
             <div>
               <p className="text-blue-800 font-medium">SMTP Connection</p>
               <p className="text-blue-700 text-sm mt-1">
-                Connect your email accounts via SMTP. For Gmail, use an App Password 
-                (not your regular password). Go to Google Account → Security → 2-Step Verification → App passwords.
+                Connect via SMTP. For Gmail, use an App Password. Set custom daily limits (10-200) for each account.
               </p>
             </div>
           </div>
@@ -287,12 +299,8 @@ export default function EmailAccounts({ user, setUser }) {
                         <Mail size={24} className="text-slate-500" />
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-900">
-                          {account.display_name}
-                        </p>
-                        <p className="font-mono text-sm text-slate-500">
-                          {account.email}
-                        </p>
+                        <p className="font-semibold text-slate-900">{account.display_name}</p>
+                        <p className="font-mono text-sm text-slate-500">{account.email}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <Server size={12} className="text-slate-400" />
                           <span className="text-xs text-slate-400">
@@ -307,16 +315,12 @@ export default function EmailAccounts({ user, setUser }) {
                         {account.status === "connected" ? (
                           <>
                             <CheckCircle2 size={16} className="text-green-600" />
-                            <span className="text-sm text-green-600 font-medium">
-                              Connected
-                            </span>
+                            <span className="text-sm text-green-600 font-medium">Connected</span>
                           </>
                         ) : (
                           <>
                             <XCircle size={16} className="text-red-500" />
-                            <span className="text-sm text-red-500 font-medium">
-                              Error
-                            </span>
+                            <span className="text-sm text-red-500 font-medium">Error</span>
                           </>
                         )}
                       </div>
@@ -324,10 +328,7 @@ export default function EmailAccounts({ user, setUser }) {
                         variant="ghost"
                         size="icon"
                         className="text-slate-400 hover:text-red-500"
-                        onClick={() => {
-                          setSelectedAccount(account);
-                          setDeleteDialogOpen(true);
-                        }}
+                        onClick={() => { setSelectedAccount(account); setDeleteDialogOpen(true); }}
                         data-testid={`delete-account-${account.account_id}`}
                       >
                         <Trash2 size={18} />
@@ -341,28 +342,60 @@ export default function EmailAccounts({ user, setUser }) {
                     </div>
                   )}
 
-                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-6">
-                    <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wide">
-                        Sent Today
-                      </p>
-                      <p className="font-semibold text-slate-900">
-                        {account.daily_send_count || 0} / {account.daily_limit || 50}
-                      </p>
-                    </div>
-                    <div className="flex-1">
-                      <Progress
-                        value={((account.daily_send_count || 0) / (account.daily_limit || 50)) * 100}
-                        className="h-2"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wide">
-                        Remaining
-                      </p>
-                      <p className="font-semibold text-slate-900">
-                        {(account.daily_limit || 50) - (account.daily_send_count || 0)}
-                      </p>
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <div className="flex items-center gap-6">
+                      {/* Daily Limit Editor */}
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-slate-500 whitespace-nowrap">Daily Limit:</Label>
+                        <Input
+                          type="number"
+                          min="10"
+                          max="200"
+                          value={editingLimit[account.account_id] || 50}
+                          onChange={(e) => setEditingLimit({
+                            ...editingLimit,
+                            [account.account_id]: parseInt(e.target.value) || 50
+                          })}
+                          className="w-20 h-8 text-sm"
+                          data-testid={`limit-input-${account.account_id}`}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUpdateLimit(account.account_id)}
+                          disabled={savingLimit[account.account_id]}
+                          className="h-8"
+                          data-testid={`save-limit-${account.account_id}`}
+                        >
+                          {savingLimit[account.account_id] ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Save size={14} />
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Usage Stats */}
+                      <div className="flex-1 flex items-center gap-4">
+                        <div>
+                          <p className="text-xs text-slate-500">Sent Today</p>
+                          <p className="font-semibold text-slate-900">
+                            {account.daily_send_count || 0} / {account.daily_limit || 50}
+                          </p>
+                        </div>
+                        <div className="flex-1">
+                          <Progress
+                            value={((account.daily_send_count || 0) / (account.daily_limit || 50)) * 100}
+                            className="h-2"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">Remaining</p>
+                          <p className="font-semibold text-slate-900">
+                            {(account.daily_limit || 50) - (account.daily_send_count || 0)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -380,10 +413,7 @@ export default function EmailAccounts({ user, setUser }) {
                 Add your first SMTP email account to start sending campaigns
               </p>
               <Button
-                onClick={() => {
-                  resetForm();
-                  setAddDialogOpen(true);
-                }}
+                onClick={() => { resetForm(); setAddDialogOpen(true); }}
                 className="bg-electric-blue hover:bg-blue-700"
                 data-testid="add-first-account-btn"
               >
@@ -392,16 +422,6 @@ export default function EmailAccounts({ user, setUser }) {
               </Button>
             </div>
           )}
-
-          {/* Limit Info */}
-          <div className="mt-8 p-4 bg-slate-100 rounded-md">
-            <p className="text-sm text-slate-600">
-              <strong>Daily Limit:</strong> Each email account can send up to 50
-              emails per day. This limit resets at midnight UTC. When an account
-              reaches its limit, the system automatically rotates to the next
-              available account.
-            </p>
-          </div>
         </div>
       </main>
 
@@ -409,22 +429,14 @@ export default function EmailAccounts({ user, setUser }) {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-heading font-semibold">
-              Add SMTP Email Account
-            </DialogTitle>
-            <DialogDescription>
-              Connect your email account via SMTP to start sending campaigns.
-            </DialogDescription>
+            <DialogTitle className="font-heading font-semibold">Add SMTP Email Account</DialogTitle>
+            <DialogDescription>Connect your email account via SMTP to start sending campaigns.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Preset Selection */}
             <div>
               <Label>Email Provider</Label>
-              <Select
-                value={formData.preset}
-                onValueChange={handlePresetChange}
-              >
+              <Select value={formData.preset} onValueChange={handlePresetChange}>
                 <SelectTrigger className="mt-1.5" data-testid="preset-select">
                   <SelectValue placeholder="Choose provider" />
                 </SelectTrigger>
@@ -436,141 +448,92 @@ export default function EmailAccounts({ user, setUser }) {
                 </SelectContent>
               </Select>
               {SMTP_PRESETS[formData.preset]?.note && (
-                <p className="text-xs text-amber-600 mt-1">
-                  {SMTP_PRESETS[formData.preset].note}
-                </p>
+                <p className="text-xs text-amber-600 mt-1">{SMTP_PRESETS[formData.preset].note}</p>
               )}
             </div>
 
-            {/* Email and Display Name */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  className="mt-1.5"
-                  data-testid="email-input"
-                />
+                <Input id="email" type="email" placeholder="your@email.com" value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="mt-1.5" data-testid="email-input" />
               </div>
               <div>
                 <Label htmlFor="display_name">Display Name</Label>
-                <Input
-                  id="display_name"
-                  placeholder="John Doe"
-                  value={formData.display_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, display_name: e.target.value })
-                  }
-                  className="mt-1.5"
-                  data-testid="display-name-input"
-                />
+                <Input id="display_name" placeholder="John Doe" value={formData.display_name}
+                  onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+                  className="mt-1.5" data-testid="display-name-input" />
               </div>
             </div>
 
-            {/* SMTP Settings */}
             <div className="pt-4 border-t border-slate-200">
               <p className="font-medium text-slate-900 mb-3 flex items-center gap-2">
-                <Server size={16} />
-                SMTP Settings
+                <Server size={16} /> SMTP Settings
               </p>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="smtp_host">SMTP Host</Label>
-                    <Input
-                      id="smtp_host"
-                      placeholder="smtp.example.com"
-                      value={formData.smtp_host}
-                      onChange={(e) =>
-                        setFormData({ ...formData, smtp_host: e.target.value })
-                      }
-                      className="mt-1.5"
-                      data-testid="smtp-host-input"
-                    />
+                    <Input id="smtp_host" placeholder="smtp.example.com" value={formData.smtp_host}
+                      onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
+                      className="mt-1.5" data-testid="smtp-host-input" />
                   </div>
                   <div>
                     <Label htmlFor="smtp_port">Port</Label>
-                    <Input
-                      id="smtp_port"
-                      type="number"
-                      placeholder="587"
-                      value={formData.smtp_port}
-                      onChange={(e) =>
-                        setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })
-                      }
-                      className="mt-1.5"
-                      data-testid="smtp-port-input"
-                    />
+                    <Input id="smtp_port" type="number" placeholder="587" value={formData.smtp_port}
+                      onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })}
+                      className="mt-1.5" data-testid="smtp-port-input" />
                   </div>
                 </div>
 
                 <div>
                   <Label htmlFor="smtp_username">Username</Label>
-                  <Input
-                    id="smtp_username"
-                    placeholder="your@email.com"
-                    value={formData.smtp_username}
-                    onChange={(e) =>
-                      setFormData({ ...formData, smtp_username: e.target.value })
-                    }
-                    className="mt-1.5"
-                    data-testid="smtp-username-input"
-                  />
+                  <Input id="smtp_username" placeholder="your@email.com" value={formData.smtp_username}
+                    onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
+                    className="mt-1.5" data-testid="smtp-username-input" />
                 </div>
 
                 <div>
                   <Label htmlFor="smtp_password">Password / App Password</Label>
                   <div className="relative mt-1.5">
-                    <Input
-                      id="smtp_password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••••••"
+                    <Input id="smtp_password" type={showPassword ? "text" : "password"} placeholder="••••••••••••"
                       value={formData.smtp_password}
-                      onChange={(e) =>
-                        setFormData({ ...formData, smtp_password: e.target.value })
-                      }
-                      className="pr-10"
-                      data-testid="smtp-password-input"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
+                      onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
+                      className="pr-10" data-testid="smtp-password-input" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
 
-                <div>
-                  <Label>Encryption</Label>
-                  <Select
-                    value={formData.smtp_encryption}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, smtp_encryption: value })
-                    }
-                  >
-                    <SelectTrigger className="mt-1.5" data-testid="encryption-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tls">TLS (Recommended)</SelectItem>
-                      <SelectItem value="ssl">SSL</SelectItem>
-                      <SelectItem value="none">None</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Encryption</Label>
+                    <Select value={formData.smtp_encryption}
+                      onValueChange={(value) => setFormData({ ...formData, smtp_encryption: value })}>
+                      <SelectTrigger className="mt-1.5" data-testid="encryption-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tls">TLS (Recommended)</SelectItem>
+                        <SelectItem value="ssl">SSL</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Daily Limit (10-200)</Label>
+                    <Input type="number" min="10" max="200" value={formData.daily_limit}
+                      onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) || 50 })}
+                      className="mt-1.5" data-testid="daily-limit-input" />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Security Note */}
             <div className="flex items-start gap-2 p-3 bg-slate-50 rounded-md">
               <Lock size={16} className="text-slate-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-slate-600">
@@ -580,38 +543,15 @@ export default function EmailAccounts({ user, setUser }) {
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={handleTestConnection}
-              disabled={testing}
-              data-testid="test-connection-btn"
-            >
-              {testing ? (
-                <>
-                  <Loader2 size={16} className="mr-2 animate-spin" />
-                  Testing...
-                </>
-              ) : (
-                "Test Connection"
-              )}
+            <Button variant="outline" onClick={handleTestConnection} disabled={testing} data-testid="test-connection-btn">
+              {testing ? <><Loader2 size={16} className="mr-2 animate-spin" />Testing...</> : "Test Connection"}
             </Button>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setAddDialogOpen(false);
-                  resetForm();
-                }}
-                data-testid="cancel-add-btn"
-              >
+              <Button variant="outline" onClick={() => { setAddDialogOpen(false); resetForm(); }} data-testid="cancel-add-btn">
                 Cancel
               </Button>
-              <Button
-                onClick={handleAddAccount}
-                disabled={submitting}
-                className="bg-electric-blue hover:bg-blue-700"
-                data-testid="confirm-add-btn"
-              >
+              <Button onClick={handleAddAccount} disabled={submitting} className="bg-electric-blue hover:bg-blue-700"
+                data-testid="confirm-add-btn">
                 {submitting ? "Adding..." : "Add Account"}
               </Button>
             </div>
@@ -619,29 +559,19 @@ export default function EmailAccounts({ user, setUser }) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-heading font-semibold">
-              Remove Email Account
-            </AlertDialogTitle>
+            <AlertDialogTitle className="font-heading font-semibold">Remove Email Account</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove {selectedAccount?.email}? This
-              action cannot be undone.
+              Are you sure you want to remove {selectedAccount?.email}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="cancel-delete-btn">
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAccount}
-              className="bg-red-600 hover:bg-red-700"
-              data-testid="confirm-delete-btn"
-            >
-              Remove
-            </AlertDialogAction>
+            <AlertDialogCancel data-testid="cancel-delete-btn">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAccount} className="bg-red-600 hover:bg-red-700"
+              data-testid="confirm-delete-btn">Remove</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
