@@ -15,6 +15,8 @@ import "@fontsource/jetbrains-mono/400.css";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import EmailAccounts from "./pages/EmailAccounts";
+import EmailLists from "./pages/EmailLists";
+import ListDetails from "./pages/ListDetails";
 import UploadList from "./pages/UploadList";
 import Campaign from "./pages/Campaign";
 import CampaignLogs from "./pages/CampaignLogs";
