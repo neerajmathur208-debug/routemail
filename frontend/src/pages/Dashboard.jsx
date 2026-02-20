@@ -6,12 +6,14 @@ import {
   Users,
   Send,
   Clock,
-  AlertCircle,
   ArrowRight,
   Play,
   Pause,
   CheckCircle2,
   XCircle,
+  Edit,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
@@ -46,6 +48,26 @@ export default function Dashboard({ user, setUser }) {
     }, 10000);
     return () => clearInterval(interval);
   }, [stats?.current_campaign?.status]);
+
+  const handlePauseCampaign = async (campaignId) => {
+    try {
+      await api.post(`/campaigns/${campaignId}/pause`);
+      toast.success("Campaign paused");
+      fetchStats();
+    } catch (error) {
+      toast.error("Failed to pause campaign");
+    }
+  };
+
+  const handleResumeCampaign = async (campaignId) => {
+    try {
+      await api.post(`/campaigns/${campaignId}/resume`);
+      toast.success("Campaign resumed");
+      fetchStats();
+    } catch (error) {
+      toast.error("Failed to resume campaign");
+    }
+  };
 
   const StatCard = ({ icon: Icon, label, value, subtext, color = "slate" }) => (
     <motion.div
@@ -141,7 +163,7 @@ export default function Dashboard({ user, setUser }) {
           </div>
 
           {/* Current Campaign */}
-          {stats?.current_campaign && (
+          {stats?.current_campaign && (stats.current_campaign.status === "running" || stats.current_campaign.status === "paused") && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -157,7 +179,7 @@ export default function Dashboard({ user, setUser }) {
                       : "bg-slate-400"
                   }`} />
                   <h2 className="font-heading font-semibold text-lg text-slate-900">
-                    Active Campaign
+                    {stats.current_campaign.name || "Active Campaign"}
                   </h2>
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                     stats.current_campaign.status === "running"
@@ -169,15 +191,36 @@ export default function Dashboard({ user, setUser }) {
                     {stats.current_campaign.status}
                   </span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("/campaign")}
-                  data-testid="view-campaign-btn"
-                >
-                  View Details
-                  <ArrowRight size={14} className="ml-1" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  {stats.current_campaign.status === "running" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePauseCampaign(stats.current_campaign.campaign_id)}
+                    >
+                      <Pause size={14} className="mr-1" />
+                      Pause
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="bg-electric-blue hover:bg-blue-700"
+                      onClick={() => handleResumeCampaign(stats.current_campaign.campaign_id)}
+                    >
+                      <Play size={14} className="mr-1" />
+                      Resume
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/campaign")}
+                    data-testid="view-campaign-btn"
+                  >
+                    View Details
+                    <ArrowRight size={14} className="ml-1" />
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -211,6 +254,81 @@ export default function Dashboard({ user, setUser }) {
                 </div>
               </div>
             </motion.div>
+          )}
+
+          {/* All Campaigns Section */}
+          {stats?.campaigns && stats.campaigns.length > 0 && (
+            <div className="mb-8 bg-white border border-slate-200 rounded-md">
+              <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+                <h2 className="font-heading font-semibold text-lg text-slate-900">
+                  All Campaigns
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("/campaign")}
+                >
+                  View All
+                  <ArrowRight size={14} className="ml-1" />
+                </Button>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {stats.campaigns.slice(0, 5).map((campaign) => (
+                  <div key={campaign.campaign_id} className="p-4 hover:bg-slate-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3">
+                          <p className="font-medium text-slate-900 truncate">
+                            {campaign.name || campaign.subject}
+                          </p>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            campaign.status === "completed" ? "bg-green-100 text-green-700" :
+                            campaign.status === "running" ? "bg-blue-100 text-blue-700" :
+                            campaign.status === "paused" ? "bg-amber-100 text-amber-700" :
+                            "bg-slate-100 text-slate-600"
+                          }`}>
+                            {campaign.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                          <span>{campaign.total_emails} recipients</span>
+                          {campaign.status !== "draft" && (
+                            <span>{campaign.sent_count} sent</span>
+                          )}
+                        </div>
+                        {campaign.status !== "draft" && campaign.total_emails > 0 && (
+                          <Progress
+                            value={(campaign.sent_count / campaign.total_emails) * 100}
+                            className="h-1.5 mt-2 max-w-xs"
+                          />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        {campaign.status === "draft" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => navigate(`/campaign?edit=${campaign.campaign_id}`)}
+                          >
+                            <Edit size={16} className="text-slate-400" />
+                          </Button>
+                        )}
+                        {campaign.status === "paused" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResumeCampaign(campaign.campaign_id)}
+                          >
+                            <Play size={14} className="mr-1" />
+                            Resume
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Quick Actions */}
