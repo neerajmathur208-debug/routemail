@@ -197,17 +197,17 @@ export default function UploadList({ user, setUser }) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/email-lists")}
               data-testid="back-btn"
             >
               <ArrowLeft size={20} />
             </Button>
             <div>
               <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-                Upload List
+                Upload Email List
               </h1>
               <p className="text-slate-500 mt-1">
-                Upload and manage your email contact lists
+                Upload a new CSV file to create an email list
               </p>
             </div>
           </div>
