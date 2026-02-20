@@ -806,6 +806,7 @@ export default function Dashboard({ user, setUser }) {
             </div>
           </div>
         </div>
+        </div>
       </main>
     </div>
   );
