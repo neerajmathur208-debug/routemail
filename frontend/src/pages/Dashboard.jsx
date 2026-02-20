@@ -140,24 +140,25 @@ export default function Dashboard({ user, setUser }) {
     <div className="flex min-h-screen bg-[#faf9f7]">
       <Sidebar user={user} setUser={setUser} />
       
-      <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-        <div className="max-w-[1200px] mx-auto px-4 lg:px-6">
-          {/* Header */}
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
-          >
-            <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-              Dashboard
-            </h1>
-            <p className="text-slate-500 mt-1">Track your email campaign performance</p>
-          </motion.div>
+      <main className="flex-1 overflow-y-auto">
+        <div className="w-full flex justify-center">
+          <div className="w-full max-w-[1300px] px-6 py-6 lg:py-8">
+            {/* Header */}
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8"
+            >
+              <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
+                Dashboard
+              </h1>
+              <p className="text-slate-500 mt-1">Track your email campaign performance</p>
+            </motion.div>
 
-          {/* Main 2-column layout */}
-          <div className="grid lg:grid-cols-[1fr_380px] gap-6">
-            {/* Left Column (70%) */}
-            <div className="space-y-6">
+            {/* Main 2-column layout */}
+            <div className="grid lg:grid-cols-[1fr_340px] gap-6">
+              {/* Left Column */}
+              <div className="space-y-6">
               {/* Top Metric Cards */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Email Accounts Card with Gradient */}
