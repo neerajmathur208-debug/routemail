@@ -3,13 +3,14 @@
 ## Original Problem Statement
 Build a simple SaaS web application that allows small businesses to:
 - Connect multiple email accounts (SMTP)
-- Upload a CSV email list  
+- Upload multiple CSV email lists  
 - Write one email template with personalization
 - Automatically send emails in rotation across connected email accounts
-- Limit daily sends per email account (50 emails/day)
+- User-configurable daily sending limits per account (10-200)
+- View detailed sending logs for completed campaigns
 
 ## Architecture
-- **Frontend**: React 19 with Tailwind CSS, Shadcn UI, react-quill (WYSIWYG editor)
+- **Frontend**: React 19 with Tailwind CSS, Shadcn UI, Custom Rich Text Editor
 - **Backend**: FastAPI (Python) with async support
 - **Database**: MongoDB (Motor async driver)
 - **Auth**: Emergent Google OAuth (auto-activated users)
@@ -24,29 +25,33 @@ Build a simple SaaS web application that allows small businesses to:
 ## Core Requirements (Static)
 - [x] User Authentication via Google OAuth
 - [x] Connect multiple SMTP email accounts
-- [x] CSV upload with validation & duplicate removal
-- [x] Rich text email editor (WYSIWYG)
+- [x] User-configurable daily limits per account (10-200)
+- [x] Upload and manage multiple CSV email lists
+- [x] Rich text email editor (Custom WYSIWYG)
 - [x] Dynamic variable personalization {{column_name}}
-- [x] Rotational sending logic (50/day/account limit)
+- [x] Select email list when creating campaign
+- [x] Rotational sending logic with custom daily limits
 - [x] Auto-pause when all accounts hit daily limit
-- [x] Campaign persistence (draft/running/paused/completed)
+- [x] Campaign persistence (draft/running/paused/paused_daily_limit/completed)
 - [x] Dashboard with stats and all campaigns
+- [x] Detailed sending logs with export to CSV
+- [x] Back navigation buttons on all pages
 - [x] Unsubscribe link auto-appended
 
-## What's Been Implemented (Jan 2026)
+## What's Been Implemented (Dec 2025)
 
 ### Phase 1 - MVP (Completed)
 - [x] Landing page with features, CTA
 - [x] Emergent Google OAuth integration
 - [x] Protected routes with session management
-- [x] Email account management (simulated)
+- [x] Email account management (SMTP)
 - [x] CSV upload with preview and validation
 - [x] Campaign creation and management
 - [x] Rotational sending engine (background task)
 - [x] Dashboard with stats
 
 ### Phase 2 - Full Features (Completed)
-- [x] **Rich Text Editor** - WYSIWYG with react-quill (bold, italic, links)
+- [x] **Rich Text Editor** - Custom WYSIWYG (replaced react-quill for React 19 compatibility)
 - [x] **SMTP Connection** - Real email sending via SMTP
 - [x] **Encrypted Credentials** - Fernet encryption for passwords
 - [x] **SMTP Presets** - Gmail, Outlook, Yahoo, Custom
@@ -54,12 +59,21 @@ Build a simple SaaS web application that allows small businesses to:
 - [x] **Campaign Persistence** - Full CRUD with statuses
 - [x] **Dynamic Variables** - {{column_name}} from CSV columns
 - [x] **Variable Detection** - Extract columns from uploaded CSV
-- [x] **Variable Insertion** - Click to insert at cursor
 - [x] **Campaign List View** - All campaigns with status/progress
 - [x] **Campaign Duplicate** - Copy existing campaigns
 - [x] **HTML + Plain Text** - Both versions for emails
 - [x] **From Name** - Customizable sender name
 - [x] **Account Selection** - Choose which accounts to use
+
+### Phase 3 - User Feature Upgrades (Completed Dec 2025)
+- [x] **User-defined Daily Limits** - Per-account limits (10-200) editable on Email Accounts page
+- [x] **Multiple Email Lists** - Upload and manage multiple CSV lists
+- [x] **List Selection in Campaign** - Dropdown to choose list when creating campaign
+- [x] **Campaign Sending Logs** - View detailed logs with sent/failed/pending status
+- [x] **Logs Pagination & Filtering** - Search by email, filter by status
+- [x] **Export Logs to CSV** - Download sending log data
+- [x] **Back Button Navigation** - Consistent back buttons on all pages
+- [x] **View Logs Button** - Quick access to logs from Dashboard and Campaign list
 
 ## Database Schema
 
@@ -76,7 +90,7 @@ Build a simple SaaS web application that allows small businesses to:
 - smtp_password_encrypted (Fernet)
 - smtp_encryption (tls/ssl/none)
 - status (connected/error/disconnected)
-- daily_limit, daily_send_count, last_send_date
+- daily_limit (user-configurable: 10-200), daily_send_count, last_send_date
 
 ### Email Lists Collection
 - list_id, user_id
@@ -88,8 +102,9 @@ Build a simple SaaS web application that allows small businesses to:
 ### Campaigns Collection
 - campaign_id, user_id
 - name, subject, body, body_text, from_name
-- list_id, account_ids
-- status (draft/running/paused/completed)
+- list_id (selected list for this campaign)
+- account_ids (selected accounts or all if empty)
+- status (draft/running/paused/paused_daily_limit/completed/failed)
 - total_emails, sent_count, failed_count
 - created_at, updated_at, started_at, completed_at
 
@@ -102,11 +117,14 @@ Build a simple SaaS web application that allows small businesses to:
 
 ## Prioritized Backlog
 
-### P0 - Critical (Completed)
+### P0 - Critical (All Completed)
 - [x] Auth flow
 - [x] SMTP email sending
 - [x] Rich text editor with variables
 - [x] Campaign persistence
+- [x] User-defined daily limits
+- [x] Multiple lists support
+- [x] Campaign logs
 
 ### P1 - Future Enhancements
 - [ ] Gmail OAuth integration (requires Google Cloud credentials)
@@ -119,7 +137,7 @@ Build a simple SaaS web application that allows small businesses to:
 - [ ] Click tracking
 - [ ] A/B testing subject lines
 
-### P3 - Out of Scope (per requirements)
+### P3 - Out of Scope
 - Multi-step campaigns
 - Email warmup
 - AI writing tools
@@ -129,11 +147,12 @@ Build a simple SaaS web application that allows small businesses to:
 ## Technical Notes
 - SMTP passwords encrypted with Fernet before storage
 - Variable replacement using regex: `{{column_name}}`
-- Random delay 3-8 seconds between sends (configurable)
-- Daily limits reset at midnight UTC
+- Random delay 3-8 seconds between sends
+- Daily limits reset when new day detected
 - Failed accounts auto-marked as "error" after 5 failures
+- Custom RichTextEditor.jsx replaces react-quill (React 19 incompatible)
 
 ## Next Tasks
-1. User to obtain Google Cloud credentials for Gmail OAuth
-2. Add scheduled campaign feature
-3. Consider email template library
+1. Gmail OAuth integration (user needs Google Cloud credentials)
+2. Scheduled campaign feature
+3. Email template library
