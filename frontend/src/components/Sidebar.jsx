@@ -39,7 +39,7 @@ export default function Sidebar({ user, setUser }) {
   };
 
   const NavLink = ({ item }) => {
-    const isActive = location.pathname === item.path;
+    const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + "/");
     const Icon = item.icon;
 
     return (
