@@ -4,14 +4,25 @@ import {
   Mail,
   Plus,
   Trash2,
-  AlertCircle,
   CheckCircle2,
   XCircle,
   Info,
+  Server,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +41,37 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import { Progress } from "../components/ui/progress";
 import Sidebar from "../components/Sidebar";
 import { api } from "../App";
 import { toast } from "sonner";
+
+const SMTP_PRESETS = {
+  gmail: {
+    host: "smtp.gmail.com",
+    port: 587,
+    encryption: "tls",
+    note: "Use App Password (not your regular password). Enable 2FA first."
+  },
+  outlook: {
+    host: "smtp.office365.com",
+    port: 587,
+    encryption: "tls",
+    note: "Use your Microsoft account password or app password."
+  },
+  yahoo: {
+    host: "smtp.mail.yahoo.com",
+    port: 587,
+    encryption: "tls",
+    note: "Generate an app password from Yahoo account security."
+  },
+  custom: {
+    host: "",
+    port: 587,
+    encryption: "tls",
+    note: "Enter your custom SMTP server details."
+  }
+};
 
 export default function EmailAccounts({ user, setUser }) {
   const [accounts, setAccounts] = useState([]);
@@ -40,8 +79,20 @@ export default function EmailAccounts({ user, setUser }) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [formData, setFormData] = useState({ email: "", display_name: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const [formData, setFormData] = useState({
+    preset: "custom",
+    email: "",
+    display_name: "",
+    smtp_host: "",
+    smtp_port: 587,
+    smtp_username: "",
+    smtp_password: "",
+    smtp_encryption: "tls",
+  });
 
   const fetchAccounts = async () => {
     try {
@@ -59,9 +110,54 @@ export default function EmailAccounts({ user, setUser }) {
     fetchAccounts();
   }, []);
 
+  const handlePresetChange = (preset) => {
+    const presetData = SMTP_PRESETS[preset];
+    setFormData({
+      ...formData,
+      preset,
+      smtp_host: presetData.host,
+      smtp_port: presetData.port,
+      smtp_encryption: presetData.encryption,
+    });
+  };
+
+  const handleTestConnection = async () => {
+    if (!formData.smtp_host || !formData.smtp_username || !formData.smtp_password) {
+      toast.error("Please fill in all SMTP fields");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const response = await api.post("/accounts/test-smtp", {
+        smtp_host: formData.smtp_host,
+        smtp_port: formData.smtp_port,
+        smtp_username: formData.smtp_username,
+        smtp_password: formData.smtp_password,
+        smtp_encryption: formData.smtp_encryption,
+      });
+
+      if (response.data.success) {
+        toast.success("Connection successful!");
+      } else {
+        toast.error(response.data.error || "Connection failed");
+      }
+    } catch (error) {
+      const message = error.response?.data?.detail || "Connection test failed";
+      toast.error(message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const handleAddAccount = async () => {
     if (!formData.email || !formData.display_name) {
-      toast.error("Please fill in all fields");
+      toast.error("Please fill in email and display name");
+      return;
+    }
+
+    if (!formData.smtp_host || !formData.smtp_username || !formData.smtp_password) {
+      toast.error("Please fill in all SMTP fields");
       return;
     }
 
@@ -73,10 +169,18 @@ export default function EmailAccounts({ user, setUser }) {
 
     setSubmitting(true);
     try {
-      await api.post("/accounts", formData);
+      await api.post("/accounts/smtp", {
+        email: formData.email,
+        display_name: formData.display_name,
+        smtp_host: formData.smtp_host,
+        smtp_port: formData.smtp_port,
+        smtp_username: formData.smtp_username,
+        smtp_password: formData.smtp_password,
+        smtp_encryption: formData.smtp_encryption,
+      });
       toast.success("Email account added successfully");
       setAddDialogOpen(false);
-      setFormData({ email: "", display_name: "" });
+      resetForm();
       fetchAccounts();
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to add account";
@@ -100,7 +204,19 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
-  const needsSubscription = false; // Subscription removed - all features unlocked
+  const resetForm = () => {
+    setFormData({
+      preset: "custom",
+      email: "",
+      display_name: "",
+      smtp_host: "",
+      smtp_port: 587,
+      smtp_username: "",
+      smtp_password: "",
+      smtp_encryption: "tls",
+    });
+    setShowPassword(false);
+  };
 
   if (loading) {
     return (
@@ -126,12 +242,14 @@ export default function EmailAccounts({ user, setUser }) {
                 Email Accounts
               </h1>
               <p className="text-slate-500 mt-1">
-                Manage your connected email accounts for sending
+                Connect your SMTP email accounts for sending
               </p>
             </div>
             <Button
-              onClick={() => setAddDialogOpen(true)}
-              disabled={needsSubscription}
+              onClick={() => {
+                resetForm();
+                setAddDialogOpen(true);
+              }}
               className="bg-electric-blue hover:bg-blue-700"
               data-testid="add-account-btn"
             >
@@ -140,31 +258,14 @@ export default function EmailAccounts({ user, setUser }) {
             </Button>
           </div>
 
-          {/* Subscription Alert */}
-          {needsSubscription && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-amber-50 border border-amber-200 rounded-md p-4 flex items-center gap-4"
-            >
-              <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-amber-800 font-medium">Subscription required</p>
-                <p className="text-amber-700 text-sm">
-                  Subscribe to add and manage email accounts
-                </p>
-              </div>
-            </motion.div>
-          )}
-
           {/* Info Box */}
           <div className="mb-6 bg-blue-50 border border-blue-200 rounded-md p-4 flex items-start gap-3">
             <Info size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-blue-800 font-medium">Simulated Email Accounts</p>
+              <p className="text-blue-800 font-medium">SMTP Connection</p>
               <p className="text-blue-700 text-sm mt-1">
-                This is a demo mode. Add email accounts to test the rotation logic.
-                Actual email sending is simulated.
+                Connect your email accounts via SMTP. For Gmail, use an App Password 
+                (not your regular password). Go to Google Account → Security → 2-Step Verification → App passwords.
               </p>
             </div>
           </div>
@@ -192,6 +293,12 @@ export default function EmailAccounts({ user, setUser }) {
                         <p className="font-mono text-sm text-slate-500">
                           {account.email}
                         </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Server size={12} className="text-slate-400" />
+                          <span className="text-xs text-slate-400">
+                            {account.account_type?.toUpperCase() || "SMTP"}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -228,31 +335,33 @@ export default function EmailAccounts({ user, setUser }) {
                     </div>
                   </div>
 
+                  {account.last_error && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                      {account.last_error}
+                    </div>
+                  )}
+
                   <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-6">
                     <div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide">
                         Sent Today
                       </p>
                       <p className="font-semibold text-slate-900">
-                        {account.daily_send_count || 0} / 50
+                        {account.daily_send_count || 0} / {account.daily_limit || 50}
                       </p>
                     </div>
                     <div className="flex-1">
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-electric-blue rounded-full transition-all"
-                          style={{
-                            width: `${((account.daily_send_count || 0) / 50) * 100}%`,
-                          }}
-                        />
-                      </div>
+                      <Progress
+                        value={((account.daily_send_count || 0) / (account.daily_limit || 50)) * 100}
+                        className="h-2"
+                      />
                     </div>
                     <div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide">
                         Remaining
                       </p>
                       <p className="font-semibold text-slate-900">
-                        {50 - (account.daily_send_count || 0)}
+                        {(account.daily_limit || 50) - (account.daily_send_count || 0)}
                       </p>
                     </div>
                   </div>
@@ -268,11 +377,13 @@ export default function EmailAccounts({ user, setUser }) {
                 No email accounts yet
               </h3>
               <p className="text-slate-500 mb-6">
-                Add your first email account to start sending campaigns
+                Add your first SMTP email account to start sending campaigns
               </p>
               <Button
-                onClick={() => setAddDialogOpen(true)}
-                disabled={needsSubscription}
+                onClick={() => {
+                  resetForm();
+                  setAddDialogOpen(true);
+                }}
                 className="bg-electric-blue hover:bg-blue-700"
                 data-testid="add-first-account-btn"
               >
@@ -296,63 +407,214 @@ export default function EmailAccounts({ user, setUser }) {
 
       {/* Add Account Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-heading font-semibold">
-              Add Email Account
+              Add SMTP Email Account
             </DialogTitle>
             <DialogDescription>
-              Add an email account to use for sending campaigns. This is a demo
-              mode - actual OAuth connection is not required.
+              Connect your email account via SMTP to start sending campaigns.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Preset Selection */}
             <div>
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                className="mt-1.5"
-                data-testid="email-input"
-              />
+              <Label>Email Provider</Label>
+              <Select
+                value={formData.preset}
+                onValueChange={handlePresetChange}
+              >
+                <SelectTrigger className="mt-1.5" data-testid="preset-select">
+                  <SelectValue placeholder="Choose provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gmail">Gmail</SelectItem>
+                  <SelectItem value="outlook">Outlook / Office 365</SelectItem>
+                  <SelectItem value="yahoo">Yahoo Mail</SelectItem>
+                  <SelectItem value="custom">Custom SMTP</SelectItem>
+                </SelectContent>
+              </Select>
+              {SMTP_PRESETS[formData.preset]?.note && (
+                <p className="text-xs text-amber-600 mt-1">
+                  {SMTP_PRESETS[formData.preset].note}
+                </p>
+              )}
             </div>
-            <div>
-              <Label htmlFor="display_name">Display Name</Label>
-              <Input
-                id="display_name"
-                placeholder="John Doe"
-                value={formData.display_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, display_name: e.target.value })
-                }
-                className="mt-1.5"
-                data-testid="display-name-input"
-              />
+
+            {/* Email and Display Name */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  className="mt-1.5"
+                  data-testid="email-input"
+                />
+              </div>
+              <div>
+                <Label htmlFor="display_name">Display Name</Label>
+                <Input
+                  id="display_name"
+                  placeholder="John Doe"
+                  value={formData.display_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, display_name: e.target.value })
+                  }
+                  className="mt-1.5"
+                  data-testid="display-name-input"
+                />
+              </div>
+            </div>
+
+            {/* SMTP Settings */}
+            <div className="pt-4 border-t border-slate-200">
+              <p className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                <Server size={16} />
+                SMTP Settings
+              </p>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="smtp_host">SMTP Host</Label>
+                    <Input
+                      id="smtp_host"
+                      placeholder="smtp.example.com"
+                      value={formData.smtp_host}
+                      onChange={(e) =>
+                        setFormData({ ...formData, smtp_host: e.target.value })
+                      }
+                      className="mt-1.5"
+                      data-testid="smtp-host-input"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="smtp_port">Port</Label>
+                    <Input
+                      id="smtp_port"
+                      type="number"
+                      placeholder="587"
+                      value={formData.smtp_port}
+                      onChange={(e) =>
+                        setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })
+                      }
+                      className="mt-1.5"
+                      data-testid="smtp-port-input"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="smtp_username">Username</Label>
+                  <Input
+                    id="smtp_username"
+                    placeholder="your@email.com"
+                    value={formData.smtp_username}
+                    onChange={(e) =>
+                      setFormData({ ...formData, smtp_username: e.target.value })
+                    }
+                    className="mt-1.5"
+                    data-testid="smtp-username-input"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="smtp_password">Password / App Password</Label>
+                  <div className="relative mt-1.5">
+                    <Input
+                      id="smtp_password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••••••"
+                      value={formData.smtp_password}
+                      onChange={(e) =>
+                        setFormData({ ...formData, smtp_password: e.target.value })
+                      }
+                      className="pr-10"
+                      data-testid="smtp-password-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Encryption</Label>
+                  <Select
+                    value={formData.smtp_encryption}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, smtp_encryption: value })
+                    }
+                  >
+                    <SelectTrigger className="mt-1.5" data-testid="encryption-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tls">TLS (Recommended)</SelectItem>
+                      <SelectItem value="ssl">SSL</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Security Note */}
+            <div className="flex items-start gap-2 p-3 bg-slate-50 rounded-md">
+              <Lock size={16} className="text-slate-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-600">
+                Your credentials are encrypted before storage. We never store plain-text passwords.
+              </p>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
-              onClick={() => setAddDialogOpen(false)}
-              data-testid="cancel-add-btn"
+              onClick={handleTestConnection}
+              disabled={testing}
+              data-testid="test-connection-btn"
             >
-              Cancel
+              {testing ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                "Test Connection"
+              )}
             </Button>
-            <Button
-              onClick={handleAddAccount}
-              disabled={submitting}
-              className="bg-electric-blue hover:bg-blue-700"
-              data-testid="confirm-add-btn"
-            >
-              {submitting ? "Adding..." : "Add Account"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAddDialogOpen(false);
+                  resetForm();
+                }}
+                data-testid="cancel-add-btn"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddAccount}
+                disabled={submitting}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="confirm-add-btn"
+              >
+                {submitting ? "Adding..." : "Add Account"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
