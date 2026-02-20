@@ -320,7 +320,15 @@ async def exchange_session(request: SessionRequest, response: Response):
     )
     
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return user_doc
+    # Return consistent user data including role
+    return {
+        "user_id": user_doc["user_id"],
+        "email": user_doc["email"],
+        "name": user_doc.get("name", ""),
+        "picture": user_doc.get("picture"),
+        "subscription_status": user_doc.get("subscription_status", "active"),
+        "role": user_doc.get("role", "user")
+    }
 
 @api_router.get("/auth/me")
 async def get_me(user: User = Depends(get_current_user)):
