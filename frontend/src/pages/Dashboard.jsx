@@ -278,33 +278,35 @@ export default function Dashboard({ user, setUser }) {
 
                 <div className="grid sm:grid-cols-3 gap-3">
                   {/* Step 1 */}
-                  <div className={`flex items-center gap-3 p-4 rounded-xl transition-all ${
+                  <div className={`flex items-center justify-between gap-4 p-4 rounded-xl transition-all ${
                     needsAccounts 
                       ? "bg-slate-50" 
                       : "bg-emerald-50/70"
                   }`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
-                    }`}>
-                      {needsAccounts ? (
-                        <span className="text-slate-600 font-semibold">1</span>
-                      ) : (
-                        <CheckCircle2 size={18} className="text-emerald-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
-                        Connect Accounts
-                      </p>
-                      <p className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
-                        {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
+                      }`}>
+                        {needsAccounts ? (
+                          <span className="text-slate-600 font-semibold">1</span>
+                        ) : (
+                          <CheckCircle2 size={18} className="text-emerald-600" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
+                          Connect Accounts
+                        </p>
+                        <p className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
+                          {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
+                        </p>
+                      </div>
                     </div>
                     {needsAccounts && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="rounded-lg text-xs h-8"
+                        className="rounded-lg text-xs h-8 flex-shrink-0"
                         onClick={() => navigate("/accounts")}
                         data-testid="quick-add-account-btn"
                       >
