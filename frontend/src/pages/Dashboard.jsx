@@ -149,7 +149,7 @@ export default function Dashboard({ user, setUser }) {
             className="mb-8"
           >
             <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-              Analytics Dashboard
+              Dashboard
             </h1>
             <p className="text-slate-500 mt-1">Track your email campaign performance</p>
           </motion.div>
