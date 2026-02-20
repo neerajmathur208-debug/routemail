@@ -353,26 +353,28 @@ export default function Dashboard({ user, setUser }) {
                   </div>
 
                   {/* Step 3 */}
-                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-50">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white shadow-sm flex-shrink-0">
-                        <Zap size={16} className="text-amber-500" />
+                  <div className="p-4 rounded-xl bg-slate-50">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white shadow-sm">
+                          <Zap size={16} className="text-amber-500" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-slate-700">Start Campaign</span>
+                          <span className="text-xs text-slate-400">Send emails</span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-700">Start Campaign</p>
-                        <p className="text-xs text-slate-400">Send emails</p>
-                      </div>
+                      {!needsAccounts && !needsList && (
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs h-8 whitespace-nowrap"
+                          onClick={() => navigate("/campaign")}
+                          data-testid="quick-campaign-btn"
+                        >
+                          Create
+                        </Button>
+                      )}
                     </div>
-                    {!needsAccounts && !needsList && (
-                      <Button
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs h-8 flex-shrink-0"
-                        onClick={() => navigate("/campaign")}
-                        data-testid="quick-campaign-btn"
-                      >
-                        Create
-                      </Button>
-                    )}
                   </div>
                 </div>
               </motion.div>
