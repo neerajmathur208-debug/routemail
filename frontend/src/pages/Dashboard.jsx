@@ -141,7 +141,7 @@ export default function Dashboard({ user, setUser }) {
       <Sidebar user={user} setUser={setUser} />
       
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-        <div className="max-w-[1400px] mx-auto">
+        <div className="max-w-[1200px] mx-auto px-4 lg:px-6">
           {/* Header */}
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
