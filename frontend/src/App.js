@@ -17,6 +17,7 @@ import Dashboard from "./pages/Dashboard";
 import EmailAccounts from "./pages/EmailAccounts";
 import UploadList from "./pages/UploadList";
 import Campaign from "./pages/Campaign";
+import CampaignLogs from "./pages/CampaignLogs";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
