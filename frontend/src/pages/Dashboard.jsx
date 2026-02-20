@@ -316,32 +316,34 @@ export default function Dashboard({ user, setUser }) {
                   </div>
 
                   {/* Step 2 */}
-                  <div className={`flex items-center gap-3 p-4 rounded-xl transition-all ${
+                  <div className={`flex items-center justify-between gap-4 p-4 rounded-xl transition-all ${
                     needsList 
                       ? "bg-slate-50" 
                       : "bg-emerald-50/70"
                   }`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      needsList ? "bg-white shadow-sm" : "bg-emerald-100"
-                    }`}>
-                      {needsList ? (
-                        <span className="text-slate-600 font-semibold">2</span>
-                      ) : (
-                        <CheckCircle2 size={18} className="text-emerald-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
-                        Upload Lists
-                      </p>
-                      <p className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
-                        {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        needsList ? "bg-white shadow-sm" : "bg-emerald-100"
+                      }`}>
+                        {needsList ? (
+                          <span className="text-slate-600 font-semibold">2</span>
+                        ) : (
+                          <CheckCircle2 size={18} className="text-emerald-600" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
+                          Upload Lists
+                        </p>
+                        <p className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
+                          {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
+                        </p>
+                      </div>
                     </div>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="rounded-lg text-xs h-8"
+                      className="rounded-lg text-xs h-8 flex-shrink-0"
                       onClick={() => navigate("/email-lists")}
                       data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
                     >
