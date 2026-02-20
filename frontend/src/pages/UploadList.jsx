@@ -192,14 +192,24 @@ export default function UploadList({ user, setUser }) {
 
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-              Upload List
-            </h1>
-            <p className="text-slate-500 mt-1">
-              Upload and manage your email contact lists
-            </p>
+          {/* Header with Back Button */}
+          <div className="flex items-center gap-4 mb-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/dashboard")}
+              data-testid="back-btn"
+            >
+              <ArrowLeft size={20} />
+            </Button>
+            <div>
+              <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
+                Upload List
+              </h1>
+              <p className="text-slate-500 mt-1">
+                Upload and manage your email contact lists
+              </p>
+            </div>
           </div>
 
           {/* Upload Zone */}
