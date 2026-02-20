@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Mail,
+  FileText,
   Upload,
   Send,
   LogOut,
@@ -18,7 +19,7 @@ import { toast } from "sonner";
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/accounts", label: "Email Accounts", icon: Mail },
-  { path: "/upload", label: "Upload List", icon: Upload },
+  { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
 ];
 
