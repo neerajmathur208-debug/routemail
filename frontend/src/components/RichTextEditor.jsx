@@ -1,39 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-
-// Custom styles to override Quill defaults
-const editorStyles = `
-  .email-editor .ql-container {
-    font-family: 'Public Sans', sans-serif;
-    font-size: 14px;
-    min-height: 300px;
-  }
-  .email-editor .ql-editor {
-    min-height: 300px;
-    line-height: 1.6;
-  }
-  .email-editor .ql-toolbar {
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-    background: #f8fafc;
-    border-color: #e2e8f0;
-  }
-  .email-editor .ql-container {
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
-    border-color: #e2e8f0;
-  }
-  .email-editor .ql-editor:focus {
-    outline: none;
-  }
-  .email-editor .ql-editor.ql-blank::before {
-    color: #94a3b8;
-    font-style: normal;
-  }
-`;
+import { Bold, Italic, Underline, Link, List, ListOrdered, Undo, Type } from 'lucide-react';
 
 export default function RichTextEditor({ 
   value, 
@@ -44,38 +12,101 @@ export default function RichTextEditor({
   plainTextValue = "",
   onPlainTextChange = () => {}
 }) {
-  const quillRef = useRef(null);
-  
-  const modules = useMemo(() => ({
-    toolbar: [
-      ['bold', 'italic', 'underline'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['link'],
-      ['clean']
-    ],
-  }), []);
+  const editorRef = useRef(null);
+  const isInitialized = useRef(false);
 
-  const formats = useMemo(() => [
-    'bold', 'italic', 'underline',
-    'list', 'bullet',
-    'link'
-  ], []);
+  // Initialize editor content
+  useEffect(() => {
+    if (editorRef.current && !isInitialized.current && value) {
+      editorRef.current.innerHTML = value;
+      isInitialized.current = true;
+    }
+  }, [value]);
+
+  // Update content when value changes externally
+  useEffect(() => {
+    if (editorRef.current && value !== editorRef.current.innerHTML) {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      
+      if (document.activeElement !== editorRef.current) {
+        editorRef.current.innerHTML = value || '';
+      }
+    }
+  }, [value]);
+
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
+    }
+  }, [onChange]);
+
+  const execCommand = useCallback((command, value = null) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    handleInput();
+  }, [handleInput]);
+
+  const formatBold = () => execCommand('bold');
+  const formatItalic = () => execCommand('italic');
+  const formatUnderline = () => execCommand('underline');
+  const formatOrderedList = () => execCommand('insertOrderedList');
+  const formatUnorderedList = () => execCommand('insertUnorderedList');
+
+  const insertLink = () => {
+    const url = prompt('Enter URL:');
+    if (url) {
+      execCommand('createLink', url);
+    }
+  };
 
   const insertVariable = useCallback((variable) => {
-    const quill = quillRef.current?.getEditor();
-    if (quill) {
-      const range = quill.getSelection(true);
-      const variableText = `{{${variable}}}`;
-      quill.insertText(range.index, variableText);
-      quill.setSelection(range.index + variableText.length);
+    editorRef.current?.focus();
+    const variableText = `{{${variable}}}`;
+    
+    // Insert at cursor position
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(variableText);
+      range.insertNode(textNode);
+      
+      // Move cursor after inserted text
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      // Fallback: append to end
+      editorRef.current.innerHTML += variableText;
     }
-  }, []);
+    
+    handleInput();
+  }, [handleInput]);
+
+  const handlePaste = useCallback((e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+    handleInput();
+  }, [handleInput]);
+
+  const ToolbarButton = ({ onClick, active, children, title }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`p-2 rounded hover:bg-slate-200 transition-colors ${
+        active ? 'bg-slate-200 text-slate-900' : 'text-slate-600'
+      }`}
+    >
+      {children}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
-      {/* Inject custom styles */}
-      <style>{editorStyles}</style>
-      
       {/* Variables Panel */}
       {variables.length > 0 && (
         <div className="bg-slate-50 border border-slate-200 rounded-md p-4">
@@ -100,16 +131,65 @@ export default function RichTextEditor({
 
       {/* Editor */}
       {!showPlainText ? (
-        <div className="email-editor">
-          <ReactQuill
-            ref={quillRef}
-            theme="snow"
-            value={value}
-            onChange={onChange}
-            modules={modules}
-            formats={formats}
-            placeholder={placeholder}
+        <div className="border border-slate-200 rounded-md overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex items-center gap-1 p-2 bg-slate-50 border-b border-slate-200">
+            <ToolbarButton onClick={formatBold} title="Bold">
+              <Bold size={18} />
+            </ToolbarButton>
+            <ToolbarButton onClick={formatItalic} title="Italic">
+              <Italic size={18} />
+            </ToolbarButton>
+            <ToolbarButton onClick={formatUnderline} title="Underline">
+              <Underline size={18} />
+            </ToolbarButton>
+            <div className="w-px h-6 bg-slate-300 mx-1" />
+            <ToolbarButton onClick={formatUnorderedList} title="Bullet List">
+              <List size={18} />
+            </ToolbarButton>
+            <ToolbarButton onClick={formatOrderedList} title="Numbered List">
+              <ListOrdered size={18} />
+            </ToolbarButton>
+            <div className="w-px h-6 bg-slate-300 mx-1" />
+            <ToolbarButton onClick={insertLink} title="Insert Link">
+              <Link size={18} />
+            </ToolbarButton>
+          </div>
+          
+          {/* Editable Area */}
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            onPaste={handlePaste}
+            className="min-h-[300px] p-4 outline-none prose prose-sm max-w-none"
+            style={{ 
+              fontFamily: "'Public Sans', sans-serif",
+              lineHeight: 1.6
+            }}
+            data-placeholder={placeholder}
+            data-testid="rich-text-editor"
+            suppressContentEditableWarning={true}
           />
+          
+          <style>{`
+            [contenteditable]:empty:before {
+              content: attr(data-placeholder);
+              color: #94a3b8;
+              pointer-events: none;
+            }
+            [contenteditable] a {
+              color: #2563eb;
+              text-decoration: underline;
+            }
+            [contenteditable] ul, [contenteditable] ol {
+              padding-left: 1.5em;
+              margin: 0.5em 0;
+            }
+            [contenteditable] li {
+              margin: 0.25em 0;
+            }
+          `}</style>
         </div>
       ) : (
         <textarea
