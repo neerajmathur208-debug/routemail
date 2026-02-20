@@ -1,12 +1,12 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Depends
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Depends, Query
+from fastapi.responses import RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -16,8 +16,6 @@ import random
 import csv
 import io
 import re
-import base64
-import json
 from cryptography.fernet import Fernet
 import smtplib
 from email.mime.text import MIMEText
@@ -31,10 +29,9 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Encryption key for credentials (generate once and store securely)
+# Encryption key for credentials
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if not ENCRYPTION_KEY:
-    # Generate a key if not exists (in production, this should be set in .env)
     ENCRYPTION_KEY = Fernet.generate_key().decode()
     
 fernet = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
@@ -85,21 +82,20 @@ class UserSession(BaseModel):
 class EmailAccount(BaseModel):
     account_id: str = Field(default_factory=lambda: f"acc_{uuid.uuid4().hex[:12]}")
     user_id: str
-    account_type: str = "smtp"  # smtp or gmail
+    account_type: str = "smtp"
     email: str
     display_name: str
-    # SMTP specific
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
     smtp_username: Optional[str] = None
     smtp_password_encrypted: Optional[str] = None
-    smtp_encryption: Optional[str] = None  # ssl, tls, none
-    # Status
-    status: str = "connected"  # connected, error, disconnected
+    smtp_encryption: Optional[str] = None
+    status: str = "connected"
     last_error: Optional[str] = None
-    daily_limit: int = 50
+    daily_limit: int = 50  # User-configurable (10-200)
     daily_send_count: int = 0
     last_send_date: Optional[str] = None
+    last_reset_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class EmailList(BaseModel):
@@ -118,16 +114,17 @@ class Campaign(BaseModel):
     user_id: str
     name: str
     subject: str
-    body: str  # HTML content
-    body_text: Optional[str] = None  # Plain text version
+    body: str
+    body_text: Optional[str] = None
     from_name: Optional[str] = None
     list_id: Optional[str] = None
-    account_ids: List[str] = []  # Email accounts to use
-    status: str = "draft"  # draft, scheduled, running, paused, completed
+    account_ids: List[str] = []
+    status: str = "draft"  # draft, running, paused, paused_daily_limit, completed, failed
     total_emails: int = 0
     sent_count: int = 0
     failed_count: int = 0
     current_account_index: int = 0
+    is_locked: bool = False  # Prevents editing when running
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
@@ -138,7 +135,7 @@ class EmailQueueItem(BaseModel):
     campaign_id: str
     user_id: str
     recipient_email: str
-    recipient_data: Dict[str, Any] = {}  # All row data for variable replacement
+    recipient_data: Dict[str, Any] = {}
     assigned_account_id: Optional[str] = None
     status: str = "pending"  # pending, sent, failed
     error_message: Optional[str] = None
@@ -156,7 +153,11 @@ class AddSMTPAccountRequest(BaseModel):
     smtp_port: int
     smtp_username: str
     smtp_password: str
-    smtp_encryption: str = "tls"  # ssl, tls, none
+    smtp_encryption: str = "tls"
+    daily_limit: int = 50
+
+class UpdateAccountLimitRequest(BaseModel):
+    daily_limit: int
 
 class TestSMTPRequest(BaseModel):
     smtp_host: str
@@ -170,6 +171,9 @@ class CreateListRequest(BaseModel):
     original_filename: str
     column_headers: List[str]
     emails: List[Dict[str, Any]]
+
+class UpdateListRequest(BaseModel):
+    name: str
 
 class CreateCampaignRequest(BaseModel):
     name: str
@@ -188,6 +192,9 @@ class UpdateCampaignRequest(BaseModel):
     from_name: Optional[str] = None
     list_id: Optional[str] = None
     account_ids: Optional[List[str]] = None
+
+class AddToSuppressionRequest(BaseModel):
+    email: str
 
 # ==================== AUTH HELPERS ====================
 
@@ -256,12 +263,10 @@ async def exchange_session(request: SessionRequest, response: Response):
     name = data.get("name")
     picture = data.get("picture")
     
-    # Check if user exists
     existing_user = await db.users.find_one({"email": email}, {"_id": 0})
     
     if existing_user:
         user_id = existing_user["user_id"]
-        # Update user info and ensure subscription is active
         await db.users.update_one(
             {"user_id": user_id},
             {"$set": {
@@ -272,7 +277,6 @@ async def exchange_session(request: SessionRequest, response: Response):
             }}
         )
     else:
-        # Create new user with active subscription
         new_user = User(
             user_id=user_id,
             email=email,
@@ -287,7 +291,6 @@ async def exchange_session(request: SessionRequest, response: Response):
             user_dict["subscription_expires_at"] = user_dict["subscription_expires_at"].isoformat()
         await db.users.insert_one(user_dict)
     
-    # Create session
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     session = UserSession(
         user_id=user_id,
@@ -300,7 +303,6 @@ async def exchange_session(request: SessionRequest, response: Response):
     
     await db.user_sessions.insert_one(session_dict)
     
-    # Set cookie
     response.set_cookie(
         key="session_token",
         value=session_token,
@@ -311,31 +313,19 @@ async def exchange_session(request: SessionRequest, response: Response):
         max_age=7 * 24 * 60 * 60
     )
     
-    # Get updated user
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    
     return user_doc
 
 @api_router.get("/auth/me")
 async def get_me(user: User = Depends(get_current_user)):
-    """Get current user info"""
     return user.model_dump()
 
 @api_router.post("/auth/logout")
 async def logout(request: Request, response: Response):
-    """Logout and clear session"""
     session_token = request.cookies.get("session_token")
-    
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
-    
-    response.delete_cookie(
-        key="session_token",
-        path="/",
-        secure=True,
-        samesite="none"
-    )
-    
+    response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
     return {"message": "Logged out"}
 
 # ==================== EMAIL ACCOUNT ENDPOINTS ====================
@@ -345,10 +335,9 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
     """Get all connected email accounts"""
     accounts = await db.email_accounts.find(
         {"user_id": user.user_id},
-        {"_id": 0, "smtp_password_encrypted": 0}  # Don't return encrypted password
+        {"_id": 0, "smtp_password_encrypted": 0}
     ).to_list(100)
     
-    # Reset daily count if it's a new day
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for acc in accounts:
         if acc.get("last_send_date") != today:
@@ -359,7 +348,6 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
 @api_router.post("/accounts/smtp")
 async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(get_current_user)):
     """Add a new SMTP email account"""
-    # Check if account already exists
     existing = await db.email_accounts.find_one(
         {"user_id": user.user_id, "email": request.email},
         {"_id": 0}
@@ -368,19 +356,17 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
     if existing:
         raise HTTPException(status_code=400, detail="Email account already connected")
     
-    # Test SMTP connection first
     test_result = await test_smtp_connection(
-        request.smtp_host,
-        request.smtp_port,
-        request.smtp_username,
-        request.smtp_password,
-        request.smtp_encryption
+        request.smtp_host, request.smtp_port, request.smtp_username,
+        request.smtp_password, request.smtp_encryption
     )
     
     if not test_result["success"]:
         raise HTTPException(status_code=400, detail=f"SMTP connection failed: {test_result['error']}")
     
-    # Encrypt password
+    # Validate daily limit (10-200)
+    daily_limit = max(10, min(200, request.daily_limit))
+    
     encrypted_password = encrypt_data(request.smtp_password)
     
     account = EmailAccount(
@@ -393,29 +379,46 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
         smtp_username=request.smtp_username,
         smtp_password_encrypted=encrypted_password,
         smtp_encryption=request.smtp_encryption,
-        status="connected"
+        daily_limit=daily_limit,
+        status="connected",
+        last_reset_at=datetime.now(timezone.utc)
     )
     
     acc_dict = account.model_dump()
     acc_dict["created_at"] = acc_dict["created_at"].isoformat()
+    acc_dict["last_reset_at"] = acc_dict["last_reset_at"].isoformat()
     await db.email_accounts.insert_one(acc_dict)
     
     return {
         "account_id": account.account_id, 
         "email": account.email, 
         "status": "connected",
+        "daily_limit": daily_limit,
         "message": "SMTP account connected successfully"
     }
+
+@api_router.put("/accounts/{account_id}/limit")
+async def update_account_limit(account_id: str, request: UpdateAccountLimitRequest, user: User = Depends(get_current_user)):
+    """Update daily sending limit for an account"""
+    # Validate limit (10-200)
+    daily_limit = max(10, min(200, request.daily_limit))
+    
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": {"daily_limit": daily_limit}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {"message": "Daily limit updated", "daily_limit": daily_limit}
 
 @api_router.post("/accounts/test-smtp")
 async def test_smtp_endpoint(request: TestSMTPRequest, user: User = Depends(get_current_user)):
     """Test SMTP connection without saving"""
     result = await test_smtp_connection(
-        request.smtp_host,
-        request.smtp_port,
-        request.smtp_username,
-        request.smtp_password,
-        request.smtp_encryption
+        request.smtp_host, request.smtp_port, request.smtp_username,
+        request.smtp_password, request.smtp_encryption
     )
     return result
 
@@ -458,8 +461,8 @@ async def get_email_lists(user: User = Depends(get_current_user)):
     """Get all email lists"""
     lists = await db.email_lists.find(
         {"user_id": user.user_id},
-        {"_id": 0, "emails": 0}  # Exclude full email list for performance
-    ).to_list(100)
+        {"_id": 0, "emails": 0}
+    ).sort("created_at", -1).to_list(100)
     
     return lists
 
@@ -488,10 +491,7 @@ async def upload_email_list(
     content = await file.read()
     text_content = content.decode('utf-8')
     
-    # Parse CSV
     reader = csv.DictReader(io.StringIO(text_content))
-    
-    # Get column headers
     column_headers = reader.fieldnames or []
     column_headers = [h.strip().lower() for h in column_headers]
     
@@ -503,15 +503,12 @@ async def upload_email_list(
     email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     
     for row in reader:
-        # Normalize column names
         normalized_row = {k.lower().strip(): v.strip() if v else "" for k, v in row.items()}
-        
         email = normalized_row.get('email', '')
         
         if not email or not email_pattern.match(email):
             continue
         
-        # Check for duplicates
         if email.lower() in seen_emails:
             continue
         
@@ -521,7 +518,6 @@ async def upload_email_list(
     if not emails:
         raise HTTPException(status_code=400, detail="No valid emails found in CSV")
     
-    # Return preview with column headers for variable detection
     return {
         "original_filename": file.filename,
         "column_headers": column_headers,
@@ -534,15 +530,12 @@ async def upload_email_list(
 @api_router.post("/lists")
 async def create_email_list(request: CreateListRequest, user: User = Depends(get_current_user)):
     """Save email list"""
-    # Check suppression list
     suppression = await db.suppression_list.find(
         {"user_id": user.user_id},
         {"_id": 0, "email": 1}
     ).to_list(10000)
     
     suppressed_emails = {s["email"].lower() for s in suppression}
-    
-    # Filter out suppressed emails
     filtered_emails = [e for e in request.emails if e.get("email", "").lower() not in suppressed_emails]
     
     email_list = EmailList(
@@ -567,9 +560,34 @@ async def create_email_list(request: CreateListRequest, user: User = Depends(get
         "valid_emails": email_list.valid_emails
     }
 
+@api_router.put("/lists/{list_id}")
+async def update_email_list(list_id: str, request: UpdateListRequest, user: User = Depends(get_current_user)):
+    """Update email list name"""
+    result = await db.email_lists.update_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"$set": {"name": request.name}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    return {"message": "List updated"}
+
 @api_router.delete("/lists/{list_id}")
 async def delete_email_list(list_id: str, user: User = Depends(get_current_user)):
     """Delete an email list"""
+    # Check if list is used in any active campaign
+    active_campaign = await db.campaigns.find_one(
+        {"user_id": user.user_id, "list_id": list_id, "status": {"$in": ["running", "paused", "paused_daily_limit"]}},
+        {"_id": 0}
+    )
+    
+    if active_campaign:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot delete list: it is used in an active campaign. Please complete or delete the campaign first."
+        )
+    
     result = await db.email_lists.delete_one(
         {"list_id": list_id, "user_id": user.user_id}
     )
@@ -602,7 +620,6 @@ async def get_campaign(campaign_id: str, user: User = Depends(get_current_user))
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    # Get queue stats
     pending = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "pending"})
     sent = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "sent"})
     failed = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "failed"})
@@ -613,10 +630,110 @@ async def get_campaign(campaign_id: str, user: User = Depends(get_current_user))
     
     return campaign
 
+@api_router.get("/campaigns/{campaign_id}/logs")
+async def get_campaign_logs(
+    campaign_id: str, 
+    user: User = Depends(get_current_user),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(50)
+):
+    """Get campaign sending logs"""
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Build query
+    query = {"campaign_id": campaign_id}
+    if status:
+        query["status"] = status
+    if search:
+        query["recipient_email"] = {"$regex": search, "$options": "i"}
+    
+    # Get logs
+    logs = await db.email_queue.find(
+        query,
+        {"_id": 0}
+    ).sort("sent_at", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Get total count
+    total = await db.email_queue.count_documents(query)
+    
+    # Get account emails for display
+    account_ids = list(set([log.get("assigned_account_id") for log in logs if log.get("assigned_account_id")]))
+    accounts = await db.email_accounts.find(
+        {"account_id": {"$in": account_ids}},
+        {"_id": 0, "account_id": 1, "email": 1}
+    ).to_list(100)
+    account_map = {a["account_id"]: a["email"] for a in accounts}
+    
+    # Add account email to logs
+    for log in logs:
+        if log.get("assigned_account_id"):
+            log["account_email"] = account_map.get(log["assigned_account_id"], "Unknown")
+    
+    return {
+        "logs": logs,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+@api_router.get("/campaigns/{campaign_id}/logs/export")
+async def export_campaign_logs(campaign_id: str, user: User = Depends(get_current_user)):
+    """Export campaign logs as CSV"""
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Get all logs
+    logs = await db.email_queue.find(
+        {"campaign_id": campaign_id},
+        {"_id": 0}
+    ).sort("sent_at", -1).to_list(10000)
+    
+    # Get account emails
+    account_ids = list(set([log.get("assigned_account_id") for log in logs if log.get("assigned_account_id")]))
+    accounts = await db.email_accounts.find(
+        {"account_id": {"$in": account_ids}},
+        {"_id": 0, "account_id": 1, "email": 1}
+    ).to_list(100)
+    account_map = {a["account_id"]: a["email"] for a in accounts}
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Recipient Email", "Status", "Sent From", "Sent At", "Error Message"])
+    
+    for log in logs:
+        writer.writerow([
+            log.get("recipient_email", ""),
+            log.get("status", ""),
+            account_map.get(log.get("assigned_account_id"), ""),
+            log.get("sent_at", ""),
+            log.get("error_message", "")
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=campaign_{campaign_id}_logs.csv"}
+    )
+
 @api_router.post("/campaigns")
 async def create_campaign(request: CreateCampaignRequest, user: User = Depends(get_current_user)):
     """Create a new campaign"""
-    # Get email list if provided
     total_emails = 0
     if request.list_id:
         email_list = await db.email_lists.find_one(
@@ -658,8 +775,8 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    if campaign["status"] == "running":
-        raise HTTPException(status_code=400, detail="Cannot edit a running campaign")
+    if campaign.get("is_locked") or campaign["status"] in ["running"]:
+        raise HTTPException(status_code=400, detail="Cannot edit a running campaign. Pause it first.")
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
@@ -675,7 +792,6 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
         update_data["from_name"] = request.from_name
     if request.list_id is not None:
         update_data["list_id"] = request.list_id
-        # Update total emails
         email_list = await db.email_lists.find_one(
             {"list_id": request.list_id, "user_id": user.user_id},
             {"_id": 0}
@@ -739,15 +855,21 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
         raise HTTPException(status_code=400, detail="Campaign is already running")
     
     if campaign["status"] == "completed":
-        raise HTTPException(status_code=400, detail="Campaign is already completed")
+        raise HTTPException(status_code=400, detail="Campaign is already completed. Duplicate it to send again.")
     
+    # Validate campaign
     if not campaign.get("list_id"):
         raise HTTPException(status_code=400, detail="No email list selected")
+    
+    if not campaign.get("subject"):
+        raise HTTPException(status_code=400, detail="Subject line is required")
+    
+    if not campaign.get("body"):
+        raise HTTPException(status_code=400, detail="Email body is required")
     
     # Get email accounts
     account_ids = campaign.get("account_ids", [])
     if not account_ids:
-        # Use all connected accounts
         accounts = await db.email_accounts.find(
             {"user_id": user.user_id, "status": "connected"},
             {"_id": 0}
@@ -758,9 +880,10 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
             {"user_id": user.user_id, "account_id": {"$in": account_ids}, "status": "connected"},
             {"_id": 0}
         ).to_list(100)
+        account_ids = [a["account_id"] for a in accounts]
     
     if not accounts:
-        raise HTTPException(status_code=400, detail="No connected email accounts available")
+        raise HTTPException(status_code=400, detail="No connected email accounts available. Please add at least one account.")
     
     # Get email list
     email_list = await db.email_lists.find_one(
@@ -771,7 +894,10 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
     if not email_list:
         raise HTTPException(status_code=404, detail="Email list not found")
     
-    # Create queue items (only if not resuming)
+    if not email_list.get("emails") or len(email_list["emails"]) == 0:
+        raise HTTPException(status_code=400, detail="Email list is empty")
+    
+    # Check for existing queue (prevent duplicate creation)
     existing_queue = await db.email_queue.count_documents({"campaign_id": campaign_id})
     
     if existing_queue == 0:
@@ -789,11 +915,12 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
         if queue_items:
             await db.email_queue.insert_many(queue_items)
     
-    # Update campaign status
+    # Update campaign status and lock it
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},
         {"$set": {
             "status": "running",
+            "is_locked": True,
             "account_ids": account_ids,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
@@ -803,7 +930,7 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
     # Start background task
     background_tasks.add_task(process_campaign_queue, campaign_id, user.user_id)
     
-    return {"message": "Campaign started", "status": "running"}
+    return {"message": "Campaign started", "status": "running", "campaign_id": campaign_id}
 
 @api_router.post("/campaigns/{campaign_id}/pause")
 async def pause_campaign(campaign_id: str, user: User = Depends(get_current_user)):
@@ -822,7 +949,7 @@ async def pause_campaign(campaign_id: str, user: User = Depends(get_current_user
 async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
     """Resume a paused campaign"""
     campaign = await db.campaigns.find_one(
-        {"campaign_id": campaign_id, "user_id": user.user_id, "status": "paused"},
+        {"campaign_id": campaign_id, "user_id": user.user_id, "status": {"$in": ["paused", "paused_daily_limit"]}},
         {"_id": 0}
     )
     
@@ -852,10 +979,7 @@ async def delete_campaign(campaign_id: str, user: User = Depends(get_current_use
     if campaign["status"] == "running":
         raise HTTPException(status_code=400, detail="Cannot delete running campaign. Pause it first.")
     
-    # Delete queue items
     await db.email_queue.delete_many({"campaign_id": campaign_id})
-    
-    # Delete campaign
     await db.campaigns.delete_one({"campaign_id": campaign_id})
     
     return {"message": "Campaign deleted"}
@@ -864,20 +988,14 @@ async def delete_campaign(campaign_id: str, user: User = Depends(get_current_use
 
 @api_router.get("/suppression")
 async def get_suppression_list(user: User = Depends(get_current_user)):
-    """Get suppression list"""
     items = await db.suppression_list.find(
         {"user_id": user.user_id},
         {"_id": 0}
     ).to_list(1000)
-    
     return items
-
-class AddToSuppressionRequest(BaseModel):
-    email: str
 
 @api_router.post("/suppression")
 async def add_to_suppression(request: AddToSuppressionRequest, user: User = Depends(get_current_user)):
-    """Add email to suppression list"""
     existing = await db.suppression_list.find_one(
         {"user_id": user.user_id, "email": request.email.lower()}
     )
@@ -893,7 +1011,6 @@ async def add_to_suppression(request: AddToSuppressionRequest, user: User = Depe
 
 @api_router.get("/unsubscribe/{user_id}/{email}")
 async def unsubscribe(user_id: str, email: str):
-    """Public unsubscribe endpoint"""
     existing = await db.suppression_list.find_one(
         {"user_id": user_id, "email": email.lower()}
     )
@@ -911,8 +1028,6 @@ async def unsubscribe(user_id: str, email: str):
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(user: User = Depends(get_current_user)):
-    """Get dashboard statistics"""
-    # Get account stats
     accounts = await db.email_accounts.find(
         {"user_id": user.user_id},
         {"_id": 0, "smtp_password_encrypted": 0}
@@ -924,7 +1039,8 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     
     for acc in accounts:
         daily_count = acc.get("daily_send_count", 0) if acc.get("last_send_date") == today else 0
-        remaining = acc.get("daily_limit", 50) - daily_count
+        daily_limit = acc.get("daily_limit", 50)
+        remaining = daily_limit - daily_count
         total_available_today += max(0, remaining)
         
         account_stats.append({
@@ -934,26 +1050,23 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
             "account_type": acc.get("account_type", "smtp"),
             "status": acc["status"],
             "daily_sent": daily_count,
-            "daily_limit": acc.get("daily_limit", 50),
+            "daily_limit": daily_limit,
             "remaining": max(0, remaining)
         })
     
-    # Get campaign stats
     campaigns = await db.campaigns.find(
         {"user_id": user.user_id},
         {"_id": 0}
-    ).to_list(100)
+    ).sort("created_at", -1).to_list(100)
     
     total_sent = sum(c.get("sent_count", 0) for c in campaigns)
     total_failed = sum(c.get("failed_count", 0) for c in campaigns)
     
-    # Get current running campaign
     current_campaign = await db.campaigns.find_one(
-        {"user_id": user.user_id, "status": {"$in": ["running", "paused"]}},
+        {"user_id": user.user_id, "status": {"$in": ["running", "paused", "paused_daily_limit"]}},
         {"_id": 0}
     )
     
-    # Get lists
     lists = await db.email_lists.find(
         {"user_id": user.user_id},
         {"_id": 0, "emails": 0}
@@ -983,37 +1096,31 @@ def replace_variables(template: str, data: dict) -> str:
         var_name = match.group(1).strip().lower()
         return str(data.get(var_name, ""))
     
-    # Replace {{variable}} patterns
     result = re.sub(r'\{\{(\w+)\}\}', replacer, template)
     return result
 
 async def send_email_smtp(account: dict, to_email: str, subject: str, body_html: str, body_text: str, from_name: str, user_id: str) -> dict:
     """Send email via SMTP"""
     try:
-        # Decrypt password
         password = decrypt_data(account.get("smtp_password_encrypted", ""))
         if not password:
             return {"success": False, "error": "Could not decrypt SMTP password"}
         
-        # Create message
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = f"{from_name} <{account['email']}>" if from_name else account['email']
         msg['To'] = to_email
         
-        # Add unsubscribe link to body
         unsubscribe_url = f"https://distribute-email.preview.emergentagent.com/api/unsubscribe/{user_id}/{to_email}"
         unsubscribe_text = f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
         unsubscribe_html = f'<br><br><hr><p style="font-size:12px;color:#666;">To unsubscribe, <a href="{unsubscribe_url}">click here</a></p>'
         
-        # Attach both plain text and HTML versions
-        part1 = MIMEText(body_text + unsubscribe_text, 'plain')
+        part1 = MIMEText((body_text or "") + unsubscribe_text, 'plain')
         part2 = MIMEText(body_html + unsubscribe_html, 'html')
         
         msg.attach(part1)
         msg.attach(part2)
         
-        # Connect and send
         host = account.get("smtp_host", "")
         port = account.get("smtp_port", 587)
         encryption = account.get("smtp_encryption", "tls")
@@ -1042,7 +1149,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
     logger.info(f"Starting campaign processing: {campaign_id}")
     
     while True:
-        # Check campaign status
         campaign = await db.campaigns.find_one(
             {"campaign_id": campaign_id},
             {"_id": 0}
@@ -1052,7 +1158,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             logger.info(f"Campaign {campaign_id} stopped or not running")
             break
         
-        # Get next pending email
         queue_item = await db.email_queue.find_one(
             {"campaign_id": campaign_id, "status": "pending"},
             {"_id": 0}
@@ -1064,6 +1169,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 {"campaign_id": campaign_id},
                 {"$set": {
                     "status": "completed",
+                    "is_locked": False,
                     "completed_at": datetime.now(timezone.utc).isoformat(),
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }}
@@ -1071,7 +1177,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             logger.info(f"Campaign {campaign_id} completed")
             break
         
-        # Get available accounts
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         account_ids = campaign.get("account_ids", [])
         
@@ -1090,11 +1195,11 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             logger.error(f"No accounts available for campaign {campaign_id}")
             await db.campaigns.update_one(
                 {"campaign_id": campaign_id},
-                {"$set": {"status": "paused", "updated_at": datetime.now(timezone.utc).isoformat()}}
+                {"$set": {"status": "failed", "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
             break
         
-        # Find available account (rotational)
+        # Find available account with remaining quota
         current_index = campaign.get("current_account_index", 0)
         account = None
         checked = 0
@@ -1105,6 +1210,14 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             
             # Reset count if new day
             if acc.get("last_send_date") != today:
+                await db.email_accounts.update_one(
+                    {"account_id": acc["account_id"]},
+                    {"$set": {
+                        "daily_send_count": 0,
+                        "last_send_date": today,
+                        "last_reset_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
                 acc["daily_send_count"] = 0
             
             daily_limit = acc.get("daily_limit", 50)
@@ -1120,11 +1233,11 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             logger.info(f"All accounts hit daily limit for campaign {campaign_id}")
             await db.campaigns.update_one(
                 {"campaign_id": campaign_id},
-                {"$set": {"status": "paused", "updated_at": datetime.now(timezone.utc).isoformat()}}
+                {"$set": {"status": "paused_daily_limit", "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
             break
         
-        # Replace variables in subject and body
+        # Replace variables
         recipient_data = queue_item.get("recipient_data", {})
         subject = replace_variables(campaign["subject"], recipient_data)
         body_html = replace_variables(campaign["body"], recipient_data)
@@ -1132,7 +1245,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
         from_name = campaign.get("from_name", account.get("display_name", ""))
         
         # Send email
-        if account.get("account_type") == "smtp":
+        if account.get("account_type") == "smtp" and account.get("smtp_host"):
             result = await send_email_smtp(
                 account=account,
                 to_email=queue_item["recipient_email"],
@@ -1143,7 +1256,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 user_id=user_id
             )
         else:
-            # For non-SMTP (simulated)
+            # Simulated sending for demo accounts
             logger.info(f"[SIMULATED] Sending to {queue_item['recipient_email']}")
             result = {"success": random.random() < 0.95}
             if not result["success"]:
@@ -1160,7 +1273,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 }}
             )
             
-            # Update account send count
             await db.email_accounts.update_one(
                 {"account_id": account["account_id"]},
                 {"$set": {
@@ -1169,7 +1281,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 }}
             )
             
-            # Update campaign stats
             await db.campaigns.update_one(
                 {"campaign_id": campaign_id},
                 {
@@ -1186,7 +1297,8 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 {"$set": {
                     "status": "failed",
                     "error_message": result.get("error", "Unknown error"),
-                    "assigned_account_id": account["account_id"]
+                    "assigned_account_id": account["account_id"],
+                    "sent_at": datetime.now(timezone.utc).isoformat()
                 }}
             )
             
@@ -1198,7 +1310,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 }
             )
             
-            # If too many failures from this account, mark it as error
+            # Mark account as error if too many failures
             recent_failures = await db.email_queue.count_documents({
                 "campaign_id": campaign_id,
                 "assigned_account_id": account["account_id"],
@@ -1211,7 +1323,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                     {"$set": {"status": "error", "last_error": result.get("error", "Multiple failures")}}
                 )
         
-        # Random delay between sends (30-90 seconds in production, reduced for testing)
+        # Random delay between sends
         delay = random.uniform(3, 8)
         logger.info(f"Waiting {delay:.1f}s before next email")
         await asyncio.sleep(delay)
@@ -1226,7 +1338,7 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
-# Include the router in the main app
+# Include the router
 app.include_router(api_router)
 
 app.add_middleware(
