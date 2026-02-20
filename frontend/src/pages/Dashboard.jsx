@@ -14,6 +14,7 @@ import {
   Edit,
   Copy,
   RefreshCw,
+  Eye,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
