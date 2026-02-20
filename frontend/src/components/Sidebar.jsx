@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -27,6 +28,8 @@ export default function Sidebar({ user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isSuperAdmin = user?.role === "super_admin";
 
   const handleLogout = async () => {
     try {
