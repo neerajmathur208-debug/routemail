@@ -150,6 +150,22 @@ function AppRouter() {
         }
       />
       <Route
+        path="/email-lists"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <EmailLists user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/email-lists/:listId"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <ListDetails user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/upload"
         element={
           <ProtectedRoute>
