@@ -279,77 +279,77 @@ export default function Dashboard({ user, setUser }) {
 
                 <div className="grid sm:grid-cols-3 gap-3">
                   {/* Step 1 */}
-                  <div className={`flex items-center justify-between gap-4 p-4 rounded-xl transition-all ${
-                    needsAccounts 
-                      ? "bg-slate-50" 
-                      : "bg-emerald-50/70"
+                  <div className={`p-4 rounded-xl transition-all ${
+                    needsAccounts ? "bg-slate-50" : "bg-emerald-50/70"
                   }`}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
-                      }`}>
-                        {needsAccounts ? (
-                          <span className="text-slate-600 font-semibold">1</span>
-                        ) : (
-                          <CheckCircle2 size={18} className="text-emerald-600" />
-                        )}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
+                        }`}>
+                          {needsAccounts ? (
+                            <span className="text-slate-600 font-semibold">1</span>
+                          ) : (
+                            <CheckCircle2 size={18} className="text-emerald-600" />
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
+                            Connect Accounts
+                          </span>
+                          <span className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
+                            {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
-                          Connect Accounts
-                        </p>
-                        <p className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
-                          {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
-                        </p>
-                      </div>
+                      {needsAccounts && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-lg text-xs h-8 whitespace-nowrap"
+                          onClick={() => navigate("/accounts")}
+                          data-testid="quick-add-account-btn"
+                        >
+                          Add
+                        </Button>
+                      )}
                     </div>
-                    {needsAccounts && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="rounded-lg text-xs h-8 flex-shrink-0"
-                        onClick={() => navigate("/accounts")}
-                        data-testid="quick-add-account-btn"
-                      >
-                        Add
-                      </Button>
-                    )}
                   </div>
 
                   {/* Step 2 */}
-                  <div className={`flex items-center justify-between gap-4 p-4 rounded-xl transition-all ${
-                    needsList 
-                      ? "bg-slate-50" 
-                      : "bg-emerald-50/70"
+                  <div className={`p-4 rounded-xl transition-all ${
+                    needsList ? "bg-slate-50" : "bg-emerald-50/70"
                   }`}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        needsList ? "bg-white shadow-sm" : "bg-emerald-100"
-                      }`}>
-                        {needsList ? (
-                          <span className="text-slate-600 font-semibold">2</span>
-                        ) : (
-                          <CheckCircle2 size={18} className="text-emerald-600" />
-                        )}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          needsList ? "bg-white shadow-sm" : "bg-emerald-100"
+                        }`}>
+                          {needsList ? (
+                            <span className="text-slate-600 font-semibold">2</span>
+                          ) : (
+                            <CheckCircle2 size={18} className="text-emerald-600" />
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
+                            Upload Lists
+                          </span>
+                          <span className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
+                            {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
-                          Upload Lists
-                        </p>
-                        <p className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
-                          {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
-                        </p>
-                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-lg text-xs h-8 whitespace-nowrap"
+                        onClick={() => navigate("/email-lists")}
+                        data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
+                      >
+                        {needsList ? "Upload" : "View"}
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="rounded-lg text-xs h-8 flex-shrink-0"
-                      onClick={() => navigate("/email-lists")}
-                      data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
-                    >
-                      {needsList ? "Upload" : "View"}
-                    </Button>
                   </div>
 
                   {/* Step 3 */}
