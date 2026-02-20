@@ -596,6 +596,24 @@ Best regards"
 
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
+          {/* Back Button */}
+          <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="mb-4"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/dashboard")}
+              className="text-slate-500 hover:text-slate-700 -ml-2"
+              data-testid="back-to-dashboard-btn"
+            >
+              <ArrowLeft size={16} className="mr-1.5" />
+              Back to Dashboard
+            </Button>
+          </motion.div>
+
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
