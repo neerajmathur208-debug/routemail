@@ -44,8 +44,10 @@ import {
 import Sidebar from "../components/Sidebar";
 import { api } from "../App";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 export default function UploadList({ user, setUser }) {
+  const navigate = useNavigate();
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
