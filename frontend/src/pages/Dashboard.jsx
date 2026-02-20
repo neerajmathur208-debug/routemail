@@ -446,17 +446,28 @@ export default function Dashboard({ user, setUser }) {
                       Upload Email List
                     </p>
                     <p className={`text-sm ${needsList ? "text-slate-500" : "text-green-600"}`}>
-                      {needsList ? "Import your contacts via CSV" : `${stats?.total_contacts} contacts uploaded`}
+                      {needsList 
+                        ? "No email lists uploaded yet" 
+                        : `${stats?.total_lists} Email List${stats?.total_lists !== 1 ? "s" : ""} Uploaded`}
                     </p>
                   </div>
-                  {needsList && (
+                  {needsList ? (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate("/upload")}
+                      onClick={() => navigate("/email-lists")}
                       data-testid="quick-upload-btn"
                     >
                       Upload
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate("/email-lists")}
+                      data-testid="manage-lists-btn"
+                    >
+                      Manage
                     </Button>
                   )}
                 </div>
