@@ -267,6 +267,109 @@ export default function Dashboard({ user, setUser }) {
                 </motion.div>
               </div>
 
+              {/* Quick Start Section - Moved to Left Column */}
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
+                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
+              >
+                <h3 className="font-semibold text-slate-900 mb-4">Quick Start</h3>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {/* Step 1 */}
+                  <div className={`flex items-center gap-3 p-4 rounded-xl transition-all ${
+                    needsAccounts 
+                      ? "bg-slate-50" 
+                      : "bg-emerald-50/70"
+                  }`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
+                    }`}>
+                      {needsAccounts ? (
+                        <span className="text-slate-600 font-semibold">1</span>
+                      ) : (
+                        <CheckCircle2 size={18} className="text-emerald-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
+                        Connect Accounts
+                      </p>
+                      <p className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
+                        {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
+                      </p>
+                    </div>
+                    {needsAccounts && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-lg text-xs h-8"
+                        onClick={() => navigate("/accounts")}
+                        data-testid="quick-add-account-btn"
+                      >
+                        Add
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className={`flex items-center gap-3 p-4 rounded-xl transition-all ${
+                    needsList 
+                      ? "bg-slate-50" 
+                      : "bg-emerald-50/70"
+                  }`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      needsList ? "bg-white shadow-sm" : "bg-emerald-100"
+                    }`}>
+                      {needsList ? (
+                        <span className="text-slate-600 font-semibold">2</span>
+                      ) : (
+                        <CheckCircle2 size={18} className="text-emerald-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
+                        Upload Lists
+                      </p>
+                      <p className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
+                        {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-lg text-xs h-8"
+                      onClick={() => navigate("/email-lists")}
+                      data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
+                    >
+                      {needsList ? "Upload" : "View"}
+                    </Button>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-50">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white shadow-sm">
+                      <Zap size={16} className="text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700">Start Campaign</p>
+                      <p className="text-xs text-slate-400">Send emails</p>
+                    </div>
+                    {!needsAccounts && !needsList && (
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs h-8"
+                        onClick={() => navigate("/campaign")}
+                        data-testid="quick-campaign-btn"
+                      >
+                        Create
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+
               {/* Main Graph Section */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -320,6 +423,47 @@ export default function Dashboard({ user, setUser }) {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+                </div>
+              </motion.div>
+
+              {/* Weekly Stats - Moved to Left Column (below Email Activity) */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-slate-900">Weekly Stats</h3>
+                  <span className="text-xs text-slate-400">Last 7 days</span>
+                </div>
+                <div className="h-[120px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis 
+                        dataKey="name" 
+                        axisLine={false} 
+                        tickLine={false}
+                        tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      />
+                      <Bar 
+                        dataKey="sent" 
+                        fill="#f43f5e"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+                      <CheckCircle2 size={14} className="text-slate-500" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400">Total Sent</p>
+                      <p className="font-semibold text-slate-800">{stats?.total_sent || 0}</p>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
 
@@ -526,7 +670,7 @@ export default function Dashboard({ user, setUser }) {
               )}
             </div>
 
-            {/* Right Column (30%) */}
+            {/* Right Column (30%) - Now only Today's Summary and Account Usage */}
             <div className="space-y-6">
               {/* Summary Stats Widget */}
               <motion.div
@@ -649,150 +793,6 @@ export default function Dashboard({ user, setUser }) {
                     </Button>
                   </div>
                 )}
-              </motion.div>
-
-              {/* Quick Actions Widget */}
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 }}
-                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
-              >
-                <h3 className="font-semibold text-slate-900 mb-4">Quick Start</h3>
-
-                <div className="space-y-3">
-                  {/* Step 1 */}
-                  <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                    needsAccounts 
-                      ? "bg-slate-50" 
-                      : "bg-emerald-50/70"
-                  }`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
-                    }`}>
-                      {needsAccounts ? (
-                        <span className="text-slate-600 font-semibold text-sm">1</span>
-                      ) : (
-                        <CheckCircle2 size={16} className="text-emerald-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
-                        Connect Accounts
-                      </p>
-                      <p className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
-                        {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
-                      </p>
-                    </div>
-                    {needsAccounts && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="rounded-lg text-xs h-7"
-                        onClick={() => navigate("/accounts")}
-                        data-testid="quick-add-account-btn"
-                      >
-                        Add
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Step 2 */}
-                  <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                    needsList 
-                      ? "bg-slate-50" 
-                      : "bg-emerald-50/70"
-                  }`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      needsList ? "bg-white shadow-sm" : "bg-emerald-100"
-                    }`}>
-                      {needsList ? (
-                        <span className="text-slate-600 font-semibold text-sm">2</span>
-                      ) : (
-                        <CheckCircle2 size={16} className="text-emerald-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${needsList ? "text-slate-700" : "text-emerald-700"}`}>
-                        Upload Lists
-                      </p>
-                      <p className={`text-xs ${needsList ? "text-slate-400" : "text-emerald-500"}`}>
-                        {needsList ? "Import contacts" : `${stats?.total_lists} list${stats?.total_lists !== 1 ? 's' : ''}`}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="rounded-lg text-xs h-7"
-                      onClick={() => navigate("/email-lists")}
-                      data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
-                    >
-                      {needsList ? "Upload" : "View"}
-                    </Button>
-                  </div>
-
-                  {/* Step 3 */}
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white shadow-sm">
-                      <Zap size={14} className="text-amber-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700">Start Campaign</p>
-                      <p className="text-xs text-slate-400">Send emails</p>
-                    </div>
-                    {!needsAccounts && !needsList && (
-                      <Button
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs h-7"
-                        onClick={() => navigate("/campaign")}
-                        data-testid="quick-campaign-btn"
-                      >
-                        Create
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Post Stats Mini Widget */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.6 }}
-                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-slate-900">Weekly Stats</h3>
-                  <span className="text-xs text-slate-400">Last 7 days</span>
-                </div>
-                <div className="h-[120px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false}
-                        tick={{ fill: '#94a3b8', fontSize: 10 }}
-                      />
-                      <Bar 
-                        dataKey="sent" 
-                        fill="#f43f5e"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                      <CheckCircle2 size={14} className="text-slate-500" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">Total Sent</p>
-                      <p className="font-semibold text-slate-800">{stats?.total_sent || 0}</p>
-                    </div>
-                  </div>
-                </div>
               </motion.div>
             </div>
           </div>
