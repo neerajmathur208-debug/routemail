@@ -135,6 +135,24 @@ export default function Sidebar({ user, setUser }) {
           {navItems.map((item) => (
             <NavLink key={item.path} item={item} />
           ))}
+          
+          {/* Admin Panel Link - Only for super_admin */}
+          {isSuperAdmin && (
+            <button
+              data-testid="nav-admin"
+              onClick={() => {
+                navigate("/admin");
+                setMobileOpen(false);
+              }}
+              className={`sidebar-link w-full mt-4 border-t border-slate-200 pt-4 ${
+                location.pathname.startsWith("/admin") ? "active" : ""
+              }`}
+            >
+              <Shield size={20} strokeWidth={1.5} className="text-violet-600" />
+              <span className="font-medium text-violet-600">Admin Panel</span>
+              {location.pathname.startsWith("/admin") && <ChevronRight size={16} className="ml-auto" />}
+            </button>
+          )}
         </nav>
 
         {/* Logout */}
