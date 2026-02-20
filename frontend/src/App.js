@@ -163,6 +163,14 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/campaign/:campaignId/logs"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <CampaignLogs user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
