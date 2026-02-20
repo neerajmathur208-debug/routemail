@@ -293,7 +293,7 @@ export default function UploadList({ user, setUser }) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleViewList(list)}
+                          onClick={() => navigate(`/email-lists/${list.list_id}`)}
                           data-testid={`view-list-${list.list_id}`}
                         >
                           <Eye size={18} className="text-slate-400" />
