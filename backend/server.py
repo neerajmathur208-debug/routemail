@@ -872,17 +872,20 @@ async def get_suppression_list(user: User = Depends(get_current_user)):
     
     return items
 
+class AddToSuppressionRequest(BaseModel):
+    email: str
+
 @api_router.post("/suppression")
-async def add_to_suppression(email: str, user: User = Depends(get_current_user)):
+async def add_to_suppression(request: AddToSuppressionRequest, user: User = Depends(get_current_user)):
     """Add email to suppression list"""
     existing = await db.suppression_list.find_one(
-        {"user_id": user.user_id, "email": email.lower()}
+        {"user_id": user.user_id, "email": request.email.lower()}
     )
     
     if not existing:
         await db.suppression_list.insert_one({
             "user_id": user.user_id,
-            "email": email.lower(),
+            "email": request.email.lower(),
             "added_at": datetime.now(timezone.utc).isoformat()
         })
     
