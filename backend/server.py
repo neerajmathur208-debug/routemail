@@ -267,16 +267,21 @@ async def exchange_session(request: SessionRequest, response: Response):
     
     if existing_user:
         user_id = existing_user["user_id"]
+        # Determine role - assign super_admin if email matches
+        role = "super_admin" if email == SUPER_ADMIN_EMAIL else existing_user.get("role", "user")
         await db.users.update_one(
             {"user_id": user_id},
             {"$set": {
                 "name": name, 
                 "picture": picture,
                 "subscription_status": "active",
-                "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+                "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
+                "role": role
             }}
         )
     else:
+        # Determine role for new user
+        role = "super_admin" if email == SUPER_ADMIN_EMAIL else "user"
         new_user = User(
             user_id=user_id,
             email=email,
@@ -287,6 +292,7 @@ async def exchange_session(request: SessionRequest, response: Response):
         )
         user_dict = new_user.model_dump()
         user_dict["created_at"] = user_dict["created_at"].isoformat()
+        user_dict["role"] = role  # Add role field
         if user_dict.get("subscription_expires_at"):
             user_dict["subscription_expires_at"] = user_dict["subscription_expires_at"].isoformat()
         await db.users.insert_one(user_dict)
