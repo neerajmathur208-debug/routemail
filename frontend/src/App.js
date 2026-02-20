@@ -57,8 +57,11 @@ const AuthCallback = () => {
         
         try {
           const response = await api.post("/auth/session", { session_id: sessionId });
-          // Navigate to dashboard with user data
-          navigate("/dashboard", { state: { user: response.data }, replace: true });
+          const userData = response.data;
+          
+          // Redirect based on user role
+          const redirectPath = userData.role === "super_admin" ? "/admin" : "/dashboard";
+          navigate(redirectPath, { state: { user: userData }, replace: true });
         } catch (error) {
           console.error("Auth error:", error);
           navigate("/", { replace: true });
