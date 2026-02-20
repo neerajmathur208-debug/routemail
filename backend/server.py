@@ -1328,6 +1328,284 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
         logger.info(f"Waiting {delay:.1f}s before next email")
         await asyncio.sleep(delay)
 
+# ==================== SUPER ADMIN MIDDLEWARE ====================
+
+SUPER_ADMIN_EMAIL = "dhruvmathur208@gmail.com"
+
+async def get_super_admin_user(request: Request) -> dict:
+    """Get current user and verify super_admin role"""
+    user = await get_current_user(request)
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    role = user_doc.get("role", "user")
+    if role != "super_admin":
+        raise HTTPException(status_code=403, detail="Access denied. Super admin required.")
+    
+    return user_doc
+
+# ==================== SUPER ADMIN ENDPOINTS ====================
+
+@api_router.get("/admin/stats")
+async def get_admin_stats(admin: dict = Depends(get_super_admin_user)):
+    """Get platform-wide statistics for super admin"""
+    try:
+        # Total users
+        total_users = await db.users.count_documents({})
+        
+        # Active users (logged in last 7 days)
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        active_sessions = await db.user_sessions.distinct("user_id", {
+            "expires_at": {"$gt": seven_days_ago}
+        })
+        active_users = len(active_sessions)
+        
+        # Total campaigns
+        total_campaigns = await db.campaigns.count_documents({})
+        
+        # Total emails sent
+        total_emails_sent = await db.email_queue.count_documents({"status": "sent"})
+        
+        # Total connected accounts
+        total_accounts = await db.email_accounts.count_documents({})
+        
+        # Total email lists
+        total_lists = await db.email_lists.count_documents({})
+        
+        # Running campaigns
+        running_campaigns = await db.campaigns.count_documents({"status": "running"})
+        
+        # Failed emails
+        failed_emails = await db.email_queue.count_documents({"status": "failed"})
+        
+        return {
+            "total_users": total_users,
+            "active_users": active_users,
+            "total_campaigns": total_campaigns,
+            "total_emails_sent": total_emails_sent,
+            "total_accounts": total_accounts,
+            "total_lists": total_lists,
+            "running_campaigns": running_campaigns,
+            "failed_emails": failed_emails
+        }
+    except Exception as e:
+        logger.error(f"Admin stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/admin/users")
+async def get_admin_users(
+    admin: dict = Depends(get_super_admin_user),
+    search: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100)
+):
+    """Get all users with stats for super admin"""
+    try:
+        query = {}
+        
+        # Search by email or name
+        if search:
+            query["$or"] = [
+                {"email": {"$regex": search, "$options": "i"}},
+                {"name": {"$regex": search, "$options": "i"}}
+            ]
+        
+        # Filter by subscription status
+        if status:
+            query["subscription_status"] = status
+        
+        # Get total count
+        total = await db.users.count_documents(query)
+        
+        # Get paginated users
+        skip = (page - 1) * limit
+        users_cursor = db.users.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit)
+        users = await users_cursor.to_list(length=limit)
+        
+        # Enrich each user with stats
+        enriched_users = []
+        for user in users:
+            user_id = user["user_id"]
+            
+            # Count accounts
+            accounts_count = await db.email_accounts.count_documents({"user_id": user_id})
+            
+            # Count campaigns
+            campaigns_count = await db.campaigns.count_documents({"user_id": user_id})
+            
+            # Count emails sent
+            user_campaigns = await db.campaigns.distinct("campaign_id", {"user_id": user_id})
+            emails_sent = await db.email_queue.count_documents({
+                "campaign_id": {"$in": user_campaigns},
+                "status": "sent"
+            }) if user_campaigns else 0
+            
+            # Get last session
+            last_session = await db.user_sessions.find_one(
+                {"user_id": user_id},
+                {"_id": 0, "created_at": 1}
+            )
+            
+            enriched_users.append({
+                "user_id": user["user_id"],
+                "email": user["email"],
+                "name": user.get("name", ""),
+                "role": user.get("role", "user"),
+                "subscription_status": user.get("subscription_status", "inactive"),
+                "created_at": user.get("created_at"),
+                "accounts_count": accounts_count,
+                "campaigns_count": campaigns_count,
+                "emails_sent": emails_sent,
+                "last_login": last_session.get("created_at") if last_session else None
+            })
+        
+        return {
+            "users": enriched_users,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit
+        }
+    except Exception as e:
+        logger.error(f"Admin users error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/admin/users/{user_id}")
+async def get_admin_user_detail(
+    user_id: str,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Get detailed info about a specific user for super admin"""
+    try:
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get accounts (metadata only, no credentials)
+        accounts = await db.email_accounts.find(
+            {"user_id": user_id},
+            {"_id": 0, "smtp_password_encrypted": 0, "smtp_username": 0}
+        ).to_list(length=100)
+        
+        # Get campaigns
+        campaigns = await db.campaigns.find(
+            {"user_id": user_id},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(length=50)
+        
+        # Get email lists
+        lists = await db.email_lists.find(
+            {"user_id": user_id},
+            {"_id": 0, "emails": 0}  # Exclude email data for privacy
+        ).to_list(length=50)
+        
+        # Get sending stats
+        user_campaigns = [c["campaign_id"] for c in campaigns]
+        emails_sent = await db.email_queue.count_documents({
+            "campaign_id": {"$in": user_campaigns},
+            "status": "sent"
+        }) if user_campaigns else 0
+        emails_failed = await db.email_queue.count_documents({
+            "campaign_id": {"$in": user_campaigns},
+            "status": "failed"
+        }) if user_campaigns else 0
+        
+        return {
+            "user": {
+                "user_id": user["user_id"],
+                "email": user["email"],
+                "name": user.get("name", ""),
+                "picture": user.get("picture"),
+                "role": user.get("role", "user"),
+                "subscription_status": user.get("subscription_status", "inactive"),
+                "created_at": user.get("created_at")
+            },
+            "accounts": accounts,
+            "campaigns": campaigns,
+            "lists": lists,
+            "stats": {
+                "total_accounts": len(accounts),
+                "total_campaigns": len(campaigns),
+                "total_lists": len(lists),
+                "emails_sent": emails_sent,
+                "emails_failed": emails_failed
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin user detail error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/admin/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    role_data: dict,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Update user role (super_admin only)"""
+    try:
+        new_role = role_data.get("role")
+        if new_role not in ["user", "super_admin"]:
+            raise HTTPException(status_code=400, detail="Invalid role. Must be 'user' or 'super_admin'")
+        
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"role": new_role}}
+        )
+        
+        return {"message": f"User role updated to {new_role}", "user_id": user_id, "role": new_role}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update role error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Delete a user and all their data (super_admin only)"""
+    try:
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Prevent deleting super admin
+        if user.get("role") == "super_admin":
+            raise HTTPException(status_code=400, detail="Cannot delete super admin user")
+        
+        # Delete user's data
+        await db.email_accounts.delete_many({"user_id": user_id})
+        await db.email_lists.delete_many({"user_id": user_id})
+        
+        # Delete campaigns and queue items
+        campaigns = await db.campaigns.distinct("campaign_id", {"user_id": user_id})
+        if campaigns:
+            await db.email_queue.delete_many({"campaign_id": {"$in": campaigns}})
+        await db.campaigns.delete_many({"user_id": user_id})
+        
+        # Delete sessions
+        await db.user_sessions.delete_many({"user_id": user_id})
+        
+        # Delete user
+        await db.users.delete_one({"user_id": user_id})
+        
+        return {"message": "User deleted successfully", "user_id": user_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete user error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== BASIC ROUTES ====================
 
 @api_router.get("/")
