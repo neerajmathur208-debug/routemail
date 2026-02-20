@@ -20,6 +20,8 @@ import ListDetails from "./pages/ListDetails";
 import UploadList from "./pages/UploadList";
 import Campaign from "./pages/Campaign";
 import CampaignLogs from "./pages/CampaignLogs";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminUserDetail from "./pages/AdminUserDetail";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
