@@ -8,10 +8,12 @@ import {
   Trash2,
   Eye,
   Users,
+  Tag,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Badge } from "../components/ui/badge";
 import {
   Table,
   TableBody,
@@ -129,6 +131,8 @@ export default function UploadList({ user, setUser }) {
     try {
       await api.post("/lists", {
         name: listName,
+        original_filename: previewData.original_filename,
+        column_headers: previewData.column_headers,
         emails: previewData.emails,
       });
       toast.success("Email list saved successfully");
@@ -168,8 +172,6 @@ export default function UploadList({ user, setUser }) {
     }
   };
 
-  const needsSubscription = false; // Subscription removed - all features unlocked
-
   if (loading) {
     return (
       <div className="flex min-h-screen bg-slate-50">
@@ -197,29 +199,11 @@ export default function UploadList({ user, setUser }) {
             </p>
           </div>
 
-          {/* Subscription Alert */}
-          {needsSubscription && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-amber-50 border border-amber-200 rounded-md p-4 flex items-center gap-4"
-            >
-              <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-amber-800 font-medium">Subscription required</p>
-                <p className="text-amber-700 text-sm">
-                  Subscribe to upload and manage email lists
-                </p>
-              </div>
-            </motion.div>
-          )}
-
           {/* Upload Zone */}
           <div
             className={`
               border-2 border-dashed rounded-lg p-8 text-center transition-colors
               ${dragActive ? "border-electric-blue bg-blue-50" : "border-slate-300 bg-white"}
-              ${needsSubscription ? "opacity-50 pointer-events-none" : ""}
             `}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -239,13 +223,13 @@ export default function UploadList({ user, setUser }) {
               className="hidden"
               id="csv-upload"
               onChange={(e) => handleFileUpload(e.target.files?.[0])}
-              disabled={needsSubscription || uploading}
+              disabled={uploading}
             />
             <label htmlFor="csv-upload">
               <Button
                 variant="outline"
                 className="cursor-pointer"
-                disabled={needsSubscription || uploading}
+                disabled={uploading}
                 asChild
               >
                 <span data-testid="select-file-btn">
@@ -254,7 +238,7 @@ export default function UploadList({ user, setUser }) {
               </Button>
             </label>
             <p className="text-xs text-slate-400 mt-4">
-              CSV must include an "email" column. Optional: first_name, company
+              CSV must include an "email" column. Additional columns become personalization variables.
             </p>
           </div>
 
@@ -272,46 +256,69 @@ export default function UploadList({ user, setUser }) {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className="bg-white border border-slate-200 rounded-md p-4 flex items-center justify-between"
+                    className="bg-white border border-slate-200 rounded-md p-4"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-slate-100 rounded-md flex items-center justify-center">
-                        <FileText size={20} className="text-slate-500" />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-slate-100 rounded-md flex items-center justify-center">
+                          <FileText size={20} className="text-slate-500" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{list.name}</p>
+                          <p className="text-sm text-slate-500">
+                            {list.valid_emails} contacts
+                            {list.total_rows !== list.valid_emails && (
+                              <span className="text-slate-400">
+                                {" "}
+                                ({list.total_rows - list.valid_emails} suppressed)
+                              </span>
+                            )}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">{list.name}</p>
-                        <p className="text-sm text-slate-500">
-                          {list.valid_emails} contacts
-                          {list.total_emails !== list.valid_emails && (
-                            <span className="text-slate-400">
-                              {" "}
-                              ({list.total_emails - list.valid_emails} suppressed)
-                            </span>
-                          )}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleViewList(list)}
+                          data-testid={`view-list-${list.list_id}`}
+                        >
+                          <Eye size={18} className="text-slate-400" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setSelectedList(list);
+                            setDeleteDialogOpen(true);
+                          }}
+                          data-testid={`delete-list-${list.list_id}`}
+                        >
+                          <Trash2 size={18} className="text-slate-400 hover:text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Column Headers / Variables */}
+                    {list.column_headers && list.column_headers.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
+                          <Tag size={12} />
+                          Available Variables:
                         </p>
+                        <div className="flex flex-wrap gap-1">
+                          {list.column_headers.map((header) => (
+                            <Badge
+                              key={header}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              {`{{${header}}}`}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleViewList(list)}
-                        data-testid={`view-list-${list.list_id}`}
-                      >
-                        <Eye size={18} className="text-slate-400" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setSelectedList(list);
-                          setDeleteDialogOpen(true);
-                        }}
-                        data-testid={`delete-list-${list.list_id}`}
-                      >
-                        <Trash2 size={18} className="text-slate-400 hover:text-red-500" />
-                      </Button>
-                    </div>
+                    )}
                   </motion.div>
                 ))}
               </div>
@@ -327,26 +334,29 @@ export default function UploadList({ user, setUser }) {
           <div className="mt-8 p-4 bg-slate-100 rounded-md">
             <h3 className="font-semibold text-slate-900 mb-2">CSV Format Guide</h3>
             <p className="text-sm text-slate-600 mb-3">
-              Your CSV file should have these columns:
+              Your CSV file should have these columns (additional columns become variables):
             </p>
             <div className="bg-white rounded border border-slate-200 p-3 font-mono text-sm overflow-x-auto">
-              <p className="text-slate-500">email,first_name,company</p>
-              <p>john@example.com,John,Acme Inc</p>
-              <p>jane@example.com,Jane,Tech Corp</p>
+              <p className="text-slate-500">email,first_name,company,city,custom_field</p>
+              <p>john@example.com,John,Acme Inc,New York,Premium</p>
+              <p>jane@example.com,Jane,Tech Corp,Boston,Standard</p>
             </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Each column becomes a variable like {"{{first_name}}"}, {"{{company}}"}, etc.
+            </p>
           </div>
         </div>
       </main>
 
       {/* Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-heading font-semibold">
               Preview & Save List
             </DialogTitle>
             <DialogDescription>
-              Review your uploaded contacts before saving
+              Review your uploaded contacts and available variables
             </DialogDescription>
           </DialogHeader>
 
@@ -381,25 +391,48 @@ export default function UploadList({ user, setUser }) {
                 )}
               </div>
 
+              {/* Available Variables */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm font-medium text-blue-800 mb-2 flex items-center gap-2">
+                  <Tag size={16} />
+                  Available Variables for Personalization:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {previewData.column_headers.map((header) => (
+                    <Badge
+                      key={header}
+                      className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    >
+                      {`{{${header}}}`}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  Use these variables in your email subject and body
+                </p>
+              </div>
+
               <div className="csv-preview">
                 <p className="text-sm font-medium text-slate-700 mb-2">Preview (first 10):</p>
-                <div className="border rounded-md overflow-hidden">
+                <div className="border rounded-md overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Email</TableHead>
-                        <TableHead>First Name</TableHead>
-                        <TableHead>Company</TableHead>
+                        {previewData.column_headers.map((header) => (
+                          <TableHead key={header} className="whitespace-nowrap">
+                            {header}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {previewData.preview.map((row, i) => (
                         <TableRow key={i}>
-                          <TableCell className="font-mono text-sm">
-                            {row.email}
-                          </TableCell>
-                          <TableCell>{row.first_name || "-"}</TableCell>
-                          <TableCell>{row.company || "-"}</TableCell>
+                          {previewData.column_headers.map((header) => (
+                            <TableCell key={header} className="font-mono text-sm whitespace-nowrap">
+                              {row[header] || "-"}
+                            </TableCell>
+                          ))}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -434,7 +467,7 @@ export default function UploadList({ user, setUser }) {
 
       {/* View List Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-heading font-semibold">
               {viewListData?.name}
@@ -445,34 +478,52 @@ export default function UploadList({ user, setUser }) {
           </DialogHeader>
 
           {viewListData && (
-            <div className="csv-preview py-4">
-              <div className="border rounded-md overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>First Name</TableHead>
-                      <TableHead>Company</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {viewListData.emails.slice(0, 50).map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-mono text-sm">
-                          {row.email}
-                        </TableCell>
-                        <TableCell>{row.first_name || "-"}</TableCell>
-                        <TableCell>{row.company || "-"}</TableCell>
-                      </TableRow>
+            <div className="py-4 space-y-4">
+              {/* Variables */}
+              {viewListData.column_headers && viewListData.column_headers.length > 0 && (
+                <div className="p-3 bg-slate-50 rounded-md">
+                  <p className="text-xs text-slate-500 mb-2">Available Variables:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {viewListData.column_headers.map((header) => (
+                      <Badge key={header} variant="secondary" className="text-xs">
+                        {`{{${header}}}`}
+                      </Badge>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {viewListData.emails.length > 50 && (
-                <p className="text-sm text-slate-500 mt-3 text-center">
-                  Showing first 50 of {viewListData.emails.length} contacts
-                </p>
+                  </div>
+                </div>
               )}
+
+              <div className="csv-preview">
+                <div className="border rounded-md overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {(viewListData.column_headers || ["email"]).map((header) => (
+                          <TableHead key={header} className="whitespace-nowrap">
+                            {header}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {viewListData.emails.slice(0, 50).map((row, i) => (
+                        <TableRow key={i}>
+                          {(viewListData.column_headers || ["email"]).map((header) => (
+                            <TableCell key={header} className="font-mono text-sm whitespace-nowrap">
+                              {row[header] || "-"}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {viewListData.emails.length > 50 && (
+                  <p className="text-sm text-slate-500 mt-3 text-center">
+                    Showing first 50 of {viewListData.emails.length} contacts
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
