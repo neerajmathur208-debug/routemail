@@ -1,203 +1,117 @@
-# Multi-Sender Rotational Email Tool - PRD
+# Rotation - Email Rotation SaaS Platform
 
 ## Original Problem Statement
-Build a simple SaaS web application that allows small businesses to:
-- Connect multiple email accounts (SMTP)
-- Upload multiple CSV email lists  
-- Write one email template with personalization
-- Automatically send emails in rotation across connected email accounts
-- User-configurable daily sending limits per account (10-200)
-- View detailed sending logs for completed campaigns
+Build a simple SaaS web application for small businesses to automatically send emails in rotation across multiple connected email accounts with daily sending limits.
 
-## Architecture
-- **Frontend**: React 19 with Tailwind CSS, Shadcn UI, Custom Rich Text Editor
-- **Backend**: FastAPI (Python) with async support
-- **Database**: MongoDB (Motor async driver)
-- **Auth**: Emergent Google OAuth (auto-activated users)
-- **Email**: Real SMTP sending with encrypted credentials
-- **Encryption**: Fernet (symmetric encryption) for SMTP passwords
+## Core Requirements
+1. **Email Account Management**: Connect multiple email accounts (SMTP/IMAP or OAuth)
+2. **List Management**: Upload and manage CSV email lists with multiple lists per user
+3. **Campaign Management**: Create campaigns with rich text editor, dynamic variables ({column_name}), save/load campaigns with statuses (Draft, Running, Paused)
+4. **Rotational Sending**: Send emails rotationally across accounts with custom daily limits
+5. **Sending Logs**: Detailed logs showing sent/failed status and error messages
+6. **Admin Panel**: Platform-wide monitoring for super_admin users
 
-## User Personas
-1. **Small Business Owner**: Needs to send outreach emails to leads
-2. **Sales Rep**: Wants to maximize deliverability by rotating senders
-3. **Marketer**: Uploads CSV lists and creates personalized campaigns
-
-## Core Requirements (Static)
-- [x] User Authentication via Google OAuth
-- [x] Connect multiple SMTP email accounts
-- [x] User-configurable daily limits per account (10-200)
-- [x] Upload and manage multiple CSV email lists
-- [x] Rich text email editor (Custom WYSIWYG)
-- [x] Dynamic variable personalization {{column_name}}
-- [x] Select email list when creating campaign
-- [x] Rotational sending logic with custom daily limits
-- [x] Auto-pause when all accounts hit daily limit
-- [x] Campaign persistence (draft/running/paused/paused_daily_limit/completed)
-- [x] Dashboard with stats and all campaigns
-- [x] Detailed sending logs with export to CSV
-- [x] Back navigation buttons on all pages
-- [x] Unsubscribe link auto-appended
-
-## What's Been Implemented (Dec 2025)
-
-### Phase 1 - MVP (Completed)
-- [x] Landing page with features, CTA
-- [x] Emergent Google OAuth integration
-- [x] Protected routes with session management
-- [x] Email account management (SMTP)
-- [x] CSV upload with preview and validation
-- [x] Campaign creation and management
-- [x] Rotational sending engine (background task)
-- [x] Dashboard with stats
-
-### Phase 2 - Full Features (Completed)
-- [x] **Rich Text Editor** - Custom WYSIWYG (replaced react-quill for React 19 compatibility)
-- [x] **SMTP Connection** - Real email sending via SMTP
-- [x] **Encrypted Credentials** - Fernet encryption for passwords
-- [x] **SMTP Presets** - Gmail, Outlook, Yahoo, Custom
-- [x] **Connection Testing** - Test SMTP before saving
-- [x] **Campaign Persistence** - Full CRUD with statuses
-- [x] **Dynamic Variables** - {{column_name}} from CSV columns
-- [x] **Variable Detection** - Extract columns from uploaded CSV
-- [x] **Campaign List View** - All campaigns with status/progress
-- [x] **Campaign Duplicate** - Copy existing campaigns
-- [x] **HTML + Plain Text** - Both versions for emails
-- [x] **From Name** - Customizable sender name
-- [x] **Account Selection** - Choose which accounts to use
-
-### Phase 3 - User Feature Upgrades (Completed Dec 2025)
-- [x] **User-defined Daily Limits** - Per-account limits (10-200) editable on Email Accounts page
-- [x] **Multiple Email Lists** - Upload and manage multiple CSV lists
-- [x] **List Selection in Campaign** - Dropdown to choose list when creating campaign
-- [x] **Campaign Sending Logs** - View detailed logs with sent/failed/pending status
-- [x] **Logs Pagination & Filtering** - Search by email, filter by status
-- [x] **Export Logs to CSV** - Download sending log data
-- [x] **Back Button Navigation** - Consistent back buttons on all pages
-- [x] **View Logs Button** - Quick access to logs from Dashboard and Campaign list
-
-### Phase 4 - Full Multi-List Management (Completed Dec 2025)
-- [x] **Email Lists Management Page** - New dedicated page at /email-lists
-- [x] **List Details Page** - View list with stats, variables, preview at /email-lists/:listId
-- [x] **Inline List Renaming** - Edit list names directly in the table
-- [x] **List Status Tracking** - Shows "Active" or "Used in Campaign"
-- [x] **Column Headers Tooltip** - View available variables on hover
-- [x] **Upload Page Integration** - Shows existing lists below upload form
-- [x] **Dashboard Quick Start Update** - Shows "X Email Lists Uploaded" instead of contact count
-- [x] **Sidebar Navigation Update** - "Email Lists" nav item replaces "Upload List"
-- [x] **Delete Protection** - Cannot delete lists used in active campaigns
-
-### Phase 5 - Dashboard Modernization (Completed Dec 2025)
-- [x] **Modern Stat Cards** - Elevated cards with soft shadows, rounded corners (2xl), colored icon circles
-- [x] **Hover Animations** - Cards lift on hover with smooth transitions
-- [x] **Gradient Progress Bars** - Modern gradient progress bars with percentage display
-- [x] **Account Usage Redesign** - Cleaner layout with animated progress, percentage shown
-- [x] **Quick Start Vertical Cards** - Step-by-step progress-style design with checkmarks
-- [x] **Campaign Back Button** - "Back to Dashboard" button on /campaign page
-- [x] **Visual Polish** - Consistent border-radius, soft shadows, improved spacing
-- [x] **Micro-interactions** - Subtle motion animations throughout
-
-### Phase 6 - Analytics-Style Dashboard (Completed Dec 2025)
-- [x] **2-Column Layout** - 70% left / 30% right responsive grid
-- [x] **Gradient Hero Card** - Email Accounts card with rose/pink gradient + mini sparkline
-- [x] **Area Chart** - "Email Activity Overview" with smooth gradient fill, weekly view
-- [x] **Bar Chart Widget** - Weekly stats mini chart in right column
-- [x] **Today's Summary Widget** - Sends available, failed emails, lists uploaded
-- [x] **Redesigned Account Usage** - Rounded cards, gradient progress bars, percentage
-- [x] **Campaign Activity Section** - Modern card rows with progress, status badges
-- [x] **Quick Actions Refined** - Compact vertical steps with soft backgrounds
-- [x] **Premium Feel** - Warm off-white background (#faf9f7), 20px rounded corners
-- [x] **Recharts Integration** - AreaChart, BarChart with custom tooltips
-
-### Phase 7 - Super Admin Panel (Completed Dec 2025)
-- [x] **Role-Based Access Control** - Users have `role` field (user/super_admin)
-- [x] **Super Admin Assignment** - dhruvmathur208@gmail.com auto-assigned as super_admin
-- [x] **Protected Admin Routes** - /admin and /admin/users/:userId with backend enforcement
-- [x] **Admin Dashboard** - Platform-wide stats (users, campaigns, emails, accounts, lists)
-- [x] **Users Management Table** - Search, filter, pagination, role management
-- [x] **User Detail View** - Full user info, accounts, campaigns, lists, sending stats
-- [x] **Role Change** - Super admin can change user roles
-- [x] **User Deletion** - Delete user and all their data (protected for super_admin)
-- [x] **Sidebar Admin Link** - Only visible to super_admin users
+## Tech Stack
+- **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
+- **Backend**: FastAPI (Python)
+- **Database**: MongoDB
+- **Authentication**: Emergent-managed Google Social Login with RBAC
 
 ## Database Schema
+- **users**: email, name, google_id, is_active, created_at, role ('user' | 'super_admin')
+- **email_accounts**: user_id, email, type, credentials (encrypted), daily_limit, daily_sent_count, status
+- **email_lists**: user_id, list_name, original_filename, column_headers, total_rows
+- **email_list_contacts**: list_id, contact_data, email, status
+- **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count
+- **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
 
-### Users Collection
-- user_id, email, name, picture
-- subscription_status (auto-active)
-- role (user/super_admin) - NEW
-- created_at
+## Key API Endpoints
+- `/api/auth/google/login` & `/api/auth/google/callback` - Authentication
+- `/api/auth/me` - Get current user with role
+- `/api/email-accounts` - CRUD for email accounts
+- `/api/lists` - CRUD for email lists
+- `/api/campaigns` - CRUD for campaigns
+- `/api/campaigns/{id}/logs` - Sending logs
+- `/api/admin/stats` & `/api/admin/users` - Admin endpoints (super_admin only)
 
-### Email Accounts Collection
-- account_id, user_id
-- account_type (smtp)
-- email, display_name
-- smtp_host, smtp_port, smtp_username
-- smtp_password_encrypted (Fernet)
-- smtp_encryption (tls/ssl/none)
-- status (connected/error/disconnected)
-- daily_limit (user-configurable: 10-200), daily_send_count, last_send_date
+## User Roles
+- **user**: Standard access to dashboard, campaigns, email accounts, lists
+- **super_admin**: Full access + admin panel (dhruvmathur208@gmail.com)
 
-### Email Lists Collection
-- list_id, user_id
-- name, original_filename
-- column_headers (for variables)
-- total_rows, valid_emails
-- emails (array of row data)
+---
 
-### Campaigns Collection
-- campaign_id, user_id
-- name, subject, body, body_text, from_name
-- list_id (selected list for this campaign)
-- account_ids (selected accounts or all if empty)
-- status (draft/running/paused/paused_daily_limit/completed/failed)
-- total_emails, sent_count, failed_count
-- created_at, updated_at, started_at, completed_at
+## Implementation Status
 
-### Email Queue Collection
-- queue_id, campaign_id, user_id
-- recipient_email, recipient_data
-- assigned_account_id
-- status (pending/sent/failed)
-- error_message, sent_at
+### ✅ Completed Features
+- [x] User authentication with Google OAuth (Emergent-managed)
+- [x] Role-based access control (user/super_admin)
+- [x] Multi-list management system with CSV upload
+- [x] Campaign creation with rich text editor
+- [x] SMTP email account connection
+- [x] Analytics-style user dashboard with charts
+- [x] Super Admin panel with stats and user management
+- [x] Campaign logs page
+- [x] Modern public landing page with animations
+- [x] Protected routes for admin section
 
-## Prioritized Backlog
+### ✅ Landing Page UX Enhancements (Dec 2025)
+- [x] Animated dashboard preview in hero section
+- [x] Card-based "Why This Tool Exists" section
+- [x] Enhanced "Your Emails Actually Land" visual impact
+- [x] Real dashboard preview in "Simple Dashboard" section
 
-### P0 - Critical (All Completed)
-- [x] Auth flow
-- [x] SMTP email sending
-- [x] Rich text editor with variables
-- [x] Campaign persistence
-- [x] User-defined daily limits
-- [x] Multiple lists support
-- [x] Campaign logs
+### 🔄 In Progress
+- None currently
 
-### P1 - Future Enhancements
-- [ ] Gmail OAuth integration (requires Google Cloud credentials)
-- [ ] Outlook OAuth integration
-- [ ] Scheduled campaigns (send at specific time)
-- [ ] Email template library
+### 📋 Upcoming Tasks (P1)
+1. **Gmail OAuth Integration** - Secure OAuth 2.0 connection for Gmail accounts
+   - Files: backend/server.py, frontend/src/pages/EmailAccounts.jsx
+2. **Sending Log Export** - CSV download button on Campaign Logs page
+   - Files: backend/server.py, frontend/src/pages/CampaignLogs.jsx
+3. **Admin Panel Actions** - Implement Suspend/Delete/Role change backend
+   - Files: backend/server.py, frontend/src/pages/admin/AdminDashboard.jsx
 
-### P2 - Nice to Have
-- [ ] Email open tracking
-- [ ] Click tracking
-- [ ] A/B testing subject lines
+### 📋 Future Tasks (P2)
+1. **Duplicate Campaign** - Add duplicate button for existing campaigns
+   - Files: backend/server.py, frontend/src/pages/Dashboard.jsx
 
-### P3 - Out of Scope
-- Multi-step campaigns
-- Email warmup
-- AI writing tools
-- Advanced analytics
-- CRM features
+---
 
-## Technical Notes
-- SMTP passwords encrypted with Fernet before storage
-- Variable replacement using regex: `{{column_name}}`
-- Random delay 3-8 seconds between sends
-- Daily limits reset when new day detected
-- Failed accounts auto-marked as "error" after 5 failures
-- Custom RichTextEditor.jsx replaces react-quill (React 19 incompatible)
+## File Structure
+```
+/app/
+├── backend/
+│   ├── server.py (main API)
+│   ├── requirements.txt
+│   └── .env
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── LandingPage.jsx
+│   │   │   ├── Campaign.jsx
+│   │   │   ├── CampaignLogs.jsx
+│   │   │   ├── EmailAccounts.jsx
+│   │   │   ├── EmailLists.jsx
+│   │   │   ├── ListDetails.jsx
+│   │   │   ├── UploadList.jsx
+│   │   │   ├── AuthCallback.jsx
+│   │   │   └── admin/
+│   │   │       ├── AdminDashboard.jsx
+│   │   │       └── AdminUserDetails.jsx
+│   │   ├── components/
+│   │   │   ├── Sidebar.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   └── RichTextEditor.jsx
+│   │   └── App.js
+│   └── package.json
+└── memory/
+    └── PRD.md
+```
 
-## Next Tasks
-1. Gmail OAuth integration (user needs Google Cloud credentials)
-2. Scheduled campaign feature
-3. Email template library
+## Critical Notes
+- Super admin email: dhruvmathur208@gmail.com
+- Do NOT use react-quill (crashes) - use custom RichTextEditor.jsx
+- Database is MongoDB only
+- SMTP passwords are Fernet encrypted
+- Email sending is implemented but not connected to live SMTP for testing
