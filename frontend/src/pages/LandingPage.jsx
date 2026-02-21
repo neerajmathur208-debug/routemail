@@ -166,47 +166,126 @@ export default function LandingPage() {
             </div>
           </motion.div>
 
-          {/* Hero Product Preview */}
+          {/* Hero Video/Animation Preview */}
           <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.3 }}
             className="mt-20"
           >
-            <div className="relative bg-gradient-to-br from-slate-100 to-slate-50 rounded-[24px] p-3 shadow-2xl shadow-slate-300/50 max-w-5xl mx-auto">
-              <div className="bg-white rounded-[20px] p-6 sm:p-10">
-                <div className="flex items-center gap-2 mb-6">
+            <div className="relative bg-gradient-to-br from-slate-100 to-slate-50 rounded-[20px] p-2 shadow-2xl shadow-slate-300/50 max-w-[950px] mx-auto">
+              <div className="bg-white rounded-[16px] overflow-hidden">
+                {/* Browser Chrome */}
+                <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
                   <div className="w-3 h-3 rounded-full bg-red-400" />
                   <div className="w-3 h-3 rounded-full bg-yellow-400" />
                   <div className="w-3 h-3 rounded-full bg-green-400" />
-                </div>
-                <div className="grid grid-cols-4 gap-4 mb-6">
-                  <div className="bg-gradient-to-br from-rose-400 to-pink-500 rounded-2xl p-4 text-white">
-                    <p className="text-xs opacity-80">Accounts</p>
-                    <p className="text-2xl font-bold mt-1">4</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-4">
-                    <p className="text-xs text-slate-500">Contacts</p>
-                    <p className="text-2xl font-bold text-slate-800 mt-1">2.4k</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-4">
-                    <p className="text-xs text-slate-500">Sent</p>
-                    <p className="text-2xl font-bold text-slate-800 mt-1">1.2k</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-4">
-                    <p className="text-xs text-slate-500">Campaigns</p>
-                    <p className="text-2xl font-bold text-slate-800 mt-1">8</p>
+                  <div className="flex-1 flex justify-center">
+                    <div className="bg-white rounded-md px-4 py-1 text-xs text-slate-400 border border-slate-200">
+                      app.rotation.io/dashboard
+                    </div>
                   </div>
                 </div>
-                <div className="h-40 bg-gradient-to-r from-blue-50 to-violet-50 rounded-xl flex items-center justify-center">
-                  <div className="flex items-end gap-2">
-                    {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                      <div
-                        key={i}
-                        className="w-8 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t"
-                        style={{ height: `${h}%` }}
-                      />
-                    ))}
+                {/* Video Container - Animated Product Demo */}
+                <div className="aspect-[16/9] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+                  {/* Animated Dashboard Simulation */}
+                  <div className="absolute inset-0 p-6">
+                    {/* Sidebar */}
+                    <div className="absolute left-0 top-0 bottom-0 w-16 bg-slate-800/50 flex flex-col items-center py-6 gap-4">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
+                    </div>
+                    {/* Main Content */}
+                    <div className="ml-20 h-full flex flex-col">
+                      {/* Stats Row */}
+                      <div className="grid grid-cols-4 gap-3 mb-4">
+                        <motion.div 
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="bg-gradient-to-br from-blue-500/20 to-violet-500/20 rounded-xl p-3 border border-blue-500/30"
+                        >
+                          <p className="text-[10px] text-blue-300">Connected</p>
+                          <p className="text-xl font-bold text-white">4</p>
+                        </motion.div>
+                        <div className="bg-slate-700/30 rounded-xl p-3 border border-slate-600/30">
+                          <p className="text-[10px] text-slate-400">Contacts</p>
+                          <p className="text-xl font-bold text-white">2.4k</p>
+                        </div>
+                        <motion.div 
+                          animate={{ scale: [1, 1.02, 1] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="bg-slate-700/30 rounded-xl p-3 border border-emerald-500/30"
+                        >
+                          <p className="text-[10px] text-emerald-400">Sent Today</p>
+                          <p className="text-xl font-bold text-emerald-400">847</p>
+                        </motion.div>
+                        <div className="bg-slate-700/30 rounded-xl p-3 border border-slate-600/30">
+                          <p className="text-[10px] text-slate-400">Campaigns</p>
+                          <p className="text-xl font-bold text-white">8</p>
+                        </div>
+                      </div>
+                      {/* Chart Area */}
+                      <div className="flex-1 bg-slate-800/30 rounded-xl p-4 border border-slate-700/30">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-slate-400">Sending Activity</span>
+                          <span className="text-[10px] text-slate-500">Last 7 days</span>
+                        </div>
+                        <div className="flex items-end gap-2 h-24">
+                          {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ height: 0 }}
+                              animate={{ height: `${h}%` }}
+                              transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity, repeatDelay: 3 }}
+                              className="flex-1 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t opacity-80"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {/* Activity Row */}
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-400 mb-2">Recent Campaigns</p>
+                          <div className="space-y-2">
+                            <motion.div 
+                              animate={{ x: [0, 2, 0] }}
+                              transition={{ duration: 2, repeat: Infinity }}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                              <span className="text-[10px] text-slate-300">Q4 Outreach</span>
+                              <span className="text-[10px] text-emerald-400 ml-auto">Running</span>
+                            </motion.div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-400" />
+                              <span className="text-[10px] text-slate-300">Holiday Promo</span>
+                              <span className="text-[10px] text-blue-400 ml-auto">Scheduled</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/30">
+                          <p className="text-[10px] text-slate-400 mb-2">Account Rotation</p>
+                          <div className="flex items-center gap-1">
+                            {[1,2,3,4].map((_, i) => (
+                              <motion.div
+                                key={i}
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                                className="flex-1 h-2 rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
+                              />
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-2">Auto-rotating across 4 accounts</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Play overlay hint */}
+                  <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-1.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[10px] text-white/80">Live Preview</span>
                   </div>
                 </div>
               </div>
