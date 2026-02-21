@@ -491,52 +491,54 @@ export default function LandingPage() {
       </section>
 
       {/* 6️⃣ DELIVERABILITY SECTION */}
-      <section className="py-24 px-6 bg-gradient-to-br from-blue-600 to-violet-600">
+      <section className="py-32 px-6 bg-gradient-to-br from-blue-600 via-blue-700 to-violet-700">
         <div className="max-w-[1300px] mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-16"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 rounded-full text-white text-sm font-medium mb-6">
-              <Lock size={16} />
+            <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/20 backdrop-blur-sm rounded-full text-white text-sm font-semibold mb-8">
+              <Lock size={18} />
               Deliverability First
             </div>
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-white mb-4">
+            <h2 className="font-heading font-black text-4xl sm:text-5xl lg:text-6xl text-white mb-6 leading-tight">
               Your Emails Actually Land
             </h2>
-            <p className="text-blue-100 text-lg max-w-2xl mx-auto">
+            <p className="text-blue-100 text-xl max-w-2xl mx-auto leading-relaxed">
               We prioritize inbox placement over volume. Every feature is designed to protect your sender reputation.
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 max-w-4xl mx-auto mb-12">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-5 max-w-5xl mx-auto mb-16">
             {deliverabilityFeatures.map((feature, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, delay: index * 0.05 }}
+                transition={{ duration: 0.4, delay: index * 0.08 }}
                 viewport={{ once: true }}
-                className="flex items-center gap-2 p-4 bg-white/10 backdrop-blur-sm rounded-xl text-white"
+                className="flex items-center gap-3 p-5 bg-white/15 backdrop-blur-sm rounded-2xl text-white border border-white/20 hover:bg-white/25 transition-all duration-300"
               >
-                <Shield size={16} className="text-blue-200 flex-shrink-0" />
-                <span className="text-sm">{feature}</span>
+                <Shield size={20} className="text-blue-200 flex-shrink-0" />
+                <span className="text-sm font-medium">{feature}</span>
               </motion.div>
             ))}
           </div>
 
-          <motion.p
+          <motion.div
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
             viewport={{ once: true }}
-            className="text-center text-xl text-white font-semibold"
+            className="text-center"
           >
-            Because sending more emails is useless if they don't land in the inbox.
-          </motion.p>
+            <p className="text-2xl sm:text-3xl text-white font-bold leading-relaxed max-w-3xl mx-auto">
+              Because sending more emails is useless if they don't land in the inbox.
+            </p>
+          </motion.div>
         </div>
       </section>
 
