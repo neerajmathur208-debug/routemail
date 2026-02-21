@@ -295,21 +295,25 @@ export default function LandingPage() {
       </section>
 
       {/* 2️⃣ WHY THIS TOOL EXISTS */}
-      <section className="py-24 px-6 bg-white">
+      <section className="py-28 px-6 bg-white">
         <div className="max-w-[1300px] mx-auto">
-          <div className="grid lg:grid-cols-2 gap-16 items-start">
+          <div className="grid lg:grid-cols-2 gap-20 items-start">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5 }}
               viewport={{ once: true }}
+              className="lg:sticky lg:top-32"
             >
-              <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 leading-tight">
+              <h2 className="font-heading font-extrabold text-4xl sm:text-5xl text-slate-900 leading-tight">
                 Why This Tool
-                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">
+                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600 mt-2">
                   Exists
                 </span>
               </h2>
+              <p className="mt-6 text-slate-500 text-lg">
+                Small businesses face unique challenges with email outreach. We built this to solve them.
+              </p>
             </motion.div>
 
             <motion.div
@@ -317,20 +321,33 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
               viewport={{ once: true }}
-              className="space-y-4"
+              className="space-y-5"
             >
               {painPoints.map((point, index) => (
-                <div
+                <motion.div
                   key={index}
-                  className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  viewport={{ once: true }}
+                  className="group flex items-start gap-5 p-6 bg-gradient-to-br from-slate-50 to-white rounded-[20px] border border-slate-100 shadow-sm hover:shadow-lg hover:border-slate-200 transition-all duration-300"
                 >
-                  <div className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
-                  <span className="text-slate-700">{point}</span>
-                </div>
+                  <div className="w-3 h-3 rounded-full bg-gradient-to-br from-rose-500 to-orange-500 flex-shrink-0 mt-1.5 group-hover:scale-110 transition-transform" />
+                  <span className="text-slate-700 text-base font-medium leading-relaxed">{point}</span>
+                </motion.div>
               ))}
-              <p className="text-lg font-semibold text-slate-900 pt-6">
-                This tool is built specifically for SMEs who just want results — without complexity.
-              </p>
+              
+              <motion.div
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+                viewport={{ once: true }}
+                className="pt-8 border-t border-slate-100 mt-8"
+              >
+                <p className="text-xl font-bold text-slate-900 leading-relaxed">
+                  This tool is built specifically for SMEs who just want results — without complexity.
+                </p>
+              </motion.div>
             </motion.div>
           </div>
         </div>
