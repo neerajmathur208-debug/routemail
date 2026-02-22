@@ -6,10 +6,11 @@ Build a simple SaaS web application for small businesses to automatically send e
 ## Core Requirements
 1. **Email Account Management**: Connect multiple email accounts (SMTP/IMAP or OAuth)
 2. **List Management**: Upload and manage CSV email lists with multiple lists per user
-3. **Campaign Management**: Create campaigns with rich text editor, dynamic variables ({column_name}), save/load campaigns with statuses (Draft, Running, Paused)
-4. **Rotational Sending**: Send emails rotationally across accounts with custom daily limits
-5. **Sending Logs**: Detailed logs showing sent/failed status and error messages
-6. **Admin Panel**: Platform-wide monitoring for super_admin users
+3. **Campaign Management**: Create campaigns with rich text editor, dynamic variables ({column_name}), save/load campaigns with statuses (Draft, Scheduled, Running, Paused, Completed)
+4. **Scheduler**: Schedule campaigns to send at a specific date/time or send immediately
+5. **Rotational Sending**: Send emails rotationally across accounts with custom daily limits
+6. **Sending Logs**: Detailed logs showing sent/failed status and error messages
+7. **Admin Panel**: Platform-wide monitoring for super_admin users
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
@@ -22,8 +23,17 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **email_accounts**: user_id, email, type, credentials (encrypted), daily_limit, daily_sent_count, status
 - **email_lists**: user_id, list_name, original_filename, column_headers, total_rows
 - **email_list_contacts**: list_id, contact_data, email, status
-- **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count
+- **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count, **scheduled_at** (nullable datetime)
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
+
+## Campaign Statuses
+- `draft` - Campaign saved but not ready to send
+- `scheduled` - Campaign scheduled to send at a future time
+- `running` - Campaign actively sending emails
+- `paused` - Campaign paused by user
+- `paused_daily_limit` - Campaign paused due to daily limit reached
+- `completed` - Campaign finished sending
+- `failed` - Campaign encountered critical error
 
 ## Key API Endpoints
 - `/api/auth/google/login` & `/api/auth/google/callback` - Authentication
@@ -31,12 +41,24 @@ Build a simple SaaS web application for small businesses to automatically send e
 - `/api/email-accounts` - CRUD for email accounts
 - `/api/lists` - CRUD for email lists
 - `/api/campaigns` - CRUD for campaigns
+- `/api/campaigns/{id}/start` - Start campaign immediately
+- `/api/campaigns/{id}/schedule` - Schedule campaign for later
+- `/api/campaigns/{id}/unschedule` - Unschedule a scheduled campaign
+- `/api/campaigns/{id}/pause` - Pause running campaign
+- `/api/campaigns/{id}/resume` - Resume paused campaign
 - `/api/campaigns/{id}/logs` - Sending logs
 - `/api/admin/stats` & `/api/admin/users` - Admin endpoints (super_admin only)
 
 ## User Roles
 - **user**: Standard access to dashboard, campaigns, email accounts, lists
 - **super_admin**: Full access + admin panel (dhruvmathur208@gmail.com)
+
+## Pricing Plans (UI Only - No Stripe Integration)
+| Plan | Price | Accounts | Contacts | Features |
+|------|-------|----------|----------|----------|
+| Free | 14-Day Trial | 3 | 500 | Basic rotation, Scheduler |
+| Starter | $99/year | 10 | 7,000 | Full rotation, Scheduler, Unlimited campaigns |
+| Growth | $149/year | 15 | 10,000 | Full rotation, Scheduler, Unlimited campaigns |
 
 ---
 
@@ -60,6 +82,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Enhanced "Your Emails Actually Land" visual impact
 - [x] Real dashboard preview in "Simple Dashboard" section
 
+### ✅ Scheduler + Landing Page Updates (Dec 2025)
+- [x] Campaign Scheduler UI (Send Now / Schedule for Later)
+- [x] Date/Time picker for scheduled campaigns
+- [x] Backend support for scheduled_at in campaigns
+- [x] /schedule and /unschedule API endpoints
+- [x] Landing page section reorder (Dashboard Preview after Hero)
+- [x] Removed Open Rate from landing page dashboard preview
+- [x] Updated pricing to 3 plans (Free, Starter $99/yr, Growth $149/yr)
+
 ### 🔄 In Progress
 - None currently
 
@@ -74,6 +105,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
    - Files: backend/server.py, frontend/src/pages/Dashboard.jsx
+2. **Stripe Integration** - Connect pricing plans to actual payments
 
 ---
 
@@ -115,3 +147,4 @@ Build a simple SaaS web application for small businesses to automatically send e
 - Database is MongoDB only
 - SMTP passwords are Fernet encrypted
 - Email sending is implemented but not connected to live SMTP for testing
+- Pricing is UI only - no Stripe integration yet
