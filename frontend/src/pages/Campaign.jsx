@@ -600,6 +600,95 @@ Best regards"
                 />
               </div>
 
+              {/* Sending Options */}
+              <div className="border-t border-slate-100 pt-6">
+                <Label className="mb-3 block">Sending Options</Label>
+                <div className="flex gap-4">
+                  <div
+                    onClick={() => setSendOption("now")}
+                    className={`flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      sendOption === "now"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                    data-testid="send-now-option"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        sendOption === "now" ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        <Send size={18} />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900">Send Now</p>
+                        <p className="text-sm text-slate-500">Start immediately</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    onClick={() => setSendOption("schedule")}
+                    className={`flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      sendOption === "schedule"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                    data-testid="schedule-option"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        sendOption === "schedule" ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        <CalendarClock size={18} />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900">Schedule for Later</p>
+                        <p className="text-sm text-slate-500">Set date and time</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Schedule DateTime Picker */}
+                {sendOption === "schedule" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200"
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="schedule-date" className="text-sm">Date</Label>
+                        <Input
+                          id="schedule-date"
+                          type="date"
+                          value={scheduleDate}
+                          onChange={(e) => setScheduleDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="mt-1.5"
+                          data-testid="schedule-date-input"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="schedule-time" className="text-sm">Time</Label>
+                        <Input
+                          id="schedule-time"
+                          type="time"
+                          value={scheduleTime}
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className="mt-1.5"
+                          data-testid="schedule-time-input"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3 flex items-center gap-1">
+                      <Clock size={12} />
+                      Time zone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+
               {/* Actions */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                 <div className="flex items-center gap-2 text-sm text-slate-500">
