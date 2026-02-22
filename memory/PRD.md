@@ -41,7 +41,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ## Key API Endpoints
 ### Authentication
-- `/api/auth/google/login` & `/api/auth/google/callback` - Google OAuth
+- `/api/auth/session` - Emergent OAuth session exchange (handles Google OAuth callback)
 - `/api/auth/register` - Email/Password registration
 - `/api/auth/login` - Email/Password login
 - `/api/auth/me` - Get current user with role
@@ -100,6 +100,9 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Tagline: "Send Bulk Emails Safely from Multiple Accounts."
 - [x] Footer contact: support@routemail.co
 - [x] Tawk.to integration for authenticated pages only
+
+### ✅ Bug Fixes (Dec 2025)
+- [x] Google OAuth "Not Found" Error - Fixed redirect URL to use Emergent Auth directly
 
 ### 🔄 In Progress
 - None currently
