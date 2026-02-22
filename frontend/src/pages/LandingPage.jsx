@@ -31,12 +31,6 @@ export default function LandingPage() {
   const handleStartFree = () => {
     navigate("/register");
   };
-  
-  // Google OAuth direct login
-  const handleGoogleLogin = () => {
-    const redirectUrl = window.location.origin + "/dashboard";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  };
 
   const painPoints = [
     "Sending limits on a single email account",
