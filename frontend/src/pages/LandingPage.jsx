@@ -941,7 +941,13 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-12 px-6 bg-slate-900 border-t border-slate-800">
         <div className="max-w-[1300px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <span className="font-heading font-extrabold text-xl text-white">RoutEmail</span>
+          <div className="flex items-center gap-2">
+            <img 
+              src="/routemail-logo.png" 
+              alt="RoutEmail" 
+              className="h-8 w-auto object-contain brightness-0 invert"
+            />
+          </div>
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
             <a 
               href="mailto:support@routemail.co" 
