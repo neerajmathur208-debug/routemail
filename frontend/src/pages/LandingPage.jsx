@@ -294,7 +294,151 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 2️⃣ WHY THIS TOOL EXISTS */}
+      {/* 2️⃣ DASHBOARD PREVIEW (Moved here - right after Hero) */}
+      <section className="py-24 px-6 bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="max-w-[1300px] mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            viewport={{ once: true }}
+            className="text-center mb-14"
+          >
+            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-6">
+              Simple Dashboard. Zero Learning Curve.
+            </h2>
+            <div className="flex flex-wrap items-center justify-center gap-4 mt-8">
+              {dashboardSteps.map((step, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-violet-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-500/25">
+                    {index + 1}
+                  </div>
+                  <span className="text-slate-700 font-semibold">{step}</span>
+                  {index < dashboardSteps.length - 1 && (
+                    <ArrowRight size={18} className="text-slate-300 ml-2" />
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-slate-500 mt-6 text-lg">No technical knowledge required.</p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="relative max-w-5xl mx-auto"
+          >
+            <div className="bg-white rounded-[24px] shadow-2xl shadow-slate-300/60 overflow-hidden border border-slate-200">
+              {/* Browser Chrome */}
+              <div className="flex items-center gap-2 px-5 py-4 bg-slate-100 border-b border-slate-200">
+                <div className="w-3 h-3 rounded-full bg-red-400" />
+                <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                <div className="w-3 h-3 rounded-full bg-green-400" />
+                <div className="flex-1 flex justify-center">
+                  <div className="bg-white rounded-lg px-6 py-1.5 text-sm text-slate-500 border border-slate-200 shadow-sm">
+                    app.rotation.io/dashboard
+                  </div>
+                </div>
+              </div>
+              
+              {/* Dashboard Content */}
+              <div className="p-6 sm:p-8 bg-slate-50">
+                {/* Dashboard Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Welcome back, Sarah</h3>
+                    <p className="text-sm text-slate-500">Here's what's happening with your campaigns</p>
+                  </div>
+                  <button className="bg-gradient-to-r from-blue-600 to-violet-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg shadow-blue-500/25">
+                    + New Campaign
+                  </button>
+                </div>
+                
+                {/* Stats Grid - 3 cards only (removed Open Rate) */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Mail size={16} className="text-blue-600" />
+                      <span className="text-xs text-slate-500 font-medium">Accounts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">4</p>
+                    <p className="text-xs text-emerald-600 mt-1">All active</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users size={16} className="text-violet-600" />
+                      <span className="text-xs text-slate-500 font-medium">Contacts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">2,847</p>
+                    <p className="text-xs text-slate-400 mt-1">Across 3 lists</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Send size={16} className="text-emerald-600" />
+                      <span className="text-xs text-slate-500 font-medium">Sent Today</span>
+                    </div>
+                    <p className="text-2xl font-bold text-emerald-600">847</p>
+                    <p className="text-xs text-slate-400 mt-1">+12% from yesterday</p>
+                  </div>
+                </div>
+                
+                {/* Chart and Campaign List */}
+                <div className="grid lg:grid-cols-3 gap-4">
+                  <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="font-semibold text-slate-900">Sending Activity</span>
+                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">Last 7 days</span>
+                    </div>
+                    <div className="flex items-end gap-3 h-32">
+                      {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                          <div
+                            className="w-full bg-gradient-to-t from-blue-500 to-violet-500 rounded-t-lg"
+                            style={{ height: `${h}%` }}
+                          />
+                          <span className="text-[10px] text-slate-400">
+                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                    <span className="font-semibold text-slate-900">Active Campaigns</span>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">Q4 Outreach</p>
+                          <p className="text-xs text-slate-400">847/2000 sent</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">Holiday Promo</p>
+                          <p className="text-xs text-slate-400">Scheduled for Dec 15</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-slate-300" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">Newsletter #12</p>
+                          <p className="text-xs text-slate-400">Draft</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* 3️⃣ WHY THIS TOOL EXISTS */}
       <section className="py-28 px-6 bg-white">
         <div className="max-w-[1300px] mx-auto">
           <div className="grid lg:grid-cols-2 gap-20 items-start">
