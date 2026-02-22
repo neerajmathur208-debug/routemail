@@ -99,7 +99,7 @@ export default function Register() {
             <img 
               src="/routemail-logo.png" 
               alt="RoutEmail" 
-              className="h-10 w-auto object-contain mx-auto"
+              className="h-14 w-auto object-contain mx-auto"
             />
           </Link>
           <p className="mt-2 text-slate-600">Create your account</p>
