@@ -367,6 +367,129 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
     return {"message": "Logged out"}
 
+# ==================== EMAIL/PASSWORD AUTH ====================
+
+@api_router.post("/auth/register")
+async def register_email(request: EmailRegisterRequest, response: Response):
+    """Register a new user with email and password"""
+    # Validate passwords match
+    if request.password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    
+    # Validate password strength
+    if len(request.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    
+    # Check if user already exists
+    existing_user = await db.users.find_one({"email": request.email}, {"_id": 0})
+    if existing_user:
+        if existing_user.get("provider") == "google":
+            raise HTTPException(status_code=400, detail="This email is registered with Google. Please sign in with Google.")
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password
+    password_hash = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Create user
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    role = "super_admin" if request.email == SUPER_ADMIN_EMAIL else "user"
+    
+    user_doc = {
+        "user_id": user_id,
+        "email": request.email,
+        "name": request.name,
+        "picture": None,
+        "password_hash": password_hash,
+        "provider": "email",
+        "role": role,
+        "subscription_status": "active",
+        "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),  # 14-day trial
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.users.insert_one(user_doc)
+    
+    # Create session
+    session_token = uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    session_doc = {
+        "user_id": user_id,
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.user_sessions.insert_one(session_doc)
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=7 * 24 * 60 * 60
+    )
+    
+    return {
+        "user_id": user_id,
+        "email": request.email,
+        "name": request.name,
+        "picture": None,
+        "subscription_status": "active",
+        "role": role
+    }
+
+@api_router.post("/auth/login")
+async def login_email(request: EmailLoginRequest, response: Response):
+    """Login with email and password"""
+    # Find user
+    user_doc = await db.users.find_one({"email": request.email}, {"_id": 0})
+    
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # Check if user registered with Google
+    if user_doc.get("provider") == "google" or not user_doc.get("password_hash"):
+        raise HTTPException(status_code=401, detail="This account uses Google sign-in. Please sign in with Google.")
+    
+    # Verify password
+    if not bcrypt.checkpw(request.password.encode('utf-8'), user_doc["password_hash"].encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # Create session
+    session_token = uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    session_doc = {
+        "user_id": user_doc["user_id"],
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.user_sessions.insert_one(session_doc)
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=7 * 24 * 60 * 60
+    )
+    
+    return {
+        "user_id": user_doc["user_id"],
+        "email": user_doc["email"],
+        "name": user_doc.get("name", ""),
+        "picture": user_doc.get("picture"),
+        "subscription_status": user_doc.get("subscription_status", "active"),
+        "role": user_doc.get("role", "user")
+    }
+
 # ==================== EMAIL ACCOUNT ENDPOINTS ====================
 
 @api_router.get("/accounts")
