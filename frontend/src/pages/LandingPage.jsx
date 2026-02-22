@@ -948,7 +948,7 @@ export default function LandingPage() {
             <img 
               src="/routemail-logo.png" 
               alt="RoutEmail" 
-              className="h-8 w-auto object-contain brightness-0 invert"
+              className="h-10 w-auto object-contain brightness-0 invert"
             />
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
