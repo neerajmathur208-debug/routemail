@@ -102,10 +102,10 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-[1300px] mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="font-heading font-extrabold text-xl text-slate-900">ROTATION</span>
+          <span className="font-heading font-extrabold text-xl text-slate-900">RoutEmail</span>
           <div className="flex items-center gap-4">
             <Button
-              onClick={handleLogin}
+              onClick={() => navigate("/login")}
               variant="ghost"
               className="text-slate-600 hover:text-slate-900"
               data-testid="nav-login-btn"
@@ -133,9 +133,9 @@ export default function LandingPage() {
             className="text-center max-w-4xl mx-auto"
           >
             <h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-6xl text-slate-900 leading-tight">
-              Send Emails from Multiple Accounts
+              Send Bulk Emails Safely
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">
-                — Automatically
+                from Multiple Accounts.
               </span>
             </h1>
             <p className="mt-6 text-xl text-slate-600 font-medium">
