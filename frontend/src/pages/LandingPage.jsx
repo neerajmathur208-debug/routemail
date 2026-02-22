@@ -104,12 +104,12 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#faf9f7]">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-[1300px] mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-[1300px] mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img 
               src="/routemail-logo.png" 
               alt="RoutEmail" 
-              className="h-9 w-auto object-contain"
+              className="h-14 sm:h-14 w-auto object-contain"
             />
           </div>
           <div className="flex items-center gap-4">

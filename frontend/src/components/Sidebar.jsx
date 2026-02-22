@@ -69,7 +69,7 @@ export default function Sidebar({ user, setUser }) {
           <img 
             src="/routemail-logo.png" 
             alt="RoutEmail" 
-            className="h-8 w-auto object-contain"
+            className="h-10 w-auto object-contain"
           />
         </div>
         <Button
@@ -102,11 +102,11 @@ export default function Sidebar({ user, setUser }) {
         style={{ transform: "none" }}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-200">
+        <div className="h-18 flex items-center px-6 border-b border-slate-200 py-4">
           <img 
             src="/routemail-logo.png" 
             alt="RoutEmail" 
-            className="h-8 w-auto object-contain"
+            className="h-11 w-auto object-contain"
           />
         </div>
 
