@@ -686,49 +686,164 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 7️⃣ PRICING SIMPLICITY */}
-      <section className="py-24 px-6 bg-white">
+      {/* 7️⃣ PRICING */}
+      <section className="py-28 px-6 bg-white">
         <div className="max-w-[1300px] mx-auto">
-          <div className="max-w-2xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            viewport={{ once: true }}
+            className="text-center mb-14"
+          >
+            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-4">
+              Simple, Transparent Pricing
+            </h2>
+            <p className="text-slate-600 text-lg max-w-2xl mx-auto">
+              Choose the plan that fits your business. No hidden fees.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {/* Free Plan */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.5, delay: 0 }}
               viewport={{ once: true }}
+              className="bg-slate-50 rounded-[24px] p-8 border border-slate-200"
             >
-              <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-6">
-                Simple Pricing
-              </h2>
-              <p className="text-slate-600 text-lg mb-8">
-                No complicated tiers. No hidden add-ons.
-              </p>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold mb-4">
+                14-Day Trial
+              </div>
+              <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Free</h3>
+              <p className="text-slate-500 text-sm mb-6">Get started risk-free</p>
+              
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">3 connected email accounts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">500 stored contacts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Scheduler included</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Basic rotation</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleLogin}
+                variant="outline"
+                className="w-full rounded-full py-6"
+                data-testid="pricing-free-btn"
+              >
+                Start Free Trial
+              </Button>
             </motion.div>
 
+            {/* Starter Plan - Most Popular */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              viewport={{ once: true }}
+              className="bg-gradient-to-br from-blue-600 to-violet-600 rounded-[24px] p-8 text-white relative shadow-xl shadow-blue-500/25 ring-4 ring-blue-500/20"
+            >
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <span className="px-4 py-1.5 bg-amber-400 text-amber-900 rounded-full text-xs font-bold shadow-lg">
+                  Most Popular
+                </span>
+              </div>
+              <h3 className="font-heading font-bold text-2xl mb-2 mt-2">Starter</h3>
+              <div className="flex items-baseline gap-2 mb-6">
+                <span className="text-4xl font-extrabold">$99</span>
+                <span className="text-blue-200">/year</span>
+              </div>
+              
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">10 connected email accounts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">7,000 stored contacts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">Full rotation engine</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">Scheduler included</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">Unlimited campaigns</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleLogin}
+                className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full py-6 font-semibold"
+                data-testid="pricing-starter-btn"
+              >
+                Get Started
+              </Button>
+            </motion.div>
+
+            {/* Growth Plan */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
               viewport={{ once: true }}
-              className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-[24px] p-8 text-left"
+              className="bg-slate-50 rounded-[24px] p-8 border border-slate-200"
             >
+              <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Growth</h3>
               <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-5xl font-extrabold text-slate-900">Free</span>
-                <span className="text-slate-500">to start</span>
+                <span className="text-4xl font-extrabold text-slate-900">$149</span>
+                <span className="text-slate-500">/year</span>
               </div>
-              <p className="text-slate-600 mb-6">Pay based on:</p>
-              <div className="space-y-3 mb-8">
+              
+              <div className="space-y-4 mb-8">
                 <div className="flex items-center gap-3">
-                  <Layers size={18} className="text-blue-600" />
-                  <span className="text-slate-700">Number of connected accounts</span>
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">15 connected email accounts</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Send size={18} className="text-blue-600" />
-                  <span className="text-slate-700">Monthly sending volume</span>
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">10,000 stored contacts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Full rotation engine</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Scheduler included</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Unlimited campaigns</span>
                 </div>
               </div>
-              <p className="text-slate-900 font-semibold">
-                Start small. Scale when ready.
-              </p>
+
+              <Button
+                onClick={handleLogin}
+                variant="outline"
+                className="w-full rounded-full py-6"
+                data-testid="pricing-growth-btn"
+              >
+                Get Started
+              </Button>
             </motion.div>
           </div>
         </div>
