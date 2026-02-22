@@ -22,9 +22,12 @@ import Campaign from "./pages/Campaign";
 import CampaignLogs from "./pages/CampaignLogs";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
+import TawkWidget from "./components/TawkWidget";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
