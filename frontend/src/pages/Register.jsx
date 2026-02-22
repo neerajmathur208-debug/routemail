@@ -94,7 +94,11 @@ export default function Register() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-block">
-            <span className="font-heading font-extrabold text-2xl text-slate-900">RoutEmail</span>
+            <img 
+              src="/routemail-logo.png" 
+              alt="RoutEmail" 
+              className="h-10 w-auto object-contain mx-auto"
+            />
           </Link>
           <p className="mt-2 text-slate-600">Create your account</p>
         </div>
