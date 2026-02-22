@@ -65,7 +65,13 @@ export default function Sidebar({ user, setUser }) {
     <>
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 z-40 flex items-center justify-between px-4">
-        <span className="font-heading font-extrabold text-xl text-slate-900">RoutEmail</span>
+        <div className="flex items-center gap-2">
+          <img 
+            src="/routemail-logo.png" 
+            alt="RoutEmail" 
+            className="h-8 w-auto object-contain"
+          />
+        </div>
         <Button
           variant="ghost"
           size="icon"
