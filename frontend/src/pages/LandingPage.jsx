@@ -162,7 +162,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <Button
-                onClick={handleLogin}
+                onClick={handleStartFree}
                 size="lg"
                 className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-8 py-6 text-lg rounded-full shadow-lg shadow-blue-500/25"
                 data-testid="hero-get-started-btn"
