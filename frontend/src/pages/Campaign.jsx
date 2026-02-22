@@ -357,8 +357,12 @@ export default function Campaign({ user, setUser }) {
       from_name: "",
       list_id: "",
       account_ids: [],
+      scheduled_at: "",
     });
     setSelectedList(null);
+    setSendOption("now");
+    setScheduleDate("");
+    setScheduleTime("");
   };
 
   const hasAccounts = accounts.length > 0;
