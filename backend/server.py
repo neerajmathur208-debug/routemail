@@ -975,6 +975,7 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
             "status": "running",
             "is_locked": True,
             "account_ids": account_ids,
+            "scheduled_at": None,  # Clear scheduled_at when started immediately
             "started_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
@@ -984,6 +985,74 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
     background_tasks.add_task(process_campaign_queue, campaign_id, user.user_id)
     
     return {"message": "Campaign started", "status": "running", "campaign_id": campaign_id}
+
+@api_router.post("/campaigns/{campaign_id}/schedule")
+async def schedule_campaign(campaign_id: str, user: User = Depends(get_current_user)):
+    """Schedule a campaign (validate and set status to scheduled)"""
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if campaign["status"] == "running":
+        raise HTTPException(status_code=400, detail="Campaign is already running")
+    
+    if campaign["status"] == "completed":
+        raise HTTPException(status_code=400, detail="Campaign is already completed")
+    
+    if not campaign.get("scheduled_at"):
+        raise HTTPException(status_code=400, detail="No scheduled time set")
+    
+    # Validate campaign has required fields
+    if not campaign.get("list_id"):
+        raise HTTPException(status_code=400, detail="No email list selected")
+    
+    if not campaign.get("subject"):
+        raise HTTPException(status_code=400, detail="Subject line is required")
+    
+    if not campaign.get("body"):
+        raise HTTPException(status_code=400, detail="Email body is required")
+    
+    # Validate email accounts
+    account_ids = campaign.get("account_ids", [])
+    if not account_ids:
+        accounts = await db.email_accounts.find(
+            {"user_id": user.user_id, "status": "connected"},
+            {"_id": 0}
+        ).to_list(100)
+        if not accounts:
+            raise HTTPException(status_code=400, detail="No connected email accounts available")
+    
+    # Update status to scheduled
+    await db.campaigns.update_one(
+        {"campaign_id": campaign_id},
+        {"$set": {
+            "status": "scheduled",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": "Campaign scheduled", "status": "scheduled", "scheduled_at": campaign.get("scheduled_at")}
+
+@api_router.post("/campaigns/{campaign_id}/unschedule")
+async def unschedule_campaign(campaign_id: str, user: User = Depends(get_current_user)):
+    """Unschedule a scheduled campaign (return to draft)"""
+    result = await db.campaigns.update_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id, "status": "scheduled"},
+        {"$set": {
+            "status": "draft",
+            "scheduled_at": None,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Campaign not found or not scheduled")
+    
+    return {"message": "Campaign unscheduled", "status": "draft"}
 
 @api_router.post("/campaigns/{campaign_id}/pause")
 async def pause_campaign(campaign_id: str, user: User = Depends(get_current_user)):
