@@ -978,21 +978,28 @@ Best regards"
                             campaign.status === "completed" ? "bg-green-100 text-green-700" :
                             campaign.status === "running" ? "bg-blue-100 text-blue-700" :
                             campaign.status === "paused" ? "bg-amber-100 text-amber-700" :
+                            campaign.status === "scheduled" ? "bg-purple-100 text-purple-700" :
                             "bg-slate-100 text-slate-600"
                           }`}>
                             {campaign.status}
                           </span>
+                          {campaign.status === "scheduled" && campaign.scheduled_at && (
+                            <span className="flex items-center gap-1 text-xs text-purple-600">
+                              <CalendarClock size={12} />
+                              {new Date(campaign.scheduled_at).toLocaleString()}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
                           <span>{campaign.total_emails} recipients</span>
-                          {campaign.status !== "draft" && (
+                          {campaign.status !== "draft" && campaign.status !== "scheduled" && (
                             <span>{campaign.sent_count} sent</span>
                           )}
                           <span>
                             {new Date(campaign.created_at).toLocaleDateString()}
                           </span>
                         </div>
-                        {campaign.status !== "draft" && campaign.total_emails > 0 && (
+                        {campaign.status !== "draft" && campaign.status !== "scheduled" && campaign.total_emails > 0 && (
                           <div className="mt-2">
                             <Progress
                               value={(campaign.sent_count / campaign.total_emails) * 100}
@@ -1002,7 +1009,7 @@ Best regards"
                         )}
                       </div>
                       <div className="flex items-center gap-2 ml-4">
-                        {campaign.status === "draft" && (
+                        {(campaign.status === "draft" || campaign.status === "scheduled") && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1010,6 +1017,18 @@ Best regards"
                             data-testid={`edit-campaign-${campaign.campaign_id}`}
                           >
                             <Edit size={18} className="text-slate-400" />
+                          </Button>
+                        )}
+                        {campaign.status === "scheduled" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUnscheduleCampaign(campaign.campaign_id)}
+                            className="text-purple-600 hover:text-purple-700"
+                            data-testid={`unschedule-${campaign.campaign_id}`}
+                          >
+                            <XCircle size={16} className="mr-1" />
+                            Unschedule
                           </Button>
                         )}
                         {campaign.status === "paused" && (
