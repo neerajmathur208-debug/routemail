@@ -806,7 +806,7 @@ export default function LandingPage() {
               </div>
 
               <Button
-                onClick={handleLogin}
+                onClick={handleStartFree}
                 className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full py-6 font-semibold"
                 data-testid="pricing-starter-btn"
               >
