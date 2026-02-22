@@ -102,7 +102,13 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-[1300px] mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="font-heading font-extrabold text-xl text-slate-900">RoutEmail</span>
+          <div className="flex items-center gap-2">
+            <img 
+              src="/routemail-logo.png" 
+              alt="RoutEmail" 
+              className="h-9 w-auto object-contain"
+            />
+          </div>
           <div className="flex items-center gap-4">
             <Button
               onClick={() => navigate("/login")}
