@@ -148,6 +148,16 @@ class EmailQueueItem(BaseModel):
 class SessionRequest(BaseModel):
     session_id: str
 
+class EmailRegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    confirm_password: str
+
+class EmailLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class AddSMTPAccountRequest(BaseModel):
     email: str
     display_name: str
