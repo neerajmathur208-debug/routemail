@@ -128,7 +128,7 @@ export default function LandingPage() {
               Sign In
             </Button>
             <Button
-              onClick={handleLogin}
+              onClick={handleStartFree}
               className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6"
               data-testid="nav-trial-btn"
             >
