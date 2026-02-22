@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import {
   Mail,
   Upload,
@@ -24,7 +25,15 @@ import {
 import { Button } from "../components/ui/button";
 
 export default function LandingPage() {
-  const handleLogin = () => {
+  const navigate = useNavigate();
+  
+  // "Start Free" button - redirects to register page
+  const handleStartFree = () => {
+    navigate("/register");
+  };
+  
+  // Google OAuth direct login
+  const handleGoogleLogin = () => {
     const redirectUrl = window.location.origin + "/dashboard";
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
