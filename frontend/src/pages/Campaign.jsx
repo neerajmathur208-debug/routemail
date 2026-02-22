@@ -129,8 +129,17 @@ export default function Campaign({ user, setUser }) {
             from_name: campaign.from_name || "",
             list_id: campaign.list_id || "",
             account_ids: campaign.account_ids || [],
+            scheduled_at: campaign.scheduled_at || "",
           });
           setView("edit");
+          
+          // If campaign has scheduled_at, set schedule mode
+          if (campaign.scheduled_at) {
+            setSendOption("schedule");
+            const dt = new Date(campaign.scheduled_at);
+            setScheduleDate(dt.toISOString().split('T')[0]);
+            setScheduleTime(dt.toTimeString().slice(0, 5));
+          }
           
           // Load selected list for variables
           if (campaign.list_id) {
