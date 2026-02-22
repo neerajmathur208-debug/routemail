@@ -88,7 +88,13 @@ export default function Campaign({ user, setUser }) {
     from_name: "",
     list_id: "",
     account_ids: [],
+    scheduled_at: "",
   });
+  
+  // Scheduler state
+  const [sendOption, setSendOption] = useState("now"); // "now" or "schedule"
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
