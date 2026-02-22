@@ -144,6 +144,15 @@ export default function Login() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              <div className="flex justify-end mt-1">
+                <button 
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                  onClick={() => toast.info("Password reset feature coming soon!")}
+                >
+                  Forgot Password?
+                </button>
+              </div>
             </div>
 
             <Button
@@ -152,7 +161,7 @@ export default function Login() {
               className="w-full py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
               data-testid="login-submit-btn"
             >
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Signing in..." : "Log In"}
               {!loading && <ArrowRight size={18} className="ml-2" />}
             </Button>
           </form>
@@ -161,7 +170,7 @@ export default function Login() {
           <p className="mt-6 text-center text-sm text-slate-600">
             Don't have an account?{" "}
             <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700" data-testid="register-link">
-              Sign up
+              Register
             </Link>
           </p>
         </div>
