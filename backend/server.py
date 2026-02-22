@@ -283,15 +283,20 @@ async def exchange_session(request: SessionRequest, response: Response):
         user_id = existing_user["user_id"]
         # Determine role - assign super_admin if email matches
         role = "super_admin" if email == SUPER_ADMIN_EMAIL else existing_user.get("role", "user")
+        # Update user data - preserve provider if already set, otherwise set to 'google'
+        update_data = {
+            "name": name, 
+            "picture": picture,
+            "subscription_status": "active",
+            "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
+            "role": role
+        }
+        # Only set provider to google if not already an email user
+        if existing_user.get("provider") != "email":
+            update_data["provider"] = "google"
         await db.users.update_one(
             {"user_id": user_id},
-            {"$set": {
-                "name": name, 
-                "picture": picture,
-                "subscription_status": "active",
-                "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
-                "role": role
-            }}
+            {"$set": update_data}
         )
     else:
         # Determine role for new user
@@ -307,6 +312,7 @@ async def exchange_session(request: SessionRequest, response: Response):
         user_dict = new_user.model_dump()
         user_dict["created_at"] = user_dict["created_at"].isoformat()
         user_dict["role"] = role  # Add role field
+        user_dict["provider"] = "google"  # Mark as Google OAuth user
         if user_dict.get("subscription_expires_at"):
             user_dict["subscription_expires_at"] = user_dict["subscription_expires_at"].isoformat()
         await db.users.insert_one(user_dict)
