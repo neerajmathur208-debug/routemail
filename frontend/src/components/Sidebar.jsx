@@ -103,7 +103,11 @@ export default function Sidebar({ user, setUser }) {
       >
         {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
-          <span className="font-heading font-extrabold text-xl text-slate-900">RoutEmail</span>
+          <img 
+            src="/routemail-logo.png" 
+            alt="RoutEmail" 
+            className="h-8 w-auto object-contain"
+          />
         </div>
 
         {/* User info */}
