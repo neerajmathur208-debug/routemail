@@ -926,7 +926,7 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">
               <Button
-                onClick={handleLogin}
+                onClick={handleStartFree}
                 size="lg"
                 className="bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white px-10 py-6 text-lg rounded-full shadow-lg shadow-blue-500/30"
                 data-testid="final-cta-btn"
