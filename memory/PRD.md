@@ -166,3 +166,4 @@ Build a simple SaaS web application for small businesses to automatically send e
 - Email sending is implemented but not connected to live SMTP for testing
 - Pricing is UI only - no Stripe integration yet
 - Tawk.to widget only loads on authenticated routes
+- Google OAuth uses Emergent Auth (https://auth.emergentagent.com) - NOT a custom backend endpoint
