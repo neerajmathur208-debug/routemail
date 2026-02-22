@@ -935,10 +935,18 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-12 px-6 bg-slate-900 border-t border-slate-800">
         <div className="max-w-[1300px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <span className="font-heading font-extrabold text-xl text-white">ROTATION</span>
-          <p className="text-sm text-slate-500">
-            &copy; {new Date().getFullYear()} Rotation. All rights reserved.
-          </p>
+          <span className="font-heading font-extrabold text-xl text-white">RoutEmail</span>
+          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
+            <a 
+              href="mailto:support@routemail.co" 
+              className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              support@routemail.co
+            </a>
+            <p className="text-sm text-slate-500">
+              &copy; {new Date().getFullYear()} RoutEmail. All rights reserved.
+            </p>
+          </div>
         </div>
       </footer>
     </div>
