@@ -1,4 +1,4 @@
-# Rotation - Email Rotation SaaS Platform
+# RoutEmail - Email Rotation SaaS Platform
 
 ## Original Problem Statement
 Build a simple SaaS web application for small businesses to automatically send emails in rotation across multiple connected email accounts with daily sending limits.
@@ -16,14 +16,18 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
 - **Backend**: FastAPI (Python)
 - **Database**: MongoDB
-- **Authentication**: Emergent-managed Google Social Login with RBAC
+- **Authentication**: 
+  - Emergent-managed Google Social Login
+  - Email + Password (bcrypt hashed)
+- **Live Chat**: Tawk.to (authenticated pages only)
 
 ## Database Schema
-- **users**: email, name, google_id, is_active, created_at, role ('user' | 'super_admin')
+- **users**: email, name, google_id, password_hash, provider ('google'/'email'), is_active, created_at, role ('user' | 'super_admin')
+- **user_sessions**: user_id, session_token, expires_at
 - **email_accounts**: user_id, email, type, credentials (encrypted), daily_limit, daily_sent_count, status
 - **email_lists**: user_id, list_name, original_filename, column_headers, total_rows
 - **email_list_contacts**: list_id, contact_data, email, status
-- **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count, **scheduled_at** (nullable datetime)
+- **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count, scheduled_at
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
 
 ## Campaign Statuses
@@ -36,8 +40,14 @@ Build a simple SaaS web application for small businesses to automatically send e
 - `failed` - Campaign encountered critical error
 
 ## Key API Endpoints
-- `/api/auth/google/login` & `/api/auth/google/callback` - Authentication
+### Authentication
+- `/api/auth/google/login` & `/api/auth/google/callback` - Google OAuth
+- `/api/auth/register` - Email/Password registration
+- `/api/auth/login` - Email/Password login
 - `/api/auth/me` - Get current user with role
+- `/api/auth/logout` - Logout
+
+### Core Features
 - `/api/email-accounts` - CRUD for email accounts
 - `/api/lists` - CRUD for email lists
 - `/api/campaigns` - CRUD for campaigns
@@ -47,13 +57,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - `/api/campaigns/{id}/pause` - Pause running campaign
 - `/api/campaigns/{id}/resume` - Resume paused campaign
 - `/api/campaigns/{id}/logs` - Sending logs
+
+### Admin
 - `/api/admin/stats` & `/api/admin/users` - Admin endpoints (super_admin only)
 
 ## User Roles
 - **user**: Standard access to dashboard, campaigns, email accounts, lists
 - **super_admin**: Full access + admin panel (dhruvmathur208@gmail.com)
 
-## Pricing Plans (UI Only - No Stripe Integration)
+## Pricing Plans (UI Only)
 | Plan | Price | Accounts | Contacts | Features |
 |------|-------|----------|----------|----------|
 | Free | 14-Day Trial | 3 | 500 | Basic rotation, Scheduler |
@@ -66,30 +78,28 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ### ✅ Completed Features
 - [x] User authentication with Google OAuth (Emergent-managed)
+- [x] Email + Password authentication (bcrypt hashed)
 - [x] Role-based access control (user/super_admin)
 - [x] Multi-list management system with CSV upload
 - [x] Campaign creation with rich text editor
+- [x] Campaign scheduler (Send Now / Schedule for Later)
 - [x] SMTP email account connection
 - [x] Analytics-style user dashboard with charts
 - [x] Super Admin panel with stats and user management
 - [x] Campaign logs page
 - [x] Modern public landing page with animations
 - [x] Protected routes for admin section
+- [x] Tawk.to live chat widget (authenticated pages only)
 
-### ✅ Landing Page UX Enhancements (Dec 2025)
-- [x] Animated dashboard preview in hero section
-- [x] Card-based "Why This Tool Exists" section
-- [x] Enhanced "Your Emails Actually Land" visual impact
-- [x] Real dashboard preview in "Simple Dashboard" section
-
-### ✅ Scheduler + Landing Page Updates (Dec 2025)
-- [x] Campaign Scheduler UI (Send Now / Schedule for Later)
-- [x] Date/Time picker for scheduled campaigns
-- [x] Backend support for scheduled_at in campaigns
-- [x] /schedule and /unschedule API endpoints
-- [x] Landing page section reorder (Dashboard Preview after Hero)
-- [x] Removed Open Rate from landing page dashboard preview
-- [x] Updated pricing to 3 plans (Free, Starter $99/yr, Growth $149/yr)
+### ✅ Auth + Branding Updates (Dec 2025)
+- [x] Email + Password registration with validation
+- [x] Email + Password login (separate from Google)
+- [x] Login page (/login) with dual auth options
+- [x] Register page (/register) with password strength indicator
+- [x] Branding updated to "RoutEmail"
+- [x] Tagline: "Send Bulk Emails Safely from Multiple Accounts."
+- [x] Footer contact: support@routemail.co
+- [x] Tawk.to integration for authenticated pages only
 
 ### 🔄 In Progress
 - None currently
@@ -104,8 +114,8 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
-   - Files: backend/server.py, frontend/src/pages/Dashboard.jsx
 2. **Stripe Integration** - Connect pricing plans to actual payments
+3. **Password Reset** - Forgot password flow for email auth users
 
 ---
 
@@ -113,7 +123,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 ```
 /app/
 ├── backend/
-│   ├── server.py (main API)
+│   ├── server.py (main API with auth endpoints)
 │   ├── requirements.txt
 │   └── .env
 ├── frontend/
@@ -128,13 +138,16 @@ Build a simple SaaS web application for small businesses to automatically send e
 │   │   │   ├── ListDetails.jsx
 │   │   │   ├── UploadList.jsx
 │   │   │   ├── AuthCallback.jsx
+│   │   │   ├── Login.jsx (NEW)
+│   │   │   ├── Register.jsx (NEW)
 │   │   │   └── admin/
 │   │   │       ├── AdminDashboard.jsx
 │   │   │       └── AdminUserDetails.jsx
 │   │   ├── components/
 │   │   │   ├── Sidebar.jsx
 │   │   │   ├── ProtectedRoute.jsx
-│   │   │   └── RichTextEditor.jsx
+│   │   │   ├── RichTextEditor.jsx
+│   │   │   └── TawkWidget.jsx (NEW)
 │   │   └── App.js
 │   └── package.json
 └── memory/
@@ -146,5 +159,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 - Do NOT use react-quill (crashes) - use custom RichTextEditor.jsx
 - Database is MongoDB only
 - SMTP passwords are Fernet encrypted
+- User passwords are bcrypt hashed
 - Email sending is implemented but not connected to live SMTP for testing
 - Pricing is UI only - no Stripe integration yet
+- Tawk.to widget only loads on authenticated routes
