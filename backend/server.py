@@ -841,6 +841,18 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
             update_data["total_emails"] = email_list.get("valid_emails", 0)
     if request.account_ids is not None:
         update_data["account_ids"] = request.account_ids
+    if request.scheduled_at is not None:
+        if request.scheduled_at == "":
+            update_data["scheduled_at"] = None
+            if campaign["status"] == "scheduled":
+                update_data["status"] = "draft"
+        else:
+            try:
+                scheduled_dt = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+                update_data["scheduled_at"] = scheduled_dt.isoformat()
+                update_data["status"] = "scheduled"
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
     
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},
