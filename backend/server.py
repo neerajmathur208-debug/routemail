@@ -1194,7 +1194,7 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
         {"_id": 0, "emails": 0}
     ).to_list(100)
     
-    total_contacts = sum(l.get("valid_emails", 0) for l in lists)
+    total_contacts = sum(lst.get("valid_emails", 0) for lst in lists)
     
     return {
         "accounts": account_stats,
