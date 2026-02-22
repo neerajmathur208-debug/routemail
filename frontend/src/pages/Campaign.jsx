@@ -256,6 +256,49 @@ export default function Campaign({ user, setUser }) {
     }
   };
 
+  const handleScheduleCampaign = async (campaignId) => {
+    // First save the campaign with scheduled_at
+    if (!scheduleDate || !scheduleTime) {
+      toast.error("Please select date and time for scheduling");
+      return;
+    }
+    
+    const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
+    if (scheduledDateTime <= new Date()) {
+      toast.error("Scheduled time must be in the future");
+      return;
+    }
+
+    try {
+      // Update campaign with scheduled_at
+      await api.put(`/campaigns/${campaignId}`, {
+        ...formData,
+        scheduled_at: scheduledDateTime.toISOString(),
+      });
+      
+      // Then schedule it
+      await api.post(`/campaigns/${campaignId}/schedule`);
+      toast.success("Campaign scheduled successfully");
+      setStartDialogOpen(false);
+      setView("list");
+      fetchData();
+    } catch (error) {
+      const message = error.response?.data?.detail || "Failed to schedule campaign";
+      toast.error(message);
+    }
+  };
+
+  const handleUnscheduleCampaign = async (campaignId) => {
+    try {
+      await api.post(`/campaigns/${campaignId}/unschedule`);
+      toast.success("Campaign unscheduled");
+      fetchData();
+    } catch (error) {
+      const message = error.response?.data?.detail || "Failed to unschedule campaign";
+      toast.error(message);
+    }
+  };
+
   const handlePauseCampaign = async (campaignId) => {
     try {
       await api.post(`/campaigns/${campaignId}/pause`);
