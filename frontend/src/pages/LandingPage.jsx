@@ -754,7 +754,7 @@ export default function LandingPage() {
               </div>
 
               <Button
-                onClick={handleLogin}
+                onClick={handleStartFree}
                 variant="outline"
                 className="w-full rounded-full py-6"
                 data-testid="pricing-free-btn"
