@@ -62,7 +62,7 @@ export default function Login() {
               className="h-10 w-auto object-contain mx-auto"
             />
           </Link>
-          <p className="mt-2 text-slate-600">Sign in to your account</p>
+          <p className="mt-3 text-lg text-slate-600">Log in to your account</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8">
