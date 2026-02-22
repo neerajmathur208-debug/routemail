@@ -771,6 +771,16 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         if email_list:
             total_emails = email_list.get("valid_emails", 0)
     
+    # Determine status based on scheduling
+    status = "draft"
+    scheduled_at = None
+    if request.scheduled_at:
+        try:
+            scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+            status = "scheduled"
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
+    
     campaign = Campaign(
         user_id=user.user_id,
         name=request.name,
@@ -781,16 +791,19 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         list_id=request.list_id,
         account_ids=request.account_ids,
         total_emails=total_emails,
-        status="draft"
+        status=status,
+        scheduled_at=scheduled_at
     )
     
     camp_dict = campaign.model_dump()
     camp_dict["created_at"] = camp_dict["created_at"].isoformat()
     camp_dict["updated_at"] = camp_dict["updated_at"].isoformat()
+    if camp_dict.get("scheduled_at"):
+        camp_dict["scheduled_at"] = camp_dict["scheduled_at"].isoformat()
     
     await db.campaigns.insert_one(camp_dict)
     
-    return {"campaign_id": campaign.campaign_id, "status": campaign.status}
+    return {"campaign_id": campaign.campaign_id, "status": campaign.status, "scheduled_at": request.scheduled_at}
 
 @api_router.put("/campaigns/{campaign_id}")
 async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user: User = Depends(get_current_user)):
