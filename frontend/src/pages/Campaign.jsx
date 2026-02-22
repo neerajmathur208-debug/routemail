@@ -208,13 +208,29 @@ export default function Campaign({ user, setUser }) {
       return;
     }
 
+    // Build scheduled_at from date/time if scheduling
+    let scheduled_at = null;
+    if (sendOption === "schedule" && scheduleDate && scheduleTime) {
+      const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
+      if (scheduledDateTime <= new Date()) {
+        toast.error("Scheduled time must be in the future");
+        return;
+      }
+      scheduled_at = scheduledDateTime.toISOString();
+    }
+
+    const payload = {
+      ...formData,
+      scheduled_at: scheduled_at || "",
+    };
+
     setSubmitting(true);
     try {
       if (editId) {
-        await api.put(`/campaigns/${editId}`, formData);
+        await api.put(`/campaigns/${editId}`, payload);
         toast.success("Campaign updated");
       } else {
-        const response = await api.post("/campaigns", formData);
+        const response = await api.post("/campaigns", payload);
         toast.success("Campaign saved");
         navigate(`/campaign?edit=${response.data.campaign_id}`);
       }
