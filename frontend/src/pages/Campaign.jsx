@@ -714,11 +714,20 @@ Best regards"
                     <Button
                       onClick={() => setStartDialogOpen(true)}
                       disabled={submitting}
-                      className="bg-signal-orange hover:bg-orange-600"
+                      className={sendOption === "schedule" ? "bg-blue-600 hover:bg-blue-700" : "bg-signal-orange hover:bg-orange-600"}
                       data-testid="start-campaign-btn"
                     >
-                      <Send size={16} className="mr-2" />
-                      Start Campaign
+                      {sendOption === "schedule" ? (
+                        <>
+                          <CalendarClock size={16} className="mr-2" />
+                          Schedule Campaign
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} className="mr-2" />
+                          Start Campaign
+                        </>
+                      )}
                     </Button>
                   )}
                 </div>
@@ -727,30 +736,55 @@ Best regards"
           </div>
         </main>
 
-        {/* Start Campaign Dialog */}
+        {/* Start/Schedule Campaign Dialog */}
         <AlertDialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle className="font-heading font-semibold">
-                Start Campaign?
+                {sendOption === "schedule" ? "Schedule Campaign?" : "Start Campaign?"}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                This will begin sending emails to your list. Emails will be sent
-                gradually with random delays and rotated across your connected accounts.
+                {sendOption === "schedule" ? (
+                  scheduleDate && scheduleTime ? (
+                    <>
+                      This campaign will be scheduled to start on{" "}
+                      <span className="font-semibold text-slate-900">
+                        {new Date(`${scheduleDate}T${scheduleTime}`).toLocaleString()}
+                      </span>
+                      . Emails will be sent gradually with random delays and rotated across your connected accounts.
+                    </>
+                  ) : (
+                    "Please select a date and time to schedule this campaign."
+                  )
+                ) : (
+                  "This will begin sending emails to your list. Emails will be sent gradually with random delays and rotated across your connected accounts."
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel data-testid="cancel-start-btn">
                 Cancel
               </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => handleStartCampaign(editId)}
-                className="bg-signal-orange hover:bg-orange-600"
-                data-testid="confirm-start-btn"
-              >
-                <Play size={16} className="mr-2" />
-                Start Now
-              </AlertDialogAction>
+              {sendOption === "schedule" ? (
+                <AlertDialogAction
+                  onClick={() => handleScheduleCampaign(editId)}
+                  disabled={!scheduleDate || !scheduleTime}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  data-testid="confirm-schedule-btn"
+                >
+                  <CalendarClock size={16} className="mr-2" />
+                  Schedule
+                </AlertDialogAction>
+              ) : (
+                <AlertDialogAction
+                  onClick={() => handleStartCampaign(editId)}
+                  className="bg-signal-orange hover:bg-orange-600"
+                  data-testid="confirm-start-btn"
+                >
+                  <Play size={16} className="mr-2" />
+                  Start Now
+                </AlertDialogAction>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
