@@ -119,12 +119,13 @@ class Campaign(BaseModel):
     from_name: Optional[str] = None
     list_id: Optional[str] = None
     account_ids: List[str] = []
-    status: str = "draft"  # draft, running, paused, paused_daily_limit, completed, failed
+    status: str = "draft"  # draft, scheduled, running, paused, paused_daily_limit, completed, failed
     total_emails: int = 0
     sent_count: int = 0
     failed_count: int = 0
     current_account_index: int = 0
     is_locked: bool = False  # Prevents editing when running
+    scheduled_at: Optional[datetime] = None  # For scheduled campaigns
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
@@ -183,6 +184,7 @@ class CreateCampaignRequest(BaseModel):
     from_name: Optional[str] = None
     list_id: Optional[str] = None
     account_ids: List[str] = []
+    scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -192,6 +194,7 @@ class UpdateCampaignRequest(BaseModel):
     from_name: Optional[str] = None
     list_id: Optional[str] = None
     account_ids: Optional[List[str]] = None
+    scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
 
 class AddToSuppressionRequest(BaseModel):
     email: str
