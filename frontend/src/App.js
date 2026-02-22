@@ -213,6 +213,9 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+      {/* Auth Routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -223,6 +226,7 @@ function App() {
     <div className="App font-body">
       <BrowserRouter>
         <AppRouter />
+        <TawkWidget />
       </BrowserRouter>
       <Toaster position="bottom-right" />
     </div>
