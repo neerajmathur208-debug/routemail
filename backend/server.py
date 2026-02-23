@@ -2094,6 +2094,379 @@ async def delete_user(
         logger.error(f"Delete user error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
+
+class CreateCheckoutRequest(BaseModel):
+    price_id: str
+    success_url: str
+    cancel_url: str
+
+@api_router.get("/subscription/status")
+async def get_subscription_status(user: User = Depends(get_current_user)):
+    """Get current user's subscription status and limits"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    sub_status = await check_subscription_active(user.user_id)
+    limits = await get_user_plan_limits(user.user_id)
+    account_usage = await check_account_limit(user.user_id)
+    contact_usage = await check_contact_limit(user.user_id)
+    recipient_usage = await check_recipient_limit(user.user_id)
+    
+    return {
+        "plan_type": user_doc.get("plan_type", "free"),
+        "subscription_status": user_doc.get("subscription_status", "trialing"),
+        "subscription_active": sub_status.get("active", False),
+        "status_details": sub_status,
+        "trial_ends_at": user_doc.get("trial_ends_at"),
+        "billing_cycle_end": user_doc.get("billing_cycle_end"),
+        "limits": limits,
+        "usage": {
+            "accounts": account_usage,
+            "contacts": contact_usage,
+            "recipients": recipient_usage
+        }
+    }
+
+@api_router.get("/subscription/prices")
+async def get_subscription_prices():
+    """Get available subscription prices"""
+    return {
+        "plans": [
+            {
+                "name": "Starter",
+                "prices": {
+                    "usd": {"price_id": STRIPE_PRICES["starter_usd"], "amount": 99, "currency": "USD"},
+                    "inr": {"price_id": STRIPE_PRICES["starter_inr"], "amount": 7999, "currency": "INR"}
+                },
+                "features": {
+                    "max_accounts": 10,
+                    "max_contacts": 4000,
+                    "max_monthly_recipients": 4000
+                }
+            },
+            {
+                "name": "Growth",
+                "prices": {
+                    "usd": {"price_id": STRIPE_PRICES["growth_usd"], "amount": 149, "currency": "USD"},
+                    "inr": {"price_id": STRIPE_PRICES["growth_inr"], "amount": 11999, "currency": "INR"}
+                },
+                "features": {
+                    "max_accounts": 15,
+                    "max_contacts": 10000,
+                    "max_monthly_recipients": 10000
+                }
+            }
+        ],
+        "free_plan": {
+            "name": "Free Trial",
+            "trial_days": 14,
+            "features": {
+                "max_accounts": 3,
+                "max_contacts": 500,
+                "max_monthly_recipients": 500
+            }
+        }
+    }
+
+@api_router.post("/subscription/create-checkout")
+async def create_checkout_session(request: CreateCheckoutRequest, user: User = Depends(get_current_user)):
+    """Create a Stripe checkout session for subscription"""
+    try:
+        user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get or create Stripe customer
+        customer_id = user_doc.get("stripe_customer_id")
+        
+        if not customer_id:
+            # Create new Stripe customer
+            customer = stripe.Customer.create(
+                email=user_doc["email"],
+                name=user_doc.get("name", ""),
+                metadata={"user_id": user.user_id}
+            )
+            customer_id = customer.id
+            
+            # Save customer ID
+            await db.users.update_one(
+                {"user_id": user.user_id},
+                {"$set": {"stripe_customer_id": customer_id}}
+            )
+        
+        # Determine plan from price_id
+        plan_type = "starter"
+        if request.price_id in [STRIPE_PRICES["growth_usd"], STRIPE_PRICES["growth_inr"]]:
+            plan_type = "growth"
+        
+        # Create checkout session
+        checkout_session = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=["card"],
+            line_items=[{
+                "price": request.price_id,
+                "quantity": 1
+            }],
+            mode="subscription",
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+            metadata={
+                "user_id": user.user_id,
+                "plan_type": plan_type
+            },
+            subscription_data={
+                "metadata": {
+                    "user_id": user.user_id,
+                    "plan_type": plan_type
+                }
+            }
+        )
+        
+        return {"checkout_url": checkout_session.url, "session_id": checkout_session.id}
+    
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Checkout error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/subscription/create-portal")
+async def create_customer_portal(user: User = Depends(get_current_user)):
+    """Create a Stripe customer portal session for managing subscription"""
+    try:
+        user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        customer_id = user_doc.get("stripe_customer_id")
+        if not customer_id:
+            raise HTTPException(status_code=400, detail="No subscription found")
+        
+        # Create portal session
+        portal_session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{os.environ.get('FRONTEND_URL', 'https://routemail-preview.preview.emergentagent.com')}/dashboard"
+        )
+        
+        return {"portal_url": portal_session.url}
+    
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe portal error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Portal error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        logger.error(f"Invalid payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f"Invalid signature: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    event_type = event["type"]
+    data = event["data"]["object"]
+    
+    logger.info(f"Received Stripe webhook: {event_type}")
+    
+    try:
+        if event_type == "checkout.session.completed":
+            await handle_checkout_completed(data)
+        elif event_type == "invoice.paid":
+            await handle_invoice_paid(data)
+        elif event_type == "invoice.payment_failed":
+            await handle_payment_failed(data)
+        elif event_type == "customer.subscription.deleted":
+            await handle_subscription_deleted(data)
+        elif event_type == "customer.subscription.updated":
+            await handle_subscription_updated(data)
+    except Exception as e:
+        logger.error(f"Webhook handler error: {e}")
+        # Return 200 to avoid retries
+    
+    return {"status": "success"}
+
+async def handle_checkout_completed(session):
+    """Handle successful checkout"""
+    try:
+        customer_id = session.get("customer")
+        subscription_id = session.get("subscription")
+        metadata = session.get("metadata", {})
+        user_id = metadata.get("user_id")
+        plan_type = metadata.get("plan_type", "starter")
+        
+        if not user_id:
+            # Try to find by customer email
+            customer = stripe.Customer.retrieve(customer_id)
+            user = await db.users.find_one({"email": customer.email}, {"_id": 0})
+            if user:
+                user_id = user["user_id"]
+        
+        if not user_id:
+            logger.error(f"Could not find user for checkout: {session.get('id')}")
+            return
+        
+        # Get subscription details
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        
+        update_data = {
+            "plan_type": plan_type,
+            "subscription_status": "active",
+            "stripe_customer_id": customer_id,
+            "stripe_subscription_id": subscription_id,
+            "billing_cycle_start": datetime.fromtimestamp(subscription.current_period_start, tz=timezone.utc).isoformat(),
+            "billing_cycle_end": datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc).isoformat(),
+            "trial_ends_at": None,
+            "grace_period_end": None
+        }
+        
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": update_data}
+        )
+        
+        logger.info(f"User {user_id} upgraded to {plan_type}")
+        
+    except Exception as e:
+        logger.error(f"handle_checkout_completed error: {e}")
+
+async def handle_invoice_paid(invoice):
+    """Handle successful invoice payment (renewal)"""
+    try:
+        customer_id = invoice.get("customer")
+        subscription_id = invoice.get("subscription")
+        
+        user = await db.users.find_one({"stripe_customer_id": customer_id}, {"_id": 0})
+        if not user:
+            logger.warning(f"No user found for customer: {customer_id}")
+            return
+        
+        # Get subscription details
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        
+        # Check if this is a new billing cycle
+        old_cycle_end = user.get("billing_cycle_end")
+        new_cycle_start = datetime.fromtimestamp(subscription.current_period_start, tz=timezone.utc)
+        
+        update_data = {
+            "subscription_status": "active",
+            "billing_cycle_start": new_cycle_start.isoformat(),
+            "billing_cycle_end": datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc).isoformat(),
+            "grace_period_end": None
+        }
+        
+        # Reset recipient counter if new billing cycle
+        if old_cycle_end:
+            if isinstance(old_cycle_end, str):
+                old_cycle_end = datetime.fromisoformat(old_cycle_end.replace('Z', '+00:00'))
+            if new_cycle_start > old_cycle_end:
+                update_data["monthly_unique_recipient_count"] = 0
+                update_data["last_recipient_reset_date"] = new_cycle_start.isoformat()
+        
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": update_data}
+        )
+        
+        logger.info(f"Invoice paid for user {user['user_id']}")
+        
+    except Exception as e:
+        logger.error(f"handle_invoice_paid error: {e}")
+
+async def handle_payment_failed(invoice):
+    """Handle failed payment"""
+    try:
+        customer_id = invoice.get("customer")
+        
+        user = await db.users.find_one({"stripe_customer_id": customer_id}, {"_id": 0})
+        if not user:
+            return
+        
+        grace_end = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {
+                "subscription_status": "past_due",
+                "grace_period_end": grace_end.isoformat()
+            }}
+        )
+        
+        logger.info(f"Payment failed for user {user['user_id']}, grace period until {grace_end}")
+        
+    except Exception as e:
+        logger.error(f"handle_payment_failed error: {e}")
+
+async def handle_subscription_deleted(subscription):
+    """Handle subscription cancellation"""
+    try:
+        customer_id = subscription.get("customer")
+        
+        user = await db.users.find_one({"stripe_customer_id": customer_id}, {"_id": 0})
+        if not user:
+            return
+        
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {
+                "plan_type": "free",
+                "subscription_status": "canceled",
+                "stripe_subscription_id": None,
+                "billing_cycle_start": None,
+                "billing_cycle_end": None
+            }}
+        )
+        
+        logger.info(f"Subscription canceled for user {user['user_id']}")
+        
+    except Exception as e:
+        logger.error(f"handle_subscription_deleted error: {e}")
+
+async def handle_subscription_updated(subscription):
+    """Handle subscription updates (downgrades scheduled at period end)"""
+    try:
+        customer_id = subscription.get("customer")
+        cancel_at_period_end = subscription.get("cancel_at_period_end", False)
+        
+        user = await db.users.find_one({"stripe_customer_id": customer_id}, {"_id": 0})
+        if not user:
+            return
+        
+        update_data = {}
+        
+        if cancel_at_period_end:
+            update_data["subscription_status"] = "canceled_pending"
+        else:
+            # Subscription reactivated
+            update_data["subscription_status"] = "active"
+            update_data["billing_cycle_end"] = datetime.fromtimestamp(
+                subscription.current_period_end, tz=timezone.utc
+            ).isoformat()
+        
+        if update_data:
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": update_data}
+            )
+        
+        logger.info(f"Subscription updated for user {user['user_id']}")
+        
+    except Exception as e:
+        logger.error(f"handle_subscription_updated error: {e}")
+
 # ==================== BASIC ROUTES ====================
 
 @api_router.get("/")
