@@ -32,6 +32,15 @@ export default function LandingPage() {
     navigate("/register");
   };
 
+  // Handle plan-specific signup - pass plan in query params
+  const handleSelectPlan = (plan) => {
+    if (plan === "free") {
+      navigate("/register");
+    } else {
+      navigate(`/register?plan=${plan}`);
+    }
+  };
+
   const painPoints = [
     "Sending limits on a single email account",
     "Emails landing in spam",
