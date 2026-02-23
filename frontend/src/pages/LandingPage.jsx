@@ -799,7 +799,7 @@ export default function LandingPage() {
               </div>
               <h3 className="font-heading font-bold text-2xl mb-2 mt-2">Starter</h3>
               <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-4xl font-extrabold">$99</span>
+                <span className="text-4xl font-extrabold">{getPrice("starter")}</span>
                 <span className="text-blue-200">/year</span>
               </div>
               
