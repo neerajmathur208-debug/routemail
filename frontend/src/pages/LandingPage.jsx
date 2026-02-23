@@ -783,15 +783,15 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">7,000 stored contacts</span>
+                  <span className="text-white/90">4,000 stored contacts</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">4,000 recipients/month</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
                   <span className="text-white/90">Full rotation engine</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">Scheduler included</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
