@@ -21,6 +21,31 @@ export default function Register() {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [currency, setCurrency] = useState("usd");
+
+  useEffect(() => {
+    detectCountry();
+  }, []);
+
+  const detectCountry = async () => {
+    try {
+      const response = await fetch("https://ipapi.co/json/");
+      const data = await response.json();
+      if (data.country_code === "IN") {
+        setCurrency("inr");
+      }
+    } catch (error) {
+      console.log("Could not detect country, defaulting to USD");
+    }
+  };
+
+  // Get display price based on geo
+  const getDisplayPrice = (plan) => {
+    if (currency === "inr") {
+      return plan === "starter" ? "₹5,000/year" : "₹12,000/year";
+    }
+    return plan === "starter" ? "$99/year" : "$149/year";
+  };
 
   const handleGoogleLogin = () => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
