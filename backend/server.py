@@ -664,6 +664,9 @@ async def register_email(request: EmailRegisterRequest, response: Response):
     
     await db.users.insert_one(user_doc)
     
+    # Apply permanent plan assignment if applicable
+    await apply_permanent_plan_if_applicable(request.email, user_id)
+    
     # Create session
     session_token = uuid.uuid4().hex
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -687,13 +690,16 @@ async def register_email(request: EmailRegisterRequest, response: Response):
         max_age=7 * 24 * 60 * 60
     )
     
+    # Get updated user data (may have permanent plan applied)
+    updated_user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    
     return {
         "user_id": user_id,
         "email": request.email,
         "name": request.name,
         "picture": None,
-        "subscription_status": "trialing",
-        "plan_type": "free",
+        "subscription_status": updated_user.get("subscription_status", "trialing"),
+        "plan_type": updated_user.get("plan_type", "free"),
         "role": role
     }
 
