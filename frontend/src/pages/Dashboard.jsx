@@ -235,14 +235,16 @@ export default function Dashboard({ user, setUser }) {
               </div>
             </motion.div>
 
-            {/* Upgrade Banner - Show for free users */}
-            {subscriptionData && subscriptionData.plan_type === "free" && (
+            {/* Upgrade Banner - Show for free and starter users */}
+            {subscriptionData && subscriptionData.plan_type !== "growth" && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`mb-6 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
                   subscriptionData.subscription_status === "expired" 
                     ? "bg-gradient-to-r from-red-500 to-rose-500 text-white"
+                    : subscriptionData.plan_type === "starter"
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white"
                     : "bg-gradient-to-r from-blue-500 to-violet-500 text-white"
                 }`}
                 data-testid="upgrade-banner"
@@ -250,6 +252,8 @@ export default function Dashboard({ user, setUser }) {
                 <div className="flex items-center gap-3">
                   {subscriptionData.subscription_status === "expired" ? (
                     <AlertTriangle size={24} />
+                  ) : subscriptionData.plan_type === "starter" ? (
+                    <Crown size={24} />
                   ) : (
                     <Clock size={24} />
                   )}
@@ -258,6 +262,11 @@ export default function Dashboard({ user, setUser }) {
                       <>
                         <p className="font-semibold">Your trial has expired</p>
                         <p className="text-sm opacity-90">Upgrade to continue sending emails</p>
+                      </>
+                    ) : subscriptionData.plan_type === "starter" ? (
+                      <>
+                        <p className="font-semibold">You're on the Starter Plan</p>
+                        <p className="text-sm opacity-90">Upgrade to Growth for higher limits and more features</p>
                       </>
                     ) : (
                       <>
@@ -273,25 +282,40 @@ export default function Dashboard({ user, setUser }) {
                   </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
-                  <Button
-                    size="sm"
-                    className="bg-white text-blue-600 hover:bg-blue-50 flex-1 sm:flex-none"
-                    onClick={() => navigate("/subscription")}
-                    data-testid="banner-upgrade-starter-btn"
-                  >
-                    <Zap size={14} className="mr-1" />
-                    Upgrade to Starter
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="bg-transparent border-white/30 text-white hover:bg-white/10 flex-1 sm:flex-none"
-                    onClick={() => navigate("/subscription")}
-                    data-testid="banner-upgrade-growth-btn"
-                  >
-                    <Crown size={14} className="mr-1" />
-                    Upgrade to Growth
-                  </Button>
+                  {subscriptionData.plan_type === "free" && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-white text-blue-600 hover:bg-blue-50 flex-1 sm:flex-none"
+                        onClick={() => navigate("/subscription")}
+                        data-testid="banner-upgrade-starter-btn"
+                      >
+                        <Zap size={14} className="mr-1" />
+                        Upgrade to Starter Plan
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-transparent border-white/30 text-white hover:bg-white/10 flex-1 sm:flex-none"
+                        onClick={() => navigate("/subscription")}
+                        data-testid="banner-upgrade-growth-btn"
+                      >
+                        <Crown size={14} className="mr-1" />
+                        Upgrade to Growth Plan
+                      </Button>
+                    </>
+                  )}
+                  {subscriptionData.plan_type === "starter" && (
+                    <Button
+                      size="sm"
+                      className="bg-white text-amber-600 hover:bg-amber-50 flex-1 sm:flex-none"
+                      onClick={() => navigate("/subscription")}
+                      data-testid="banner-upgrade-growth-btn"
+                    >
+                      <Crown size={14} className="mr-1" />
+                      Upgrade to Growth Plan
+                    </Button>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -409,24 +433,25 @@ export default function Dashboard({ user, setUser }) {
                 </motion.div>
               </div>
 
-              {/* Quick Start Section - Moved to Left Column */}
+              {/* Start Your Campaigns Section - Moved to Left Column */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.35 }}
-                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
+                className="bg-slate-50 rounded-[20px] p-6 shadow-md border border-slate-200"
+                data-testid="start-campaigns-section"
               >
-                <h3 className="font-semibold text-slate-900 mb-4">Quick Start</h3>
+                <h3 className="font-semibold text-slate-900 mb-5 text-lg">Start Your Campaigns</h3>
 
-                <div className="grid sm:grid-cols-3 gap-3">
-                  {/* Step 1 */}
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {/* Step 1 - Connect Email Accounts */}
                   <div className={`p-4 rounded-xl transition-all ${
-                    needsAccounts ? "bg-slate-50" : "bg-emerald-50/70"
-                  }`}>
+                    needsAccounts ? "bg-white" : "bg-emerald-50"
+                  } shadow-sm`}>
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          needsAccounts ? "bg-white shadow-sm" : "bg-emerald-100"
+                          needsAccounts ? "bg-slate-100" : "bg-emerald-100"
                         }`}>
                           {needsAccounts ? (
                             <span className="text-slate-600 font-semibold">1</span>
@@ -436,35 +461,37 @@ export default function Dashboard({ user, setUser }) {
                         </div>
                         <div className="flex flex-col">
                           <span className={`text-sm font-medium ${needsAccounts ? "text-slate-700" : "text-emerald-700"}`}>
-                            Connect Accounts
+                            Connect Email Accounts
                           </span>
                           <span className={`text-xs ${needsAccounts ? "text-slate-400" : "text-emerald-500"}`}>
                             {needsAccounts ? "Add sender accounts" : `${stats?.total_accounts} connected`}
                           </span>
                         </div>
                       </div>
-                      {needsAccounts && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-lg text-xs h-8 whitespace-nowrap"
-                          onClick={() => navigate("/accounts")}
-                          data-testid="quick-add-account-btn"
-                        >
-                          Add
-                        </Button>
-                      )}
                     </div>
+                    <Button
+                      size="sm"
+                      className={`w-full mt-3 rounded-lg text-xs h-9 shadow-sm ${
+                        needsAccounts 
+                          ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      }`}
+                      onClick={() => navigate("/accounts")}
+                      data-testid="quick-add-account-btn"
+                    >
+                      <Mail size={14} className="mr-1.5" />
+                      {needsAccounts ? "Add Accounts" : "Manage"}
+                    </Button>
                   </div>
 
-                  {/* Step 2 */}
+                  {/* Step 2 - Upload Lists */}
                   <div className={`p-4 rounded-xl transition-all ${
-                    needsList ? "bg-slate-50" : "bg-emerald-50/70"
-                  }`}>
+                    needsList ? "bg-white" : "bg-emerald-50"
+                  } shadow-sm`}>
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          needsList ? "bg-white shadow-sm" : "bg-emerald-100"
+                          needsList ? "bg-slate-100" : "bg-emerald-100"
                         }`}>
                           {needsList ? (
                             <span className="text-slate-600 font-semibold">2</span>
@@ -481,40 +508,92 @@ export default function Dashboard({ user, setUser }) {
                           </span>
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="rounded-lg text-xs h-8 whitespace-nowrap"
-                        onClick={() => navigate("/email-lists")}
-                        data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
-                      >
-                        {needsList ? "Upload" : "View"}
-                      </Button>
                     </div>
+                    <Button
+                      size="sm"
+                      className={`w-full mt-3 rounded-lg text-xs h-9 shadow-sm ${
+                        needsList 
+                          ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      }`}
+                      onClick={() => navigate("/email-lists")}
+                      data-testid={needsList ? "quick-upload-btn" : "manage-lists-btn"}
+                    >
+                      <Users size={14} className="mr-1.5" />
+                      {needsList ? "Upload List" : "View Lists"}
+                    </Button>
                   </div>
 
-                  {/* Step 3 */}
-                  <div className="p-4 rounded-xl bg-slate-50">
+                  {/* Step 3 - Start Campaign (Always visible) */}
+                  <div className="p-4 rounded-xl bg-white shadow-sm">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white shadow-sm">
-                          <Zap size={16} className="text-amber-500" />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-100">
+                          <Zap size={16} className="text-amber-600" />
                         </div>
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-slate-700">Start Campaign</span>
                           <span className="text-xs text-slate-400">Send emails</span>
                         </div>
                       </div>
-                      {!needsAccounts && !needsList && (
-                        <Button
-                          size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs h-8 whitespace-nowrap"
-                          onClick={() => navigate("/campaign")}
-                          data-testid="quick-campaign-btn"
-                        >
-                          Create
-                        </Button>
-                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full mt-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg text-xs h-9 shadow-sm"
+                      onClick={() => navigate("/campaign")}
+                      data-testid="quick-campaign-btn"
+                    >
+                      <Send size={14} className="mr-1.5" />
+                      Create Campaign
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* How to Launch Your First Campaign - Instruction Steps */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.38 }}
+                className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
+                data-testid="instructions-section"
+              >
+                <h4 className="font-semibold text-slate-800 mb-4 text-base">How to Launch Your First Campaign</h4>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-blue-600 font-semibold text-sm">1</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Connect your email accounts</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Add Gmail, Outlook, or SMTP accounts for sending.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-emerald-600 font-semibold text-sm">2</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Upload your contact list</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Import your prospects using CSV format.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-amber-600 font-semibold text-sm">3</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Create your campaign</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Write your email and choose your recipient list.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-violet-600 font-semibold text-sm">4</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Launch and monitor</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Track sends and manage replies from the dashboard.</p>
                     </div>
                   </div>
                 </div>
