@@ -138,23 +138,22 @@ export default function Sidebar({ user, setUser }) {
       )}
 
       {/* Sidebar */}
-      <motion.aside
-        initial={{ x: -280 }}
-        animate={{ x: mobileOpen ? 0 : -280 }}
+      <aside
         className={`
           fixed top-0 left-0 h-full w-[280px] bg-white border-r border-slate-200 z-50
-          lg:translate-x-0 lg:static
-          flex flex-col
+          flex flex-col transition-transform duration-300 ease-in-out
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0 lg:static lg:z-auto
         `}
-        style={{ transform: "none" }}
       >
         {/* Logo */}
         <div className="h-24 flex items-center px-6 border-b border-slate-200 py-4">
           <img 
             src="/routemail-logo.png" 
             alt="RoutEmail" 
-            className="h-16 w-auto object-contain cursor-pointer"
+            className="h-20 w-auto object-contain cursor-pointer"
             onClick={() => navigate("/dashboard")}
+            data-testid="sidebar-logo"
           />
         </div>
 
