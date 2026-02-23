@@ -219,7 +219,7 @@ export default function Sidebar({ user, setUser }) {
             <span className="font-medium">Sign Out</span>
           </button>
         </div>
-      </motion.aside>
+      </aside>
 
       {/* Main content spacer for mobile */}
       <div className="lg:hidden h-20" />
