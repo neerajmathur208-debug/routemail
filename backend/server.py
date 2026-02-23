@@ -720,6 +720,9 @@ async def login_email(request: EmailLoginRequest, response: Response):
     if not bcrypt.checkpw(request.password.encode('utf-8'), user_doc["password_hash"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    # Apply permanent plan assignment if applicable (ensure plan is always correct)
+    await apply_permanent_plan_if_applicable(request.email, user_doc["user_id"])
+    
     # Create session
     session_token = uuid.uuid4().hex
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -743,13 +746,17 @@ async def login_email(request: EmailLoginRequest, response: Response):
         max_age=7 * 24 * 60 * 60
     )
     
+    # Get updated user data (may have permanent plan applied)
+    updated_user = await db.users.find_one({"user_id": user_doc["user_id"]}, {"_id": 0})
+    
     return {
-        "user_id": user_doc["user_id"],
-        "email": user_doc["email"],
-        "name": user_doc.get("name", ""),
-        "picture": user_doc.get("picture"),
-        "subscription_status": user_doc.get("subscription_status", "active"),
-        "role": user_doc.get("role", "user")
+        "user_id": updated_user["user_id"],
+        "email": updated_user["email"],
+        "name": updated_user.get("name", ""),
+        "picture": updated_user.get("picture"),
+        "subscription_status": updated_user.get("subscription_status", "active"),
+        "plan_type": updated_user.get("plan_type", "free"),
+        "role": updated_user.get("role", "user")
     }
 
 # ==================== EMAIL ACCOUNT ENDPOINTS ====================
