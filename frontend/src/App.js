@@ -24,6 +24,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Subscription from "./pages/Subscription";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
