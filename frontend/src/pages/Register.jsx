@@ -155,6 +155,27 @@ export default function Register() {
           <p className="mt-2 text-slate-600">Create your account</p>
         </div>
 
+        {/* Selected Plan Banner */}
+        {selectedPlan && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-4 p-4 rounded-xl flex items-center gap-3 ${
+              selectedPlan === "starter" 
+                ? "bg-gradient-to-r from-blue-500 to-violet-500 text-white" 
+                : "bg-gradient-to-r from-amber-500 to-orange-500 text-white"
+            }`}
+          >
+            {selectedPlan === "starter" ? <Zap size={20} /> : <Crown size={20} />}
+            <div>
+              <p className="font-semibold capitalize">{selectedPlan} Plan Selected</p>
+              <p className="text-sm opacity-90">
+                {selectedPlan === "starter" ? "$99/year" : "$149/year"} - You'll checkout after registration
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8">
           {/* Google Sign Up */}
           <Button
