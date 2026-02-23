@@ -69,6 +69,13 @@ PLAN_LIMITS = {
     },
 }
 
+# Permanently Assigned Plans (these accounts always have these plans regardless of Stripe)
+# This is a business decision override - these users get permanent access
+PERMANENT_PLAN_ASSIGNMENTS = {
+    "dhruvmathur5@gmail.com": "starter",
+    "perfectdigitals208@gmail.com": "growth",
+}
+
 # Create the main app
 app = FastAPI()
 
