@@ -718,11 +718,30 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
         if acc.get("last_send_date") != today:
             acc["daily_send_count"] = 0
     
-    return accounts
+    # Add limit info
+    account_limit = await check_account_limit(user.user_id)
+    
+    return {
+        "accounts": accounts,
+        "limit_info": account_limit
+    }
 
 @api_router.post("/accounts/smtp")
 async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(get_current_user)):
     """Add a new SMTP email account"""
+    # Check subscription is active
+    sub_status = await check_subscription_active(user.user_id)
+    if not sub_status.get("active"):
+        raise HTTPException(status_code=403, detail=f"Subscription required: {sub_status.get('reason', 'Inactive subscription')}")
+    
+    # Check account limit
+    account_limit = await check_account_limit(user.user_id)
+    if not account_limit["can_add"]:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Account limit reached. Your plan allows {account_limit['limit']} accounts. Please upgrade to add more."
+        )
+    
     existing = await db.email_accounts.find_one(
         {"user_id": user.user_id, "email": request.email},
         {"_id": 0}
