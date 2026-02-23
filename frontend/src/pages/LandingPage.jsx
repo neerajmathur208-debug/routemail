@@ -757,7 +757,7 @@ export default function LandingPage() {
               </div>
 
               <Button
-                onClick={handleStartFree}
+                onClick={() => handleSelectPlan("free")}
                 variant="outline"
                 className="w-full rounded-full py-6"
                 data-testid="pricing-free-btn"
@@ -809,7 +809,7 @@ export default function LandingPage() {
               </div>
 
               <Button
-                onClick={handleStartFree}
+                onClick={() => handleSelectPlan("starter")}
                 className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full py-6 font-semibold"
                 data-testid="pricing-starter-btn"
               >
@@ -842,11 +842,11 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Full rotation engine</span>
+                  <span className="text-slate-700">10,000 recipients/month</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Scheduler included</span>
+                  <span className="text-slate-700">Full rotation engine</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
@@ -855,7 +855,7 @@ export default function LandingPage() {
               </div>
 
               <Button
-                onClick={handleStartFree}
+                onClick={() => handleSelectPlan("growth")}
                 variant="outline"
                 className="w-full rounded-full py-6"
                 data-testid="pricing-growth-btn"
