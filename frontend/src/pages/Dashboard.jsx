@@ -162,6 +162,16 @@ export default function Dashboard({ user, setUser }) {
   const needsAccounts = stats?.total_accounts === 0;
   const needsList = stats?.total_lists === 0;
 
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    setUser(null);
+    navigate("/", { replace: true });
+  };
+
   return (
     <div className="flex min-h-screen bg-[#faf9f7]">
       <Sidebar user={user} setUser={setUser} />
@@ -169,16 +179,35 @@ export default function Dashboard({ user, setUser }) {
       <main className="flex-1 overflow-y-auto">
         <div className="w-full flex justify-center">
           <div className="w-full max-w-[1300px] px-6 py-6 lg:py-8">
-            {/* Header */}
+            {/* Header with Logout */}
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6"
+              className="mb-6 flex items-start justify-between"
             >
-              <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-                Dashboard
-              </h1>
-              <p className="text-slate-500 mt-1">Track your email campaign performance</p>
+              <div>
+                <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
+                  Dashboard
+                </h1>
+                <p className="text-slate-500 mt-1">Track your email campaign performance</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {user && (
+                  <div className="hidden sm:flex items-center gap-2 text-sm text-slate-600">
+                    <span>{user.email}</span>
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                  data-testid="logout-btn"
+                >
+                  <LogOut size={18} />
+                  <span className="hidden sm:inline ml-2">Logout</span>
+                </Button>
+              </div>
             </motion.div>
 
             {/* Upgrade Banner - Show for free users */}
