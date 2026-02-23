@@ -331,13 +331,24 @@ export default function Subscription({ user, setUser }) {
                 </li>
               </ul>
 
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={currentPlan === "free"}
-              >
-                {currentPlan === "free" ? "Current Plan" : "Free Trial"}
-              </Button>
+              {currentPlan === "free" ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled
+                >
+                  Current Plan
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleManageSubscription}
+                  variant="outline"
+                  className="w-full text-slate-600 hover:text-red-600 hover:border-red-300"
+                  data-testid="downgrade-free-btn"
+                >
+                  Downgrade to Free
+                </Button>
+              )}
             </motion.div>
 
             {/* Starter Plan */}
@@ -387,22 +398,47 @@ export default function Subscription({ user, setUser }) {
                 </li>
               </ul>
 
-              <Button
-                onClick={() => handleUpgrade("starter")}
-                disabled={currentPlan === "starter" || currentPlan === "growth" || checkoutLoading === "starter"}
-                className="w-full bg-white text-blue-600 hover:bg-blue-50"
-                data-testid="upgrade-starter-btn"
-              >
-                {checkoutLoading === "starter" ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : currentPlan === "starter" ? (
-                  "Current Plan"
-                ) : currentPlan === "growth" ? (
-                  "Downgrade"
-                ) : (
-                  "Upgrade to Starter"
-                )}
-              </Button>
+              {currentPlan === "starter" ? (
+                <div className="space-y-2">
+                  <Button
+                    className="w-full bg-white/20 text-white cursor-default"
+                    disabled
+                    data-testid="current-starter-btn"
+                  >
+                    Current Plan
+                  </Button>
+                  <Button
+                    onClick={handleManageSubscription}
+                    variant="outline"
+                    className="w-full bg-transparent border-white/30 text-white hover:bg-white/10"
+                    data-testid="cancel-starter-btn"
+                  >
+                    Cancel Subscription
+                  </Button>
+                </div>
+              ) : currentPlan === "growth" ? (
+                <Button
+                  onClick={handleManageSubscription}
+                  variant="outline"
+                  className="w-full bg-transparent border-white/30 text-white hover:bg-white/10"
+                  data-testid="downgrade-to-starter-btn"
+                >
+                  Downgrade to Starter
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => handleUpgrade("starter")}
+                  disabled={checkoutLoading === "starter"}
+                  className="w-full bg-white text-blue-600 hover:bg-blue-50"
+                  data-testid="upgrade-starter-btn"
+                >
+                  {checkoutLoading === "starter" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Upgrade to Starter"
+                  )}
+                </Button>
+              )}
             </motion.div>
 
             {/* Growth Plan */}
@@ -447,21 +483,59 @@ export default function Subscription({ user, setUser }) {
                 </li>
               </ul>
 
-              <Button
-                onClick={() => handleUpgrade("growth")}
-                disabled={currentPlan === "growth" || checkoutLoading === "growth"}
-                variant="outline"
-                className="w-full"
-                data-testid="upgrade-growth-btn"
-              >
-                {checkoutLoading === "growth" ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : currentPlan === "growth" ? (
-                  "Current Plan"
-                ) : (
-                  "Upgrade to Growth"
-                )}
-              </Button>
+              {currentPlan === "growth" ? (
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full border-amber-500 text-amber-700 cursor-default"
+                    disabled
+                    data-testid="current-growth-btn"
+                  >
+                    <Crown size={16} className="mr-2" />
+                    Current Plan
+                  </Button>
+                  <Button
+                    onClick={handleManageSubscription}
+                    variant="outline"
+                    className="w-full text-slate-600 hover:text-red-600 hover:border-red-300"
+                    data-testid="downgrade-from-growth-btn"
+                  >
+                    Downgrade to Starter
+                  </Button>
+                  <Button
+                    onClick={handleManageSubscription}
+                    variant="outline"
+                    className="w-full text-slate-500 hover:text-red-600 hover:border-red-300"
+                    data-testid="downgrade-free-from-growth-btn"
+                  >
+                    Downgrade to Free
+                  </Button>
+                  <Button
+                    onClick={handleManageSubscription}
+                    variant="ghost"
+                    className="w-full text-red-500 hover:text-red-700 hover:bg-red-50"
+                    data-testid="cancel-growth-btn"
+                  >
+                    Cancel Subscription
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => handleUpgrade("growth")}
+                  disabled={checkoutLoading === "growth"}
+                  className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                  data-testid="upgrade-growth-btn"
+                >
+                  {checkoutLoading === "growth" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Crown size={16} className="mr-2" />
+                      Upgrade to Growth
+                    </>
+                  )}
+                </Button>
+              )}
             </motion.div>
           </div>
         </div>
