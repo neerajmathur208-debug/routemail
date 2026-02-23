@@ -845,7 +845,7 @@ export default function LandingPage() {
             >
               <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Growth</h3>
               <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-4xl font-extrabold text-slate-900">$149</span>
+                <span className="text-4xl font-extrabold text-slate-900">{getPrice("growth")}</span>
                 <span className="text-slate-500">/year</span>
               </div>
               
