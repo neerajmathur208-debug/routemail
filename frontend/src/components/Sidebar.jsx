@@ -112,7 +112,7 @@ export default function Sidebar({ user, setUser }) {
     <>
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-20 bg-white border-b border-slate-200 z-40 flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/dashboard")}>
           <img 
             src="/routemail-logo.png" 
             alt="RoutEmail" 
