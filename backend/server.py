@@ -470,8 +470,6 @@ async def exchange_session(request: SessionRequest, response: Response):
         update_data = {
             "name": name, 
             "picture": picture,
-            "subscription_status": "active",
-            "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
             "role": role
         }
         # Only set provider to google if not already an email user
@@ -484,20 +482,28 @@ async def exchange_session(request: SessionRequest, response: Response):
     else:
         # Determine role for new user
         role = "super_admin" if email == SUPER_ADMIN_EMAIL else "user"
-        new_user = User(
-            user_id=user_id,
-            email=email,
-            name=name,
-            picture=picture,
-            subscription_status="active",
-            subscription_expires_at=datetime.now(timezone.utc) + timedelta(days=365)
-        )
-        user_dict = new_user.model_dump()
-        user_dict["created_at"] = user_dict["created_at"].isoformat()
-        user_dict["role"] = role  # Add role field
-        user_dict["provider"] = "google"  # Mark as Google OAuth user
-        if user_dict.get("subscription_expires_at"):
-            user_dict["subscription_expires_at"] = user_dict["subscription_expires_at"].isoformat()
+        trial_end = datetime.now(timezone.utc) + timedelta(days=14)
+        
+        user_dict = {
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "provider": "google",
+            "role": role,
+            # Subscription fields
+            "plan_type": "free",
+            "subscription_status": "trialing",
+            "stripe_customer_id": None,
+            "stripe_subscription_id": None,
+            "trial_ends_at": trial_end.isoformat(),
+            "billing_cycle_start": None,
+            "billing_cycle_end": None,
+            "grace_period_end": None,
+            "monthly_unique_recipient_count": 0,
+            "last_recipient_reset_date": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
         await db.users.insert_one(user_dict)
     
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
