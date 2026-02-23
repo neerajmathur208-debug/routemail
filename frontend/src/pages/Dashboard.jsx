@@ -172,13 +172,74 @@ export default function Dashboard({ user, setUser }) {
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-8"
+              className="mb-6"
             >
               <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
                 Dashboard
               </h1>
               <p className="text-slate-500 mt-1">Track your email campaign performance</p>
             </motion.div>
+
+            {/* Upgrade Banner - Show for free users */}
+            {subscriptionData && subscriptionData.plan_type === "free" && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mb-6 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                  subscriptionData.subscription_status === "expired" 
+                    ? "bg-gradient-to-r from-red-500 to-rose-500 text-white"
+                    : "bg-gradient-to-r from-blue-500 to-violet-500 text-white"
+                }`}
+                data-testid="upgrade-banner"
+              >
+                <div className="flex items-center gap-3">
+                  {subscriptionData.subscription_status === "expired" ? (
+                    <AlertTriangle size={24} />
+                  ) : (
+                    <Clock size={24} />
+                  )}
+                  <div>
+                    {subscriptionData.subscription_status === "expired" ? (
+                      <>
+                        <p className="font-semibold">Your trial has expired</p>
+                        <p className="text-sm opacity-90">Upgrade to continue sending emails</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold">You're on the Free Plan</p>
+                        <p className="text-sm opacity-90">
+                          {subscriptionData.trial_ends_at 
+                            ? `${Math.ceil((new Date(subscriptionData.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24))} days left in trial`
+                            : "Upgrade to unlock higher limits"
+                          }
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <Button
+                    size="sm"
+                    className="bg-white text-blue-600 hover:bg-blue-50 flex-1 sm:flex-none"
+                    onClick={() => navigate("/subscription")}
+                    data-testid="banner-upgrade-starter-btn"
+                  >
+                    <Zap size={14} className="mr-1" />
+                    Upgrade to Starter
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="bg-transparent border-white/30 text-white hover:bg-white/10 flex-1 sm:flex-none"
+                    onClick={() => navigate("/subscription")}
+                    data-testid="banner-upgrade-growth-btn"
+                  >
+                    <Crown size={14} className="mr-1" />
+                    Upgrade to Growth
+                  </Button>
+                </div>
+              </motion.div>
+            )}
 
             {/* Main 2-column layout */}
             <div className="grid lg:grid-cols-[1fr_340px] gap-6">
