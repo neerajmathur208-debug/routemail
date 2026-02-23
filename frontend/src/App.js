@@ -214,6 +214,14 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/subscription"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <Subscription user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
       {/* Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
