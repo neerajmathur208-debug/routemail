@@ -765,8 +765,160 @@ export default function Dashboard({ user, setUser }) {
               )}
             </div>
 
-            {/* Right Column (30%) - Now only Today's Summary and Account Usage */}
+            {/* Right Column (30%) - Plan & Usage, Today's Summary, Account Usage */}
             <div className="space-y-6">
+              {/* Plan & Usage Card */}
+              {subscriptionData && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.25 }}
+                  className="bg-white rounded-[20px] p-5 shadow-sm border border-slate-100"
+                  data-testid="plan-usage-card"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-slate-900">Plan & Usage</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-400 hover:text-slate-600 text-xs rounded-lg"
+                      onClick={() => navigate("/subscription")}
+                      data-testid="view-subscription-btn"
+                    >
+                      Manage
+                    </Button>
+                  </div>
+
+                  {/* Current Plan Badge */}
+                  <div className={`p-3 rounded-xl mb-4 ${
+                    subscriptionData.plan_type === "growth" 
+                      ? "bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200"
+                      : subscriptionData.plan_type === "starter"
+                      ? "bg-gradient-to-r from-blue-50 to-violet-50 border border-blue-200"
+                      : "bg-slate-50 border border-slate-200"
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      {subscriptionData.plan_type === "growth" ? (
+                        <Crown size={20} className="text-amber-500" />
+                      ) : subscriptionData.plan_type === "starter" ? (
+                        <Zap size={20} className="text-blue-500" />
+                      ) : (
+                        <Shield size={20} className="text-slate-400" />
+                      )}
+                      <div>
+                        <p className="font-semibold text-slate-900 capitalize">
+                          {subscriptionData.plan_type} Plan
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Status: <span className={`font-medium ${
+                            subscriptionData.subscription_active ? "text-green-600" : "text-red-500"
+                          }`}>
+                            {subscriptionData.subscription_status}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Usage Stats */}
+                  {subscriptionData.usage && (
+                    <div className="space-y-3">
+                      {/* Accounts */}
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-600">Email Accounts</span>
+                          <span className="font-medium text-slate-900">
+                            {subscriptionData.usage.accounts.current} / {subscriptionData.usage.accounts.limit}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-blue-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (subscriptionData.usage.accounts.current / subscriptionData.usage.accounts.limit) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Contacts */}
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-600">Stored Contacts</span>
+                          <span className="font-medium text-slate-900">
+                            {subscriptionData.usage.contacts.current.toLocaleString()} / {subscriptionData.usage.contacts.limit.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (subscriptionData.usage.contacts.current / subscriptionData.usage.contacts.limit) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Monthly Recipients */}
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-600">Monthly Recipients</span>
+                          <span className="font-medium text-slate-900">
+                            {subscriptionData.usage.recipients.current.toLocaleString()} / {subscriptionData.usage.recipients.limit.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-violet-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (subscriptionData.usage.recipients.current / subscriptionData.usage.recipients.limit) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Plan Limits List */}
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Plan Limits</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <Mail size={14} className="text-blue-500" />
+                        <span>{subscriptionData.limits?.max_accounts || 3} email accounts</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <Users size={14} className="text-emerald-500" />
+                        <span>{(subscriptionData.limits?.max_contacts || 500).toLocaleString()} stored contacts</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <Send size={14} className="text-violet-500" />
+                        <span>{(subscriptionData.limits?.max_monthly_recipients || 500).toLocaleString()} recipients/month</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Upgrade Button for Free/Starter */}
+                  {subscriptionData.plan_type !== "growth" && (
+                    <Button
+                      className={`w-full mt-4 ${
+                        subscriptionData.plan_type === "free"
+                          ? "bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600"
+                          : "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                      }`}
+                      onClick={() => navigate("/subscription")}
+                      data-testid="plan-card-upgrade-btn"
+                    >
+                      {subscriptionData.plan_type === "free" ? (
+                        <>
+                          <Zap size={16} className="mr-2" />
+                          Upgrade Now
+                        </>
+                      ) : (
+                        <>
+                          <Crown size={16} className="mr-2" />
+                          Upgrade to Growth
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </motion.div>
+              )}
+
               {/* Summary Stats Widget */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
