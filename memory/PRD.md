@@ -119,7 +119,6 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Free 14-day trial on registration
 - [x] Plan limits enforcement (accounts, contacts, monthly recipients)
 - [x] Subscription management page with usage stats
-- [x] Currency toggle (USD/INR) on subscription page
 - [x] Grace period handling for failed payments (7 days)
 - [x] Logo resized to ~100px on landing page navbar
 
@@ -131,6 +130,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Selected plan banner on registration page
 - [x] Subscription page shows status badges, trial days, billing dates
 - [x] Alert banners for expired trials, past due payments, scheduled downgrades
+
+### ✅ Pricing Fixes & UX Improvements (Dec 2025)
+- [x] Removed "Book a Demo" CTA from hero and final sections
+- [x] Fixed INR pricing: Starter ₹5,000/year, Growth ₹12,000/year
+- [x] Removed currency toggle - uses automatic geo-based detection
+- [x] Added "Back to Dashboard" button on subscription page
+- [x] Added Logout button in dashboard header
+- [x] Implemented first-time user onboarding tour (4 steps: Accounts, Lists, Campaign, Subscription)
+- [x] Onboarding persists in localStorage to prevent re-showing
 
 ### 🔄 In Progress
 - None currently
