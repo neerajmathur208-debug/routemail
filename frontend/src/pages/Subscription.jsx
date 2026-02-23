@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Zap, Crown, Shield, CreditCard, Loader2 } from "lucide-react";
+import { Check, Zap, Crown, Shield, CreditCard, Loader2, Clock, AlertTriangle, Calendar } from "lucide-react";
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
 import { api } from "../App";
