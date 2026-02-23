@@ -140,6 +140,19 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Implemented first-time user onboarding tour (4 steps: Accounts, Lists, Campaign, Subscription)
 - [x] Onboarding persists in localStorage to prevent re-showing
 
+### ✅ Dashboard UI Improvements & Plan Visibility (Feb 2026)
+- [x] Upgrade banner shows specific plan options (Free → Starter/Growth, Starter → Growth)
+- [x] "Quick Start" renamed to "Start Your Campaigns" with darker background, border, and shadow
+- [x] "Connect Accounts" renamed to "Connect Email Accounts"
+- [x] CTA buttons (Add Accounts, Upload List, Create Campaign) have filled backgrounds with strong visual weight
+- [x] Added "How to Launch Your First Campaign" instruction steps (4 steps with colored icons)
+- [x] "Create Campaign" button always visible (even if accounts/lists not set up)
+- [x] Campaign page shows warning banner if user hasn't set up accounts/lists
+- [x] Subscription page shows correct upgrade/downgrade/cancel buttons based on current plan
+- [x] Sidebar displays dynamic plan badge (Free/Starter/Growth) from user's actual subscription
+- [x] Logo in sidebar/mobile header is now clickable and redirects to dashboard
+- [x] Fixed accounts API response handling (accounts.map error)
+
 ### 🔄 In Progress
 - None currently
 
