@@ -421,7 +421,7 @@ export default function Subscription({ user, setUser }) {
               )}
               <h3 className="text-xl font-bold text-slate-900 mb-1">Growth</h3>
               <p className="text-slate-500 text-sm mb-4">For scaling teams</p>
-              <div className="text-3xl font-bold text-slate-900 mb-1">{formatPrice(149, 11999)}</div>
+              <div className="text-3xl font-bold text-slate-900 mb-1">{getPrice("growth")}</div>
               <p className="text-slate-500 text-sm mb-6">/year</p>
               
               <ul className="space-y-3 mb-6">
