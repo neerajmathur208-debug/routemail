@@ -253,6 +253,39 @@ async def increment_recipient_count(user_id: str, count: int = 1):
         {"$inc": {"monthly_unique_recipient_count": count}}
     )
 
+async def apply_permanent_plan_if_applicable(email: str, user_id: str = None) -> bool:
+    """
+    Check if a user has a permanently assigned plan and apply it.
+    Returns True if a permanent plan was applied.
+    
+    These are special accounts that bypass Stripe and always have their assigned plan.
+    """
+    email_lower = email.lower()
+    if email_lower in PERMANENT_PLAN_ASSIGNMENTS:
+        assigned_plan = PERMANENT_PLAN_ASSIGNMENTS[email_lower]
+        logger.info(f"Applying permanent plan '{assigned_plan}' to {email}")
+        
+        update_data = {
+            "plan_type": assigned_plan,
+            "subscription_status": "active",
+            # Clear trial/grace fields since this is a permanent assignment
+            "trial_ends_at": None,
+            "grace_period_end": None,
+        }
+        
+        if user_id:
+            await db.users.update_one(
+                {"user_id": user_id},
+                {"$set": update_data}
+            )
+        else:
+            await db.users.update_one(
+                {"email": email},
+                {"$set": update_data}
+            )
+        return True
+    return False
+
 # ==================== MODELS ====================
 
 class User(BaseModel):
