@@ -95,6 +95,157 @@ def decrypt_data(encrypted_data: str) -> str:
     except Exception:
         return ""
 
+# ==================== PLAN ENFORCEMENT HELPERS ====================
+
+async def get_user_plan_limits(user_id: str) -> dict:
+    """Get the plan limits for a user"""
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        return PLAN_LIMITS["free"]
+    
+    plan_type = user.get("plan_type", "free")
+    return PLAN_LIMITS.get(plan_type, PLAN_LIMITS["free"])
+
+async def check_account_limit(user_id: str) -> dict:
+    """Check if user can add more email accounts"""
+    limits = await get_user_plan_limits(user_id)
+    current_count = await db.email_accounts.count_documents({"user_id": user_id})
+    
+    return {
+        "can_add": current_count < limits["max_accounts"],
+        "current": current_count,
+        "limit": limits["max_accounts"],
+        "remaining": max(0, limits["max_accounts"] - current_count)
+    }
+
+async def check_contact_limit(user_id: str, new_contacts: int = 0) -> dict:
+    """Check if user can store more contacts"""
+    limits = await get_user_plan_limits(user_id)
+    
+    # Count total contacts across all lists
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {"_id": None, "total": {"$sum": "$valid_emails"}}}
+    ]
+    result = await db.email_lists.aggregate(pipeline).to_list(1)
+    current_count = result[0]["total"] if result else 0
+    
+    return {
+        "can_add": (current_count + new_contacts) <= limits["max_contacts"],
+        "current": current_count,
+        "limit": limits["max_contacts"],
+        "remaining": max(0, limits["max_contacts"] - current_count)
+    }
+
+async def check_recipient_limit(user_id: str, new_recipients: int = 0) -> dict:
+    """Check monthly unique recipient limit"""
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        return {"can_send": False, "error": "User not found"}
+    
+    limits = await get_user_plan_limits(user_id)
+    
+    # Check and reset monthly counter if needed
+    last_reset = user.get("last_recipient_reset_date")
+    current_count = user.get("monthly_unique_recipient_count", 0)
+    
+    if last_reset:
+        if isinstance(last_reset, str):
+            last_reset = datetime.fromisoformat(last_reset.replace('Z', '+00:00'))
+        if last_reset.tzinfo is None:
+            last_reset = last_reset.replace(tzinfo=timezone.utc)
+        
+        # Reset if 30 days have passed
+        if datetime.now(timezone.utc) > last_reset + timedelta(days=30):
+            await db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "monthly_unique_recipient_count": 0,
+                    "last_recipient_reset_date": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            current_count = 0
+    else:
+        # Initialize reset date
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"last_recipient_reset_date": datetime.now(timezone.utc).isoformat()}}
+        )
+    
+    return {
+        "can_send": (current_count + new_recipients) <= limits["max_monthly_recipients"],
+        "current": current_count,
+        "limit": limits["max_monthly_recipients"],
+        "remaining": max(0, limits["max_monthly_recipients"] - current_count)
+    }
+
+async def check_subscription_active(user_id: str) -> dict:
+    """Check if user has active subscription or valid trial"""
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        return {"active": False, "reason": "User not found"}
+    
+    plan_type = user.get("plan_type", "free")
+    status = user.get("subscription_status", "trialing")
+    
+    # Check for paid plans
+    if plan_type in ["starter", "growth"]:
+        if status == "active":
+            return {"active": True, "plan": plan_type, "status": status}
+        elif status == "past_due":
+            # Check grace period
+            grace_end = user.get("grace_period_end")
+            if grace_end:
+                if isinstance(grace_end, str):
+                    grace_end = datetime.fromisoformat(grace_end.replace('Z', '+00:00'))
+                if grace_end.tzinfo is None:
+                    grace_end = grace_end.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) < grace_end:
+                    return {"active": True, "plan": plan_type, "status": "grace_period", "grace_ends": grace_end.isoformat()}
+            return {"active": False, "reason": "Payment overdue", "status": status}
+        elif status == "canceled":
+            # Check if still in billing period
+            cycle_end = user.get("billing_cycle_end")
+            if cycle_end:
+                if isinstance(cycle_end, str):
+                    cycle_end = datetime.fromisoformat(cycle_end.replace('Z', '+00:00'))
+                if cycle_end.tzinfo is None:
+                    cycle_end = cycle_end.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) < cycle_end:
+                    return {"active": True, "plan": plan_type, "status": "canceled_active", "ends": cycle_end.isoformat()}
+            return {"active": False, "reason": "Subscription canceled", "status": status}
+    
+    # Free plan - check trial
+    if status == "trialing":
+        trial_end = user.get("trial_ends_at")
+        if trial_end:
+            if isinstance(trial_end, str):
+                trial_end = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+            if trial_end.tzinfo is None:
+                trial_end = trial_end.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) < trial_end:
+                return {"active": True, "plan": "free", "status": "trialing", "trial_ends": trial_end.isoformat()}
+            else:
+                # Trial expired
+                await db.users.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"subscription_status": "expired"}}
+                )
+                return {"active": False, "reason": "Trial expired", "status": "expired"}
+        return {"active": True, "plan": "free", "status": "trialing"}
+    
+    if status == "expired":
+        return {"active": False, "reason": "Trial expired", "status": "expired"}
+    
+    return {"active": True, "plan": plan_type, "status": status}
+
+async def increment_recipient_count(user_id: str, count: int = 1):
+    """Increment the monthly recipient counter"""
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$inc": {"monthly_unique_recipient_count": count}}
+    )
+
 # ==================== MODELS ====================
 
 class User(BaseModel):
