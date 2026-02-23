@@ -42,12 +42,12 @@ fernet = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else 
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 
-# Stripe Price IDs
+# Stripe Price IDs (from environment)
 STRIPE_PRICES = {
-    "starter_usd": "price_1T3JubD2HZgi5NSCVPybSMdk",
-    "growth_usd": "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
-    "starter_inr": "price_1T3xeED2HZgi5NSCTsHhLaVL",
-    "growth_inr": "price_1T3xecD2HZgi5NSC84ntUhgG",
+    "starter_usd": os.environ.get('STRIPE_PRICE_STARTER_USD'),
+    "growth_usd": os.environ.get('STRIPE_PRICE_GROWTH_USD'),
+    "starter_inr": os.environ.get('STRIPE_PRICE_STARTER_INR'),
+    "growth_inr": os.environ.get('STRIPE_PRICE_GROWTH_INR'),
 }
 
 # Plan Limits Configuration
@@ -70,11 +70,26 @@ PLAN_LIMITS = {
 }
 
 # Permanently Assigned Plans (these accounts always have these plans regardless of Stripe)
-# This is a business decision override - these users get permanent access
-PERMANENT_PLAN_ASSIGNMENTS = {
-    "dhruvmathur5@gmail.com": "starter",
-    "perfectdigitals208@gmail.com": "growth",
-}
+# Read from environment variables for production flexibility
+def _parse_permanent_plans():
+    """Parse permanent plan assignments from environment variables"""
+    assignments = {}
+    starter_emails = os.environ.get('PERMANENT_PLAN_STARTER_EMAILS', '')
+    growth_emails = os.environ.get('PERMANENT_PLAN_GROWTH_EMAILS', '')
+    
+    for email in starter_emails.split(','):
+        email = email.strip().lower()
+        if email:
+            assignments[email] = "starter"
+    
+    for email in growth_emails.split(','):
+        email = email.strip().lower()
+        if email:
+            assignments[email] = "growth"
+    
+    return assignments
+
+PERMANENT_PLAN_ASSIGNMENTS = _parse_permanent_plans()
 
 # Create the main app
 app = FastAPI()
