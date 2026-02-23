@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Shield,
   CreditCard,
+  Crown,
+  Zap,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -30,8 +32,51 @@ export default function Sidebar({ user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userPlan, setUserPlan] = useState(null);
 
   const isSuperAdmin = user?.role === "super_admin";
+
+  // Fetch user subscription status
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      try {
+        const response = await api.get("/subscription/status");
+        setUserPlan(response.data);
+      } catch (error) {
+        console.error("Failed to fetch subscription:", error);
+      }
+    };
+    fetchSubscription();
+  }, []);
+
+  const getPlanBadge = () => {
+    if (!userPlan) return null;
+    
+    const planType = userPlan.plan_type || "free";
+    const isActive = userPlan.subscription_active;
+    
+    if (planType === "growth") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+          <Crown size={12} />
+          Growth
+        </span>
+      );
+    } else if (planType === "starter") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <Zap size={12} />
+          Starter
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+          Free Plan
+        </span>
+      );
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -135,11 +180,7 @@ export default function Sidebar({ user, setUser }) {
             </div>
           </div>
           <div className="mt-3">
-            <span
-              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
-            >
-              Pro Plan
-            </span>
+            {getPlanBadge()}
           </div>
         </div>
 
