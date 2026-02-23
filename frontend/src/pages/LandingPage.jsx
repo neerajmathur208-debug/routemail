@@ -399,7 +399,7 @@ export default function LandingPage() {
                       <Mail size={16} className="text-blue-600" />
                       <span className="text-xs text-slate-500 font-medium">Accounts</span>
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">4</p>
+                    <p className="text-2xl font-bold text-slate-900">11</p>
                     <p className="text-xs text-emerald-600 mt-1">All active</p>
                   </div>
                   <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
@@ -427,18 +427,58 @@ export default function LandingPage() {
                       <span className="font-semibold text-slate-900">Sending Activity</span>
                       <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">Last 7 days</span>
                     </div>
-                    <div className="flex items-end gap-3 h-32">
-                      {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                          <div
-                            className="w-full bg-gradient-to-t from-blue-500 to-violet-500 rounded-t-lg"
-                            style={{ height: `${h}%` }}
-                          />
-                          <span className="text-[10px] text-slate-400">
-                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}
-                          </span>
-                        </div>
-                      ))}
+                    {/* Line Chart with Area Fill - Static Preview Only */}
+                    <div className="relative h-36">
+                      {/* Y-axis grid lines (subtle) */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                        {[0, 1, 2, 3].map((_, i) => (
+                          <div key={i} className="border-b border-slate-100 w-full" />
+                        ))}
+                      </div>
+                      
+                      {/* SVG Line Chart */}
+                      <svg className="w-full h-full" viewBox="0 0 400 120" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#8B5CF6" />
+                            <stop offset="100%" stopColor="#3B82F6" />
+                          </linearGradient>
+                          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.3" />
+                            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.05" />
+                          </linearGradient>
+                        </defs>
+                        {/* Area fill under the line */}
+                        <path
+                          d="M 0 90 C 30 90, 40 75, 57 75 C 74 75, 84 60, 114 60 C 144 60, 154 45, 171 45 C 188 45, 198 25, 228 25 C 258 25, 268 35, 285 35 C 302 35, 312 10, 342 10 C 372 10, 382 20, 400 20 L 400 120 L 0 120 Z"
+                          fill="url(#areaGradient)"
+                        />
+                        {/* Main line (smooth curve) */}
+                        <path
+                          d="M 0 90 C 30 90, 40 75, 57 75 C 74 75, 84 60, 114 60 C 144 60, 154 45, 171 45 C 188 45, 198 25, 228 25 C 258 25, 268 35, 285 35 C 302 35, 312 10, 342 10 C 372 10, 382 20, 400 20"
+                          fill="none"
+                          stroke="url(#lineGradient)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {/* Data points */}
+                        <circle cx="0" cy="90" r="3" fill="#8B5CF6" />
+                        <circle cx="57" cy="75" r="3" fill="#7C3AED" />
+                        <circle cx="114" cy="60" r="3" fill="#6D28D9" />
+                        <circle cx="171" cy="45" r="3" fill="#5B21B6" />
+                        <circle cx="228" cy="25" r="3" fill="#4C1D95" />
+                        <circle cx="285" cy="35" r="3" fill="#4338CA" />
+                        <circle cx="342" cy="10" r="3" fill="#3B82F6" />
+                        <circle cx="400" cy="20" r="3" fill="#2563EB" />
+                      </svg>
+                      
+                      {/* X-axis labels */}
+                      <div className="flex justify-between mt-2 px-0">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
+                          <span key={i} className="text-[10px] text-slate-400">{day}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
