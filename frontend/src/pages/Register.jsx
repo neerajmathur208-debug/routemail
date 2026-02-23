@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Check } from "lucide-react";
+import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Check, Zap, Crown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -10,6 +10,9 @@ import { toast } from "sonner";
 
 export default function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedPlan = searchParams.get("plan"); // 'starter' or 'growth'
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -21,6 +24,10 @@ export default function Register() {
 
   const handleGoogleLogin = () => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    // Store selected plan in sessionStorage before Google auth
+    if (selectedPlan) {
+      sessionStorage.setItem("selectedPlan", selectedPlan);
+    }
     const redirectUrl = window.location.origin + '/dashboard';
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
@@ -43,6 +50,42 @@ export default function Register() {
     const colors = ["", "bg-red-500", "bg-yellow-500", "bg-blue-500", "bg-green-500"];
     
     return { score, label: labels[score], color: colors[score] };
+  };
+
+  // Helper to detect country and get appropriate price ID
+  const getPriceId = async (plan) => {
+    const priceIds = {
+      starter_usd: "price_1T3JubD2HZgi5NSCVPybSMdk",
+      growth_usd: "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
+      starter_inr: "price_1T3xeED2HZgi5NSCTsHhLaVL",
+      growth_inr: "price_1T3xecD2HZgi5NSC84ntUhgG",
+    };
+    
+    try {
+      const response = await fetch("https://ipapi.co/json/");
+      const data = await response.json();
+      const currency = data.country_code === "IN" ? "inr" : "usd";
+      return priceIds[`${plan}_${currency}`];
+    } catch {
+      return priceIds[`${plan}_usd`];
+    }
+  };
+
+  // Trigger Stripe checkout for selected plan
+  const triggerCheckout = async (plan) => {
+    try {
+      const priceId = await getPriceId(plan);
+      const response = await api.post("/subscription/create-checkout", {
+        price_id: priceId,
+        success_url: `${window.location.origin}/dashboard?subscription=success`,
+        cancel_url: `${window.location.origin}/subscription?canceled=true`,
+      });
+      window.location.href = response.data.checkout_url;
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast.error("Failed to start checkout. Please try from the subscription page.");
+      navigate("/dashboard");
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -72,7 +115,14 @@ export default function Register() {
       
       toast.success("Account created successfully!");
       
-      // Redirect based on role
+      // If a paid plan was selected, redirect to Stripe checkout
+      if (selectedPlan && (selectedPlan === "starter" || selectedPlan === "growth")) {
+        toast.info("Redirecting to checkout...");
+        await triggerCheckout(selectedPlan);
+        return;
+      }
+      
+      // Otherwise, redirect based on role
       const redirectPath = userData.role === "super_admin" ? "/admin" : "/dashboard";
       navigate(redirectPath, { state: { user: userData }, replace: true });
     } catch (error) {
