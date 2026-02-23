@@ -61,7 +61,7 @@ export default function Login() {
             <img 
               src="/routemail-logo.png" 
               alt="RoutEmail" 
-              className="h-14 w-auto object-contain mx-auto"
+              className="h-20 w-auto object-contain mx-auto"
             />
           </Link>
           <p className="mt-3 text-lg text-slate-600">Log in to your account</p>
