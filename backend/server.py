@@ -546,6 +546,9 @@ async def exchange_session(request: SessionRequest, response: Response):
         }
         await db.users.insert_one(user_dict)
     
+    # Apply permanent plan assignment if applicable (after user exists)
+    await apply_permanent_plan_if_applicable(email, user_id)
+    
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     session = UserSession(
         user_id=user_id,
