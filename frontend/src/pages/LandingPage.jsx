@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   Mail,
   Upload,
@@ -26,6 +27,31 @@ import { Button } from "../components/ui/button";
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [currency, setCurrency] = useState("usd");
+
+  useEffect(() => {
+    detectCountry();
+  }, []);
+
+  const detectCountry = async () => {
+    try {
+      const response = await fetch("https://ipapi.co/json/");
+      const data = await response.json();
+      if (data.country_code === "IN") {
+        setCurrency("inr");
+      }
+    } catch (error) {
+      console.log("Could not detect country, defaulting to USD");
+    }
+  };
+
+  // Get display price based on geo
+  const getPrice = (plan) => {
+    if (currency === "inr") {
+      return plan === "starter" ? "₹5,000" : "₹12,000";
+    }
+    return plan === "starter" ? "$99" : "$149";
+  };
   
   // "Start Free" button - redirects to register page
   const handleStartFree = () => {
