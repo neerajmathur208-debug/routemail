@@ -105,7 +105,9 @@ export default function Campaign({ user, setUser }) {
       ]);
 
       setLists(listsRes.data);
-      setAccounts(accountsRes.data);
+      // Handle accounts response - API returns { accounts: [], limit_info: {} }
+      const accountsData = accountsRes.data?.accounts || accountsRes.data || [];
+      setAccounts(Array.isArray(accountsData) ? accountsData : []);
       setCampaigns(campaignsRes.data);
 
       // Find running campaign
