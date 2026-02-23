@@ -195,7 +195,7 @@ export default function Register() {
             <div>
               <p className="font-semibold capitalize">{selectedPlan} Plan Selected</p>
               <p className="text-sm opacity-90">
-                {selectedPlan === "starter" ? "$99/year" : "$149/year"} - You'll checkout after registration
+                {getDisplayPrice(selectedPlan)} - You'll checkout after registration
               </p>
             </div>
           </motion.div>
