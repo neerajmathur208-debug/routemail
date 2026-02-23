@@ -133,7 +133,7 @@ export default function LandingPage() {
       </nav>
 
       {/* 1️⃣ HERO SECTION */}
-      <section className="pt-36 pb-24 px-6">
+      <section className="pt-40 pb-24 px-6">
         <div className="max-w-[1300px] mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
