@@ -21,6 +21,7 @@ import {
   Shield,
   CreditCard,
   Clock,
+  LogOut,
 } from "lucide-react";
 import {
   AreaChart,
