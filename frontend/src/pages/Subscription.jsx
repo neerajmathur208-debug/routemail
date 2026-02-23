@@ -361,7 +361,7 @@ export default function Subscription({ user, setUser }) {
               )}
               <h3 className="text-xl font-bold mb-1 mt-2">Starter</h3>
               <p className="text-blue-200 text-sm mb-4">For growing businesses</p>
-              <div className="text-3xl font-bold mb-1">{formatPrice(99, 7999)}</div>
+              <div className="text-3xl font-bold mb-1">{getPrice("starter")}</div>
               <p className="text-blue-200 text-sm mb-6">/year</p>
               
               <ul className="space-y-3 mb-6">
