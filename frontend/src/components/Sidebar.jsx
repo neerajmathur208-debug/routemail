@@ -179,7 +179,7 @@ export default function Sidebar({ user, setUser }) {
       </motion.aside>
 
       {/* Main content spacer for mobile */}
-      <div className="lg:hidden h-16" />
+      <div className="lg:hidden h-20" />
     </>
   );
 }
