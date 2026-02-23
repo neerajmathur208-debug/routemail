@@ -579,9 +579,10 @@ async def register_email(request: EmailRegisterRequest, response: Response):
     # Hash password
     password_hash = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    # Create user
+    # Create user with proper subscription fields
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     role = "super_admin" if request.email == SUPER_ADMIN_EMAIL else "user"
+    trial_end = datetime.now(timezone.utc) + timedelta(days=14)
     
     user_doc = {
         "user_id": user_id,
@@ -591,8 +592,17 @@ async def register_email(request: EmailRegisterRequest, response: Response):
         "password_hash": password_hash,
         "provider": "email",
         "role": role,
-        "subscription_status": "active",
-        "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),  # 14-day trial
+        # Subscription fields
+        "plan_type": "free",
+        "subscription_status": "trialing",
+        "stripe_customer_id": None,
+        "stripe_subscription_id": None,
+        "trial_ends_at": trial_end.isoformat(),
+        "billing_cycle_start": None,
+        "billing_cycle_end": None,
+        "grace_period_end": None,
+        "monthly_unique_recipient_count": 0,
+        "last_recipient_reset_date": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -626,7 +636,8 @@ async def register_email(request: EmailRegisterRequest, response: Response):
         "email": request.email,
         "name": request.name,
         "picture": None,
-        "subscription_status": "active",
+        "subscription_status": "trialing",
+        "plan_type": "free",
         "role": role
     }
 
