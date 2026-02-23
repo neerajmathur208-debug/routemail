@@ -919,7 +919,7 @@ export default function LandingPage() {
             <p className="text-white text-xl font-medium mb-10">
               Start sending professionally — across multiple accounts — today.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-4">
+            <div className="flex items-center justify-center">
               <Button
                 onClick={handleStartFree}
                 size="lg"
@@ -928,14 +928,6 @@ export default function LandingPage() {
               >
                 Start Free Trial
                 <ArrowRight size={20} className="ml-2" />
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="px-10 py-6 text-lg rounded-full border-2 border-slate-600 text-white hover:bg-slate-800"
-                data-testid="final-demo-btn"
-              >
-                Schedule Demo
               </Button>
             </div>
           </motion.div>
