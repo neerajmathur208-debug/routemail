@@ -123,8 +123,16 @@ export default function Subscription({ user, setUser }) {
       <Sidebar user={user} setUser={setUser} />
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
-          {/* Header */}
+          {/* Back Button + Header */}
           <div className="mb-8">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-2 text-slate-500 hover:text-slate-700 mb-4 transition-colors"
+              data-testid="back-to-dashboard-btn"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-sm font-medium">Back to Dashboard</span>
+            </button>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Subscription</h1>
             <p className="text-slate-600">Manage your plan and billing</p>
           </div>
