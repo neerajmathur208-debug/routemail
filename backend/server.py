@@ -38,6 +38,37 @@ if not ENCRYPTION_KEY:
     
 fernet = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
 
+# Stripe configuration
+stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+
+# Stripe Price IDs
+STRIPE_PRICES = {
+    "starter_usd": "price_1T3JubD2HZgi5NSCVPybSMdk",
+    "growth_usd": "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
+    "starter_inr": "price_1T3xeED2HZgi5NSCTsHhLaVL",
+    "growth_inr": "price_1T3xecD2HZgi5NSC84ntUhgG",
+}
+
+# Plan Limits Configuration
+PLAN_LIMITS = {
+    "free": {
+        "max_accounts": 3,
+        "max_contacts": 500,
+        "max_monthly_recipients": 500,
+    },
+    "starter": {
+        "max_accounts": 10,
+        "max_contacts": 4000,
+        "max_monthly_recipients": 4000,
+    },
+    "growth": {
+        "max_accounts": 15,
+        "max_contacts": 10000,
+        "max_monthly_recipients": 10000,
+    },
+}
+
 # Create the main app
 app = FastAPI()
 
