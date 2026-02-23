@@ -153,6 +153,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Logo in sidebar/mobile header is now clickable and redirects to dashboard
 - [x] Fixed accounts API response handling (accounts.map error)
 
+### ✅ Permanent Plan Assignments & Sidebar Fix (Feb 2026)
+- [x] Permanent plan assignments configured for specific accounts (bypasses Stripe):
+  - `dhruvmathur5@gmail.com` → Starter Plan (10 accounts, 4,000 contacts, 4,000 recipients/month)
+  - `perfectdigitals208@gmail.com` → Growth Plan (15 accounts, 10,000 contacts, 10,000 recipients/month)
+- [x] Fixed sidebar not rendering on desktop (replaced framer motion with CSS transitions)
+- [x] Logo visible consistently across ALL dashboard pages (~80px height)
+- [x] Sidebar visible on: Dashboard, Email Accounts, Email Lists, Campaign, Subscription pages
+- [x] Logo is clickable and navigates to /dashboard
+
 ### 🔄 In Progress
 - None currently
 
