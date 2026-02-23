@@ -46,6 +46,7 @@ export default function Dashboard({ user, setUser }) {
   const [stats, setStats] = useState(null);
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Check for subscription success
   useEffect(() => {
@@ -55,6 +56,29 @@ export default function Dashboard({ user, setUser }) {
       window.history.replaceState({}, document.title, "/dashboard");
     }
   }, [searchParams]);
+
+  // Check for first-time user onboarding
+  useEffect(() => {
+    const checkOnboarding = () => {
+      const onboardingCompleted = localStorage.getItem("onboarding_completed");
+      if (!onboardingCompleted && !loading) {
+        // Delay to let dashboard load first
+        setTimeout(() => setShowOnboarding(true), 1000);
+      }
+    };
+    checkOnboarding();
+  }, [loading]);
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem("onboarding_completed", "true");
+    setShowOnboarding(false);
+    toast.success("Welcome to RoutEmail! You're all set.");
+  };
+
+  const handleOnboardingSkip = () => {
+    localStorage.setItem("onboarding_completed", "true");
+    setShowOnboarding(false);
+  };
 
   const fetchStats = async () => {
     try {
