@@ -36,6 +36,7 @@ import {
 } from "recharts";
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
+import OnboardingTour from "../components/ui/OnboardingTour";
 import { api } from "../App";
 import { toast } from "sonner";
 
