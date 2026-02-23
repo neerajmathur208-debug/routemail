@@ -163,23 +163,15 @@ export default function LandingPage() {
               Connect multiple email accounts. Upload your list.
               We rotate, send, and optimise delivery — so your emails land in inboxes, not spam.
             </p>
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <div className="mt-10 flex items-center justify-center">
               <Button
                 onClick={handleStartFree}
                 size="lg"
-                className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-8 py-6 text-lg rounded-full shadow-lg shadow-blue-500/25"
+                className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-10 py-6 text-lg rounded-full shadow-lg shadow-blue-500/25"
                 data-testid="hero-get-started-btn"
               >
                 Start Free Trial
                 <ArrowRight size={20} className="ml-2" />
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="px-8 py-6 text-lg rounded-full border-2 border-slate-300 hover:border-slate-400"
-                data-testid="hero-demo-btn"
-              >
-                Book a Demo
               </Button>
             </div>
           </motion.div>
