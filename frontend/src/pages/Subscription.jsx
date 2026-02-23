@@ -1,280 +1,382 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  CreditCard,
-  Check,
-  AlertCircle,
-  Clock,
-  Loader2,
-} from "lucide-react";
+import { Check, Zap, Crown, Shield, CreditCard, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
 import { api } from "../App";
 import { toast } from "sonner";
 
-const features = [
-  "Unlimited email accounts",
-  "Unlimited email lists",
-  "50 emails/day per account",
-  "Rotational sending logic",
-  "CSV upload & validation",
-  "Basic personalization tags",
-  "Automatic unsubscribe links",
-  "Campaign dashboard & stats",
-];
-
 export default function Subscription({ user, setUser }) {
-  const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [checkingPayment, setCheckingPayment] = useState(false);
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState(null);
+  const [subscriptionData, setSubscriptionData] = useState(null);
+  const [currency, setCurrency] = useState("usd");
 
-  // Check for session_id in URL (returning from Stripe)
   useEffect(() => {
-    const sessionId = searchParams.get("session_id");
-    if (sessionId) {
-      pollPaymentStatus(sessionId);
-    }
-  }, [searchParams]);
+    fetchSubscriptionStatus();
+    detectCountry();
+  }, []);
 
-  const pollPaymentStatus = async (sessionId, attempts = 0) => {
-    const maxAttempts = 5;
-    const pollInterval = 2000;
-
-    if (attempts >= maxAttempts) {
-      toast.error("Payment verification timed out. Please refresh the page.");
-      setCheckingPayment(false);
-      return;
-    }
-
-    setCheckingPayment(true);
-
+  const detectCountry = async () => {
     try {
-      const response = await api.get(`/payments/status/${sessionId}`);
-      const data = response.data;
-
-      if (data.payment_status === "paid") {
-        toast.success("Payment successful! Your subscription is now active.");
-        // Refresh user data
-        const userRes = await api.get("/auth/me");
-        setUser(userRes.data);
-        setCheckingPayment(false);
-        // Clear URL params
-        window.history.replaceState({}, "", "/subscription");
-      } else if (data.status === "expired") {
-        toast.error("Payment session expired. Please try again.");
-        setCheckingPayment(false);
-      } else {
-        // Continue polling
-        setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
+      // Use a free geolocation API
+      const response = await fetch("https://ipapi.co/json/");
+      const data = await response.json();
+      if (data.country_code === "IN") {
+        setCurrency("inr");
       }
     } catch (error) {
-      console.error("Error checking payment:", error);
-      setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
+      console.log("Could not detect country, defaulting to USD");
     }
   };
 
-  const handleSubscribe = async () => {
-    setLoading(true);
+  const fetchSubscriptionStatus = async () => {
     try {
-      const response = await api.post("/payments/checkout", {
-        origin_url: window.location.origin,
-      });
-
-      if (response.data.url) {
-        window.location.href = response.data.url;
-      }
+      const response = await api.get("/subscription/status");
+      setSubscriptionData(response.data);
     } catch (error) {
-      const message = error.response?.data?.detail || "Failed to create checkout";
-      toast.error(message);
+      console.error("Failed to fetch subscription:", error);
+      toast.error("Failed to load subscription data");
+    } finally {
       setLoading(false);
     }
   };
 
-  const isActive = user?.subscription_status === "active";
-  const expiresAt = user?.subscription_expires_at
-    ? new Date(user.subscription_expires_at)
-    : null;
+  const handleUpgrade = async (plan) => {
+    setCheckoutLoading(plan);
+    try {
+      const priceKey = `${plan}_${currency}`;
+      const priceIds = {
+        starter_usd: "price_1T3JubD2HZgi5NSCVPybSMdk",
+        growth_usd: "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
+        starter_inr: "price_1T3xeED2HZgi5NSCTsHhLaVL",
+        growth_inr: "price_1T3xecD2HZgi5NSC84ntUhgG",
+      };
+
+      const response = await api.post("/subscription/create-checkout", {
+        price_id: priceIds[priceKey],
+        success_url: `${window.location.origin}/dashboard?subscription=success`,
+        cancel_url: `${window.location.origin}/subscription?canceled=true`,
+      });
+
+      // Redirect to Stripe Checkout
+      window.location.href = response.data.checkout_url;
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast.error(error.response?.data?.detail || "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      const response = await api.post("/subscription/create-portal");
+      window.location.href = response.data.portal_url;
+    } catch (error) {
+      console.error("Portal error:", error);
+      toast.error(error.response?.data?.detail || "Failed to open billing portal");
+    }
+  };
+
+  const formatPrice = (usd, inr) => {
+    if (currency === "inr") {
+      return `₹${inr.toLocaleString()}`;
+    }
+    return `$${usd}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-slate-50">
+        <Sidebar user={user} setUser={setUser} />
+        <main className="flex-1 p-6 lg:p-8">
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const currentPlan = subscriptionData?.plan_type || "free";
+  const isActive = subscriptionData?.subscription_active;
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar user={user} setUser={setUser} />
-
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-slate-900">
-              Subscription
-            </h1>
-            <p className="text-slate-500 mt-1">
-              Manage your plan and billing
-            </p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Subscription</h1>
+            <p className="text-slate-600">Manage your plan and billing</p>
           </div>
-
-          {/* Payment Processing */}
-          {checkingPayment && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-blue-50 border border-blue-200 rounded-md p-4 flex items-center gap-4"
-            >
-              <Loader2 size={20} className="text-blue-600 animate-spin" />
-              <div>
-                <p className="text-blue-800 font-medium">Processing payment...</p>
-                <p className="text-blue-700 text-sm">Please wait while we verify your payment</p>
-              </div>
-            </motion.div>
-          )}
 
           {/* Current Plan Status */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white border border-slate-200 rounded-md p-6 mb-8"
+            className="bg-white rounded-xl border border-slate-200 p-6 mb-8"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-heading font-semibold text-lg text-slate-900">
-                Current Plan
-              </h2>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  isActive
-                    ? "bg-green-100 text-green-700"
-                    : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {isActive ? "Active" : "Inactive"}
-              </span>
-            </div>
-
-            {isActive ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <Check size={20} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-900">Pro Plan</p>
-                    <p className="text-sm text-slate-500">$99/year</p>
-                  </div>
-                </div>
-                {expiresAt && (
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Clock size={16} />
-                    <span>
-                      Renews on {expiresAt.toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Current Plan</p>
+                <h2 className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+                  {currentPlan === "growth" && <Crown className="text-amber-500" size={24} />}
+                  {currentPlan === "starter" && <Zap className="text-blue-500" size={24} />}
+                  {currentPlan === "free" && <Shield className="text-slate-400" size={24} />}
+                  {currentPlan} Plan
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Status: <span className={`font-medium ${isActive ? "text-green-600" : "text-red-600"}`}>
+                    {subscriptionData?.subscription_status}
+                  </span>
+                </p>
+                {subscriptionData?.trial_ends_at && currentPlan === "free" && (
+                  <p className="text-sm text-amber-600 mt-1">
+                    Trial ends: {new Date(subscriptionData.trial_ends_at).toLocaleDateString()}
+                  </p>
+                )}
+                {subscriptionData?.billing_cycle_end && currentPlan !== "free" && (
+                  <p className="text-sm text-slate-500 mt-1">
+                    Renews: {new Date(subscriptionData.billing_cycle_end).toLocaleDateString()}
+                  </p>
                 )}
               </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                  <AlertCircle size={20} className="text-slate-400" />
+              {currentPlan !== "free" && (
+                <Button
+                  onClick={handleManageSubscription}
+                  variant="outline"
+                  className="gap-2"
+                  data-testid="manage-billing-btn"
+                >
+                  <CreditCard size={16} />
+                  Manage Billing
+                </Button>
+              )}
+            </div>
+
+            {/* Usage Stats */}
+            {subscriptionData?.usage && (
+              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100">
+                <div>
+                  <p className="text-sm text-slate-500">Email Accounts</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {subscriptionData.usage.accounts.current} / {subscriptionData.usage.accounts.limit}
+                  </p>
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-900">No Active Plan</p>
-                  <p className="text-sm text-slate-500">
-                    Subscribe to unlock all features
+                  <p className="text-sm text-slate-500">Stored Contacts</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {subscriptionData.usage.contacts.current.toLocaleString()} / {subscriptionData.usage.contacts.limit.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Monthly Recipients</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {subscriptionData.usage.recipients.current.toLocaleString()} / {subscriptionData.usage.recipients.limit.toLocaleString()}
                   </p>
                 </div>
               </div>
             )}
           </motion.div>
 
-          {/* Pricing Card */}
-          {!isActive && (
+          {/* Currency Toggle */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex items-center bg-slate-100 rounded-full p-1">
+              <button
+                onClick={() => setCurrency("usd")}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  currency === "usd" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+                }`}
+              >
+                USD ($)
+              </button>
+              <button
+                onClick={() => setCurrency("inr")}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  currency === "inr" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+                }`}
+              >
+                INR (₹)
+              </button>
+            </div>
+          </div>
+
+          {/* Plans */}
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Free Plan */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white border-2 border-slate-900 rounded-md p-8"
+              className={`bg-white rounded-xl border-2 p-6 ${
+                currentPlan === "free" ? "border-slate-900" : "border-slate-200"
+              }`}
             >
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="font-heading font-extrabold text-5xl text-slate-900">
-                  $99
-                </span>
-                <span className="text-slate-500">/year</span>
-              </div>
-              <p className="text-slate-600 mb-6">
-                Full access to all features
-              </p>
-
-              <ul className="space-y-3 mb-8">
-                {features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-3">
-                    <Check size={18} className="text-green-600 flex-shrink-0" />
-                    <span className="text-slate-700">{feature}</span>
-                  </li>
-                ))}
+              {currentPlan === "free" && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium mb-3">
+                  Current Plan
+                </div>
+              )}
+              <h3 className="text-xl font-bold text-slate-900 mb-1">Free Trial</h3>
+              <p className="text-slate-500 text-sm mb-4">14 days to explore</p>
+              <div className="text-3xl font-bold text-slate-900 mb-6">Free</div>
+              
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  3 email accounts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  500 contacts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  500 recipients/month
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  Basic rotation
+                </li>
               </ul>
 
               <Button
-                onClick={handleSubscribe}
-                disabled={loading}
-                className="w-full bg-signal-orange hover:bg-orange-600 text-white"
-                size="lg"
-                data-testid="subscribe-btn"
+                variant="outline"
+                className="w-full"
+                disabled={currentPlan === "free"}
               >
-                {loading ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Processing...
-                  </>
+                {currentPlan === "free" ? "Current Plan" : "Free Trial"}
+              </Button>
+            </motion.div>
+
+            {/* Starter Plan */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className={`bg-gradient-to-br from-blue-600 to-violet-600 rounded-xl p-6 text-white relative ${
+                currentPlan === "starter" ? "ring-4 ring-blue-500/30" : ""
+              }`}
+            >
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <span className="px-3 py-1 bg-amber-400 text-amber-900 rounded-full text-xs font-bold">
+                  Most Popular
+                </span>
+              </div>
+              {currentPlan === "starter" && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-white/20 text-white rounded text-xs font-medium mb-3 mt-2">
+                  Current Plan
+                </div>
+              )}
+              <h3 className="text-xl font-bold mb-1 mt-2">Starter</h3>
+              <p className="text-blue-200 text-sm mb-4">For growing businesses</p>
+              <div className="text-3xl font-bold mb-1">{formatPrice(99, 7999)}</div>
+              <p className="text-blue-200 text-sm mb-6">/year</p>
+              
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center gap-2 text-sm text-white/90">
+                  <Check size={16} className="text-blue-200" />
+                  10 email accounts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-white/90">
+                  <Check size={16} className="text-blue-200" />
+                  4,000 contacts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-white/90">
+                  <Check size={16} className="text-blue-200" />
+                  4,000 recipients/month
+                </li>
+                <li className="flex items-center gap-2 text-sm text-white/90">
+                  <Check size={16} className="text-blue-200" />
+                  Full rotation engine
+                </li>
+                <li className="flex items-center gap-2 text-sm text-white/90">
+                  <Check size={16} className="text-blue-200" />
+                  Unlimited campaigns
+                </li>
+              </ul>
+
+              <Button
+                onClick={() => handleUpgrade("starter")}
+                disabled={currentPlan === "starter" || currentPlan === "growth" || checkoutLoading === "starter"}
+                className="w-full bg-white text-blue-600 hover:bg-blue-50"
+                data-testid="upgrade-starter-btn"
+              >
+                {checkoutLoading === "starter" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : currentPlan === "starter" ? (
+                  "Current Plan"
+                ) : currentPlan === "growth" ? (
+                  "Downgrade"
                 ) : (
-                  <>
-                    <CreditCard size={18} className="mr-2" />
-                    Subscribe Now
-                  </>
+                  "Upgrade to Starter"
                 )}
               </Button>
-
-              <p className="text-xs text-slate-500 text-center mt-4">
-                Secure payment powered by Stripe
-              </p>
             </motion.div>
-          )}
 
-          {/* FAQ */}
-          <div className="mt-8 space-y-4">
-            <h3 className="font-heading font-semibold text-lg text-slate-900">
-              Frequently Asked Questions
-            </h3>
+            {/* Growth Plan */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className={`bg-white rounded-xl border-2 p-6 ${
+                currentPlan === "growth" ? "border-amber-500" : "border-slate-200"
+              }`}
+            >
+              {currentPlan === "growth" && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium mb-3">
+                  <Crown size={12} /> Current Plan
+                </div>
+              )}
+              <h3 className="text-xl font-bold text-slate-900 mb-1">Growth</h3>
+              <p className="text-slate-500 text-sm mb-4">For scaling teams</p>
+              <div className="text-3xl font-bold text-slate-900 mb-1">{formatPrice(149, 11999)}</div>
+              <p className="text-slate-500 text-sm mb-6">/year</p>
+              
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  15 email accounts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  10,000 contacts
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  10,000 recipients/month
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  Full rotation engine
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  Unlimited campaigns
+                </li>
+              </ul>
 
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <p className="font-medium text-slate-900 mb-1">
-                What happens when my subscription expires?
-              </p>
-              <p className="text-sm text-slate-600">
-                You'll lose access to sending campaigns. Your data (accounts, lists)
-                will be preserved for 30 days.
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <p className="font-medium text-slate-900 mb-1">
-                Can I cancel anytime?
-              </p>
-              <p className="text-sm text-slate-600">
-                Yes, you can cancel your subscription at any time. You'll retain
-                access until the end of your billing period.
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <p className="font-medium text-slate-900 mb-1">
-                Why is there a 50 emails/day limit per account?
-              </p>
-              <p className="text-sm text-slate-600">
-                This limit helps protect your sender reputation and ensures better
-                deliverability. It's a best practice for cold email outreach.
-              </p>
-            </div>
+              <Button
+                onClick={() => handleUpgrade("growth")}
+                disabled={currentPlan === "growth" || checkoutLoading === "growth"}
+                variant="outline"
+                className="w-full"
+                data-testid="upgrade-growth-btn"
+              >
+                {checkoutLoading === "growth" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : currentPlan === "growth" ? (
+                  "Current Plan"
+                ) : (
+                  "Upgrade to Growth"
+                )}
+              </Button>
+            </motion.div>
           </div>
         </div>
       </main>
