@@ -11,6 +11,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 5. **Rotational Sending**: Send emails rotationally across accounts with custom daily limits
 6. **Sending Logs**: Detailed logs showing sent/failed status and error messages
 7. **Admin Panel**: Platform-wide monitoring for super_admin users
+8. **Subscription System**: Stripe-integrated yearly subscriptions with plan limits enforcement
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
@@ -19,10 +20,11 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **Authentication**: 
   - Emergent-managed Google Social Login
   - Email + Password (bcrypt hashed)
+- **Payments**: Stripe (live keys configured)
 - **Live Chat**: Tawk.to (authenticated pages only)
 
 ## Database Schema
-- **users**: email, name, google_id, password_hash, provider ('google'/'email'), is_active, created_at, role ('user' | 'super_admin')
+- **users**: email, name, google_id, password_hash, provider ('google'/'email'), is_active, created_at, role ('user' | 'super_admin'), plan_type ('free'/'starter'/'growth'), subscription_status, stripe_customer_id, stripe_subscription_id, trial_ends_at, billing_cycle_start, billing_cycle_end, grace_period_end, monthly_unique_recipient_count, last_recipient_reset_date
 - **user_sessions**: user_id, session_token, expires_at
 - **email_accounts**: user_id, email, type, credentials (encrypted), daily_limit, daily_sent_count, status
 - **email_lists**: user_id, list_name, original_filename, column_headers, total_rows
@@ -30,30 +32,41 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count, scheduled_at
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
 
-## Campaign Statuses
-- `draft` - Campaign saved but not ready to send
-- `scheduled` - Campaign scheduled to send at a future time
-- `running` - Campaign actively sending emails
-- `paused` - Campaign paused by user
-- `paused_daily_limit` - Campaign paused due to daily limit reached
-- `completed` - Campaign finished sending
-- `failed` - Campaign encountered critical error
+## Pricing Plans (Stripe Integrated)
+| Plan | Price (USD/INR) | Accounts | Contacts | Recipients/Month |
+|------|-----------------|----------|----------|------------------|
+| Free Trial | 14 days | 3 | 500 | 500 |
+| Starter | $99/₹7,999/year | 10 | 4,000 | 4,000 |
+| Growth | $149/₹11,999/year | 15 | 10,000 | 10,000 |
+
+### Stripe Price IDs
+- Starter USD: `price_1T3JubD2HZgi5NSCVPybSMdk`
+- Growth USD: `price_1T3Jv7D2HZgi5NSCTvsCbPBi`
+- Starter INR: `price_1T3xeED2HZgi5NSCTsHhLaVL`
+- Growth INR: `price_1T3xecD2HZgi5NSC84ntUhgG`
 
 ## Key API Endpoints
 ### Authentication
 - `/api/auth/session` - Emergent OAuth session exchange (handles Google OAuth callback)
-- `/api/auth/register` - Email/Password registration
+- `/api/auth/register` - Email/Password registration (sets up free trial)
 - `/api/auth/login` - Email/Password login
-- `/api/auth/me` - Get current user with role
+- `/api/auth/me` - Get current user with role and subscription info
 - `/api/auth/logout` - Logout
 
+### Subscription (NEW)
+- `/api/subscription/prices` - Get plan pricing and limits
+- `/api/subscription/status` - Get user's subscription status and usage
+- `/api/subscription/create-checkout` - Create Stripe checkout session
+- `/api/subscription/create-portal` - Create Stripe billing portal session
+- `/api/stripe/webhook` - Handle Stripe webhook events
+
 ### Core Features
-- `/api/email-accounts` - CRUD for email accounts
-- `/api/lists` - CRUD for email lists
+- `/api/accounts` - Get email accounts with limit info
+- `/api/accounts/smtp` - Add SMTP account (enforces plan limits)
+- `/api/lists` - Create email list (enforces contact limits)
 - `/api/campaigns` - CRUD for campaigns
 - `/api/campaigns/{id}/start` - Start campaign immediately
 - `/api/campaigns/{id}/schedule` - Schedule campaign for later
-- `/api/campaigns/{id}/unschedule` - Unschedule a scheduled campaign
 - `/api/campaigns/{id}/pause` - Pause running campaign
 - `/api/campaigns/{id}/resume` - Resume paused campaign
 - `/api/campaigns/{id}/logs` - Sending logs
@@ -64,13 +77,6 @@ Build a simple SaaS web application for small businesses to automatically send e
 ## User Roles
 - **user**: Standard access to dashboard, campaigns, email accounts, lists
 - **super_admin**: Full access + admin panel (dhruvmathur208@gmail.com)
-
-## Pricing Plans (UI Only)
-| Plan | Price | Accounts | Contacts | Features |
-|------|-------|----------|----------|----------|
-| Free | 14-Day Trial | 3 | 500 | Basic rotation, Scheduler |
-| Starter | $99/year | 10 | 7,000 | Full rotation, Scheduler, Unlimited campaigns |
-| Growth | $149/year | 15 | 10,000 | Full rotation, Scheduler, Unlimited campaigns |
 
 ---
 
@@ -104,6 +110,19 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### ✅ Bug Fixes (Dec 2025)
 - [x] Google OAuth "Not Found" Error - Fixed redirect URL to use Emergent Auth directly
 
+### ✅ Stripe Subscription System (Dec 2025)
+- [x] Stripe integration with live keys
+- [x] Yearly subscription plans (Starter/Growth)
+- [x] Geo-based pricing (USD for most countries, INR for India)
+- [x] Stripe Checkout Session creation
+- [x] Webhook handlers (checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.deleted, customer.subscription.updated)
+- [x] Free 14-day trial on registration
+- [x] Plan limits enforcement (accounts, contacts, monthly recipients)
+- [x] Subscription management page with usage stats
+- [x] Currency toggle (USD/INR) on subscription page
+- [x] Grace period handling for failed payments (7 days)
+- [x] Logo resized to ~100px on landing page navbar
+
 ### 🔄 In Progress
 - None currently
 
@@ -117,8 +136,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
-2. **Stripe Integration** - Connect pricing plans to actual payments
-3. **Password Reset** - Forgot password flow for email auth users
+2. **Password Reset** - Forgot password flow for email auth users
 
 ---
 
@@ -126,9 +144,9 @@ Build a simple SaaS web application for small businesses to automatically send e
 ```
 /app/
 ├── backend/
-│   ├── server.py (main API with auth endpoints)
+│   ├── server.py (main API with auth, subscription, campaign endpoints)
 │   ├── requirements.txt
-│   └── .env
+│   └── .env (includes STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET)
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
@@ -140,17 +158,17 @@ Build a simple SaaS web application for small businesses to automatically send e
 │   │   │   ├── EmailLists.jsx
 │   │   │   ├── ListDetails.jsx
 │   │   │   ├── UploadList.jsx
-│   │   │   ├── AuthCallback.jsx
-│   │   │   ├── Login.jsx (NEW)
-│   │   │   ├── Register.jsx (NEW)
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Subscription.jsx (NEW)
 │   │   │   └── admin/
 │   │   │       ├── AdminDashboard.jsx
 │   │   │       └── AdminUserDetails.jsx
 │   │   ├── components/
-│   │   │   ├── Sidebar.jsx
+│   │   │   ├── Sidebar.jsx (includes Subscription nav item)
 │   │   │   ├── ProtectedRoute.jsx
 │   │   │   ├── RichTextEditor.jsx
-│   │   │   └── TawkWidget.jsx (NEW)
+│   │   │   └── TawkWidget.jsx
 │   │   └── App.js
 │   └── package.json
 └── memory/
@@ -164,6 +182,8 @@ Build a simple SaaS web application for small businesses to automatically send e
 - SMTP passwords are Fernet encrypted
 - User passwords are bcrypt hashed
 - Email sending is implemented but not connected to live SMTP for testing
-- Pricing is UI only - no Stripe integration yet
+- Stripe integration uses LIVE keys - subscriptions are real
 - Tawk.to widget only loads on authenticated routes
 - Google OAuth uses Emergent Auth (https://auth.emergentagent.com) - NOT a custom backend endpoint
+- Plan limits are enforced server-side (accounts, contacts, monthly recipients)
+- Logo height: Landing page navbar ~100px, Login/Register 80px, Sidebar 64px
