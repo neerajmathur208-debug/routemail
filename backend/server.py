@@ -1668,7 +1668,8 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         msg['From'] = f"{from_name} <{account['email']}>" if from_name else account['email']
         msg['To'] = to_email
         
-        unsubscribe_url = f"https://batch-mailer-test.preview.emergentagent.com/api/unsubscribe/{user_id}/{to_email}"
+        frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
+        unsubscribe_url = f"{frontend_url}/api/unsubscribe/{user_id}/{to_email}"
         unsubscribe_text = f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
         unsubscribe_html = f'<br><br><hr><p style="font-size:12px;color:#666;">To unsubscribe, <a href="{unsubscribe_url}">click here</a></p>'
         
@@ -2317,7 +2318,7 @@ async def create_customer_portal(user: User = Depends(get_current_user)):
         # Create portal session
         portal_session = stripe.billing_portal.Session.create(
             customer=customer_id,
-            return_url=f"{os.environ.get('FRONTEND_URL', 'https://batch-mailer-test.preview.emergentagent.com')}/dashboard"
+            return_url=f"{os.environ['FRONTEND_URL']}/dashboard"
         )
         
         return {"portal_url": portal_session.url}
