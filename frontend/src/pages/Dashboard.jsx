@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Mail,
@@ -17,6 +17,10 @@ import {
   Activity,
   Zap,
   AlertTriangle,
+  Crown,
+  Shield,
+  CreditCard,
+  Clock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -36,8 +40,19 @@ import { toast } from "sonner";
 
 export default function Dashboard({ user, setUser }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [stats, setStats] = useState(null);
+  const [subscriptionData, setSubscriptionData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Check for subscription success
+  useEffect(() => {
+    if (searchParams.get("subscription") === "success") {
+      toast.success("Subscription activated successfully!");
+      // Clean the URL
+      window.history.replaceState({}, document.title, "/dashboard");
+    }
+  }, [searchParams]);
 
   const fetchStats = async () => {
     try {
@@ -51,8 +66,18 @@ export default function Dashboard({ user, setUser }) {
     }
   };
 
+  const fetchSubscription = async () => {
+    try {
+      const response = await api.get("/subscription/status");
+      setSubscriptionData(response.data);
+    } catch (error) {
+      console.error("Failed to fetch subscription:", error);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchSubscription();
     const interval = setInterval(() => {
       if (stats?.current_campaign?.status === "running") {
         fetchStats();
