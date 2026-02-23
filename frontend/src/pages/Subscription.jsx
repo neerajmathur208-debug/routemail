@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, Zap, Crown, Shield, CreditCard, Loader2, Clock, AlertTriangle, Calendar } from "lucide-react";
+import { Check, Zap, Crown, Shield, CreditCard, Loader2, Clock, AlertTriangle, Calendar, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
 import { api } from "../App";
@@ -13,6 +13,7 @@ export default function Subscription({ user, setUser }) {
   const [checkoutLoading, setCheckoutLoading] = useState(null);
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [currency, setCurrency] = useState("usd");
+  const [countryDetected, setCountryDetected] = useState(false);
 
   useEffect(() => {
     fetchSubscriptionStatus();
@@ -21,14 +22,15 @@ export default function Subscription({ user, setUser }) {
 
   const detectCountry = async () => {
     try {
-      // Use a free geolocation API
       const response = await fetch("https://ipapi.co/json/");
       const data = await response.json();
       if (data.country_code === "IN") {
         setCurrency("inr");
       }
+      setCountryDetected(true);
     } catch (error) {
       console.log("Could not detect country, defaulting to USD");
+      setCountryDetected(true);
     }
   };
 
@@ -61,7 +63,6 @@ export default function Subscription({ user, setUser }) {
         cancel_url: `${window.location.origin}/subscription?canceled=true`,
       });
 
-      // Redirect to Stripe Checkout
       window.location.href = response.data.checkout_url;
     } catch (error) {
       console.error("Checkout error:", error);
@@ -81,14 +82,15 @@ export default function Subscription({ user, setUser }) {
     }
   };
 
-  const formatPrice = (usd, inr) => {
+  // Updated pricing: INR ₹5,000 and ₹12,000
+  const getPrice = (plan) => {
     if (currency === "inr") {
-      return `₹${inr.toLocaleString()}`;
+      return plan === "starter" ? "₹5,000" : "₹12,000";
     }
-    return `$${usd}`;
+    return plan === "starter" ? "$99" : "$149";
   };
 
-  if (loading) {
+  if (loading || !countryDetected) {
     return (
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar user={user} setUser={setUser} />
