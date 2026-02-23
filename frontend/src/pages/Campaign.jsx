@@ -752,12 +752,13 @@ Best regards"
                     <Save size={16} className="mr-2" />
                     {submitting ? "Saving..." : "Save Draft"}
                   </Button>
-                  {view === "edit" && formData.list_id && hasAccounts && (
+                  {view === "edit" && (
                     <Button
                       onClick={() => setStartDialogOpen(true)}
-                      disabled={submitting}
+                      disabled={submitting || !formData.list_id || !hasAccounts || !hasLists}
                       className={sendOption === "schedule" ? "bg-blue-600 hover:bg-blue-700" : "bg-signal-orange hover:bg-orange-600"}
                       data-testid="start-campaign-btn"
+                      title={!hasAccounts || !hasLists ? "Complete setup to launch campaign" : ""}
                     >
                       {sendOption === "schedule" ? (
                         <>
