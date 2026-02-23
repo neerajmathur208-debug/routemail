@@ -535,16 +535,23 @@ async def exchange_session(request: SessionRequest, response: Response):
 
 @api_router.get("/auth/me")
 async def get_me(user: User = Depends(get_current_user)):
-    # Get full user data including role
+    # Get full user data including role and subscription
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     if user_doc:
+        # Check subscription status
+        sub_status = await check_subscription_active(user.user_id)
+        
         return {
             "user_id": user_doc["user_id"],
             "email": user_doc["email"],
             "name": user_doc.get("name", ""),
             "picture": user_doc.get("picture"),
-            "subscription_status": user_doc.get("subscription_status", "active"),
-            "role": user_doc.get("role", "user")
+            "subscription_status": user_doc.get("subscription_status", "trialing"),
+            "plan_type": user_doc.get("plan_type", "free"),
+            "role": user_doc.get("role", "user"),
+            "trial_ends_at": user_doc.get("trial_ends_at"),
+            "billing_cycle_end": user_doc.get("billing_cycle_end"),
+            "subscription_active": sub_status.get("active", False)
         }
     return user.model_dump()
 
