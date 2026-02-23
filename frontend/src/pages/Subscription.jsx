@@ -103,6 +103,18 @@ export default function Subscription({ user, setUser }) {
 
   const currentPlan = subscriptionData?.plan_type || "free";
   const isActive = subscriptionData?.subscription_active;
+  const statusDetails = subscriptionData?.status_details || {};
+
+  // Calculate trial days remaining
+  const getTrialDaysRemaining = () => {
+    if (!subscriptionData?.trial_ends_at) return null;
+    const trialEnd = new Date(subscriptionData.trial_ends_at);
+    const now = new Date();
+    const diff = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const trialDays = getTrialDaysRemaining();
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -115,36 +127,122 @@ export default function Subscription({ user, setUser }) {
             <p className="text-slate-600">Manage your plan and billing</p>
           </div>
 
+          {/* Alert Banners */}
+          {subscriptionData?.subscription_status === "expired" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center gap-3"
+            >
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={20} className="text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-red-900">Trial Expired</p>
+                <p className="text-sm text-red-700">Your free trial has ended. Upgrade to continue sending emails.</p>
+              </div>
+            </motion.div>
+          )}
+
+          {subscriptionData?.subscription_status === "past_due" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center gap-3"
+            >
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <CreditCard size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-amber-900">Payment Past Due</p>
+                <p className="text-sm text-amber-700">
+                  Please update your payment method. 
+                  {statusDetails.grace_ends && ` Grace period ends ${new Date(statusDetails.grace_ends).toLocaleDateString()}`}
+                </p>
+              </div>
+              <Button size="sm" onClick={handleManageSubscription} className="ml-auto bg-amber-600 hover:bg-amber-700">
+                Update Payment
+              </Button>
+            </motion.div>
+          )}
+
+          {subscriptionData?.subscription_status === "canceled_pending" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-slate-100 border border-slate-300 rounded-xl p-4 mb-6 flex items-center gap-3"
+            >
+              <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center flex-shrink-0">
+                <Clock size={20} className="text-slate-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Downgrade Scheduled</p>
+                <p className="text-sm text-slate-600">
+                  Your plan will change to Free on {subscriptionData?.billing_cycle_end 
+                    ? new Date(subscriptionData.billing_cycle_end).toLocaleDateString() 
+                    : "the next billing date"
+                  }
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           {/* Current Plan Status */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl border border-slate-200 p-6 mb-8"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <p className="text-sm text-slate-500 mb-1">Current Plan</p>
-                <h2 className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
-                  {currentPlan === "growth" && <Crown className="text-amber-500" size={24} />}
-                  {currentPlan === "starter" && <Zap className="text-blue-500" size={24} />}
-                  {currentPlan === "free" && <Shield className="text-slate-400" size={24} />}
-                  {currentPlan} Plan
-                </h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Status: <span className={`font-medium ${isActive ? "text-green-600" : "text-red-600"}`}>
-                    {subscriptionData?.subscription_status}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h2 className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+                    {currentPlan === "growth" && <Crown className="text-amber-500" size={24} />}
+                    {currentPlan === "starter" && <Zap className="text-blue-500" size={24} />}
+                    {currentPlan === "free" && <Shield className="text-slate-400" size={24} />}
+                    {currentPlan} Plan
+                  </h2>
+                  {/* Status Badge */}
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    subscriptionData?.subscription_status === "active" 
+                      ? "bg-green-100 text-green-700"
+                      : subscriptionData?.subscription_status === "trialing"
+                      ? "bg-blue-100 text-blue-700"
+                      : subscriptionData?.subscription_status === "past_due"
+                      ? "bg-amber-100 text-amber-700"
+                      : subscriptionData?.subscription_status === "canceled_pending"
+                      ? "bg-slate-100 text-slate-700"
+                      : "bg-red-100 text-red-700"
+                  }`}>
+                    {subscriptionData?.subscription_status === "trialing" && trialDays !== null
+                      ? `${trialDays} days left`
+                      : subscriptionData?.subscription_status?.replace("_", " ")
+                    }
                   </span>
-                </p>
-                {subscriptionData?.trial_ends_at && currentPlan === "free" && (
-                  <p className="text-sm text-amber-600 mt-1">
-                    Trial ends: {new Date(subscriptionData.trial_ends_at).toLocaleDateString()}
-                  </p>
-                )}
-                {subscriptionData?.billing_cycle_end && currentPlan !== "free" && (
-                  <p className="text-sm text-slate-500 mt-1">
-                    Renews: {new Date(subscriptionData.billing_cycle_end).toLocaleDateString()}
-                  </p>
-                )}
+                </div>
+                
+                {/* Billing Info */}
+                <div className="mt-3 space-y-1 text-sm text-slate-500">
+                  {subscriptionData?.trial_ends_at && currentPlan === "free" && subscriptionData?.subscription_status === "trialing" && (
+                    <p className="flex items-center gap-2">
+                      <Clock size={14} />
+                      Trial ends: <span className="font-medium text-slate-700">{new Date(subscriptionData.trial_ends_at).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                  {subscriptionData?.billing_cycle_end && currentPlan !== "free" && (
+                    <p className="flex items-center gap-2">
+                      <Calendar size={14} />
+                      Next billing: <span className="font-medium text-slate-700">{new Date(subscriptionData.billing_cycle_end).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                  {statusDetails.grace_ends && (
+                    <p className="flex items-center gap-2 text-amber-600">
+                      <AlertTriangle size={14} />
+                      Grace period ends: <span className="font-medium">{new Date(statusDetails.grace_ends).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                </div>
               </div>
               {currentPlan !== "free" && (
                 <Button
