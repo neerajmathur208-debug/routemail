@@ -108,7 +108,8 @@ export default function Sidebar({ user, setUser }) {
           <img 
             src="/routemail-logo.png" 
             alt="RoutEmail" 
-            className="h-16 w-auto object-contain"
+            className="h-16 w-auto object-contain cursor-pointer"
+            onClick={() => navigate("/dashboard")}
           />
         </div>
 
