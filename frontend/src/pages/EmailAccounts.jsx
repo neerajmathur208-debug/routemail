@@ -84,10 +84,13 @@ export default function EmailAccounts({ user, setUser }) {
   const fetchAccounts = async () => {
     try {
       const response = await api.get("/accounts");
-      setAccounts(response.data);
+      // Handle accounts response - API returns { accounts: [], limit_info: {} }
+      const accountsData = response.data?.accounts || response.data || [];
+      const accounts = Array.isArray(accountsData) ? accountsData : [];
+      setAccounts(accounts);
       // Initialize editing limits
       const limits = {};
-      response.data.forEach(acc => {
+      accounts.forEach(acc => {
         limits[acc.account_id] = acc.daily_limit || 50;
       });
       setEditingLimit(limits);
