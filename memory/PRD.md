@@ -123,6 +123,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Grace period handling for failed payments (7 days)
 - [x] Logo resized to ~100px on landing page navbar
 
+### ✅ Upgrade Flow & Dashboard Improvements (Dec 2025)
+- [x] Dashboard upgrade banner for free users (shows trial days remaining)
+- [x] Plan & Usage card on dashboard (current plan, usage stats, limits)
+- [x] Landing page pricing buttons pass plan in query params (/register?plan=starter)
+- [x] Register page auto-redirects to Stripe checkout after registration if paid plan selected
+- [x] Selected plan banner on registration page
+- [x] Subscription page shows status badges, trial days, billing dates
+- [x] Alert banners for expired trials, past due payments, scheduled downgrades
+
 ### 🔄 In Progress
 - None currently
 
