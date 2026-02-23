@@ -924,6 +924,19 @@ async def upload_email_list(
 @api_router.post("/lists")
 async def create_email_list(request: CreateListRequest, user: User = Depends(get_current_user)):
     """Save email list"""
+    # Check subscription is active
+    sub_status = await check_subscription_active(user.user_id)
+    if not sub_status.get("active"):
+        raise HTTPException(status_code=403, detail=f"Subscription required: {sub_status.get('reason', 'Inactive subscription')}")
+    
+    # Check contact limit
+    contact_limit = await check_contact_limit(user.user_id, len(request.emails))
+    if not contact_limit["can_add"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Contact limit exceeded. Your plan allows {contact_limit['limit']} contacts ({contact_limit['current']} used). Please upgrade to add more."
+        )
+    
     suppression = await db.suppression_list.find(
         {"user_id": user.user_id},
         {"_id": 0, "email": 1}
