@@ -12,6 +12,7 @@ import {
   X,
   ChevronRight,
   Shield,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -22,6 +23,7 @@ const navItems = [
   { path: "/accounts", label: "Email Accounts", icon: Mail },
   { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
+  { path: "/subscription", label: "Subscription", icon: CreditCard },
 ];
 
 export default function Sidebar({ user, setUser }) {
