@@ -413,8 +413,50 @@ export default function Campaign({ user, setUser }) {
               </div>
             </div>
 
-            {/* Alerts */}
-            {!hasAccounts && (
+            {/* Alert - Missing Requirements Warning */}
+            {(!hasAccounts || !hasLists) && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3"
+                data-testid="setup-warning"
+              >
+                <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-amber-800 font-medium">Complete setup before launching</p>
+                  <p className="text-amber-700 text-sm mt-1">
+                    You need to connect at least one email account and upload at least one contact list before launching a campaign.
+                  </p>
+                  <div className="flex gap-3 mt-3">
+                    {!hasAccounts && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                        onClick={() => navigate("/accounts")}
+                      >
+                        <Mail size={14} className="mr-1.5" />
+                        Add Account
+                      </Button>
+                    )}
+                    {!hasLists && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                        onClick={() => navigate("/upload")}
+                      >
+                        <Users size={14} className="mr-1.5" />
+                        Upload List
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Individual Alerts - Only show when respective item is missing */}
+            {!hasAccounts && hasLists && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -438,7 +480,7 @@ export default function Campaign({ user, setUser }) {
               </motion.div>
             )}
 
-            {!hasLists && (
+            {hasAccounts && !hasLists && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
