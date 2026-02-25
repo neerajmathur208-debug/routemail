@@ -471,11 +471,15 @@ export default function Subscription({ user, setUser }) {
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
-                  10,000 contacts
+                  10,000 contacts/month
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
-                  10,000 recipients/month
+                  120,000 emails per year
+                </li>
+                <li className="flex items-center gap-2 text-sm text-slate-600">
+                  <Check size={16} className="text-green-500" />
+                  Unlimited emails
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
