@@ -147,13 +147,12 @@ export default function Login() {
                 </button>
               </div>
               <div className="flex justify-end mt-1">
-                <button 
-                  type="button"
+                <Link 
+                  to="/forgot-password"
                   className="text-xs text-blue-600 hover:text-blue-700"
-                  onClick={() => toast.info("Password reset feature coming soon!")}
                 >
                   Forgot Password?
-                </button>
+                </Link>
               </div>
             </div>
 
