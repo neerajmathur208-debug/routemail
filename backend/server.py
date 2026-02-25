@@ -1057,6 +1057,105 @@ async def login_email(request: EmailLoginRequest, response: Response):
         "role": updated_user.get("role", "user")
     }
 
+# ==================== FORGOT PASSWORD ====================
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks):
+    """Request password reset - rate limited to 3 attempts per hour"""
+    email = request.email.lower()
+    
+    # Check rate limit (3 attempts per hour)
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    recent_attempts = await db.password_reset_attempts.count_documents({
+        "email": email,
+        "created_at": {"$gte": one_hour_ago.isoformat()}
+    })
+    
+    if recent_attempts >= 3:
+        # Don't reveal rate limit - just return success
+        return {"message": "If this email exists, you will receive a password reset link."}
+    
+    # Log the attempt
+    await db.password_reset_attempts.insert_one({
+        "email": email,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    # Find user (don't reveal if email exists)
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    
+    if not user or user.get("provider") == "google":
+        # Don't reveal if email doesn't exist or uses Google
+        return {"message": "If this email exists, you will receive a password reset link."}
+    
+    # Generate reset token
+    reset_token = secrets.token_urlsafe(32)
+    reset_expires = datetime.now(timezone.utc) + timedelta(minutes=30)
+    
+    # Store reset token
+    await db.users.update_one(
+        {"email": email},
+        {
+            "$set": {
+                "reset_token": reset_token,
+                "reset_expires": reset_expires.isoformat()
+            }
+        }
+    )
+    
+    # Send reset email in background
+    reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
+    html_content = get_password_reset_email_html(reset_link)
+    
+    background_tasks.add_task(
+        send_email_async,
+        email,
+        "Reset Your RouteMail Password",
+        html_content
+    )
+    
+    return {"message": "If this email exists, you will receive a password reset link."}
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Reset password with token"""
+    if request.new_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    
+    # Find user with this token
+    user = await db.users.find_one({"reset_token": request.token}, {"_id": 0})
+    
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    
+    # Check if token expired
+    expires = user.get("reset_expires")
+    if expires:
+        if isinstance(expires, str):
+            expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > expires:
+            raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+    
+    # Hash new password
+    password_hash = bcrypt.hashpw(request.new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Update password and clear reset token
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {
+            "$set": {"password_hash": password_hash},
+            "$unset": {"reset_token": "", "reset_expires": ""}
+        }
+    )
+    
+    # Invalidate all existing sessions for security
+    await db.user_sessions.delete_many({"user_id": user["user_id"]})
+    
+    return {"message": "Password reset successfully. Please login with your new password."}
+
 # ==================== EMAIL ACCOUNT ENDPOINTS ====================
 
 @api_router.get("/accounts")
