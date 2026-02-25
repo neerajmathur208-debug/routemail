@@ -8,9 +8,10 @@ import { api } from "../App";
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState("verifying"); // verifying, success, error, expired
+  const [status, setStatus] = useState("verifying"); // verifying, success, error, expired, already_verified
   const [message, setMessage] = useState("");
   const verificationAttempted = useRef(false);
+  const verificationCompleted = useRef(false);
 
   useEffect(() => {
     const token = searchParams.get("token");
@@ -30,20 +31,44 @@ export default function VerifyEmail() {
     const verifyEmail = async () => {
       try {
         const response = await api.get(`/auth/verify-email?token=${token}`);
-        setStatus("success");
-        setMessage(response.data.message || "Email verified successfully!");
+        
+        // Prevent state updates if already completed (race condition protection)
+        if (verificationCompleted.current) return;
+        verificationCompleted.current = true;
+        
+        // Check if it was already verified
+        if (response.data.message?.toLowerCase().includes("already")) {
+          setStatus("already_verified");
+          setMessage("Your email has already been verified.");
+        } else {
+          setStatus("success");
+          setMessage(response.data.message || "Email verified successfully!");
+        }
         
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
           navigate("/dashboard");
         }, 2000);
       } catch (error) {
+        // Prevent state updates if verification already succeeded
+        if (verificationCompleted.current) return;
+        verificationCompleted.current = true;
+        
         const errorDetail = error.response?.data?.detail || "Verification failed. Please try again.";
         
         // Check for specific error types
         if (errorDetail.toLowerCase().includes("expired")) {
           setStatus("expired");
           setMessage("Verification link has expired. Please register again.");
+        } else if (errorDetail.toLowerCase().includes("already been used") || 
+                   errorDetail.toLowerCase().includes("already verified")) {
+          // Link was already used - treat as success since account is verified
+          setStatus("already_verified");
+          setMessage("Your email has already been verified.");
+          // Try to redirect to dashboard/login
+          setTimeout(() => {
+            navigate("/login");
+          }, 2000);
         } else if (errorDetail.toLowerCase().includes("invalid")) {
           setStatus("error");
           setMessage("Invalid verification link. Please request a new one.");
