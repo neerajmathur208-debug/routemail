@@ -787,8 +787,8 @@ async def logout(request: Request, response: Response):
 # ==================== EMAIL/PASSWORD AUTH ====================
 
 @api_router.post("/auth/register")
-async def register_email(request: EmailRegisterRequest, response: Response):
-    """Register a new user with email and password"""
+async def register_email(request: EmailRegisterRequest, background_tasks: BackgroundTasks):
+    """Register a new user with email and password - requires email verification"""
     # Validate passwords match
     if request.password != request.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
@@ -802,10 +802,28 @@ async def register_email(request: EmailRegisterRequest, response: Response):
     if existing_user:
         if existing_user.get("provider") == "google":
             raise HTTPException(status_code=400, detail="This email is registered with Google. Please sign in with Google.")
-        raise HTTPException(status_code=400, detail="Email already registered")
+        # Check if unverified account that expired (>2 hours old)
+        if not existing_user.get("email_verified", False):
+            created_at = existing_user.get("created_at")
+            if created_at:
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                if datetime.now(timezone.utc) > created_at + timedelta(hours=2):
+                    # Delete expired unverified account
+                    await db.users.delete_one({"email": request.email})
+                else:
+                    raise HTTPException(status_code=400, detail="Please check your email to verify your account. Check spam folder too.")
+            else:
+                raise HTTPException(status_code=400, detail="Email already registered")
+        else:
+            raise HTTPException(status_code=400, detail="Email already registered")
     
     # Hash password
     password_hash = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Generate verification token
+    verification_token = secrets.token_urlsafe(32)
+    verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
     
     # Create user with proper subscription fields
     user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -820,6 +838,10 @@ async def register_email(request: EmailRegisterRequest, response: Response):
         "password_hash": password_hash,
         "provider": "email",
         "role": role,
+        # Email verification
+        "email_verified": False,
+        "verification_token": verification_token,
+        "verification_expires": verification_expires.isoformat(),
         # Subscription fields
         "plan_type": "free",
         "subscription_status": "trialing",
@@ -839,12 +861,73 @@ async def register_email(request: EmailRegisterRequest, response: Response):
     # Apply permanent plan assignment if applicable
     await apply_permanent_plan_if_applicable(request.email, user_id)
     
+    # Send verification email in background
+    first_name = request.name.split()[0] if request.name else "there"
+    verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+    html_content = get_verification_email_html(first_name, verification_link)
+    
+    background_tasks.add_task(
+        send_email_async,
+        request.email,
+        "Verify Your RouteMail Account",
+        html_content
+    )
+    
+    return {
+        "message": "Registration successful! Please check your email to verify your account.",
+        "email": request.email,
+        "requires_verification": True
+    }
+
+@api_router.get("/auth/verify-email")
+async def verify_email(token: str, response: Response, background_tasks: BackgroundTasks):
+    """Verify email address with token"""
+    # Find user with this token
+    user = await db.users.find_one({"verification_token": token}, {"_id": 0})
+    
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    
+    # Check if token expired
+    expires = user.get("verification_expires")
+    if expires:
+        if isinstance(expires, str):
+            expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > expires:
+            # Delete expired user
+            await db.users.delete_one({"user_id": user["user_id"]})
+            raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
+    
+    # Mark email as verified
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {
+            "$set": {"email_verified": True},
+            "$unset": {"verification_token": "", "verification_expires": ""}
+        }
+    )
+    
+    # Get updated user data
+    updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    plan_type = updated_user.get("plan_type", "free")
+    
+    # Send welcome email in background
+    first_name = user.get("name", "").split()[0] if user.get("name") else "there"
+    subject, html_content = get_welcome_email_html(first_name, plan_type)
+    
+    background_tasks.add_task(
+        send_email_async,
+        user["email"],
+        subject,
+        html_content
+    )
+    
     # Create session
     session_token = uuid.uuid4().hex
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     
     session_doc = {
-        "user_id": user_id,
+        "user_id": user["user_id"],
         "session_token": session_token,
         "expires_at": expires_at.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -862,18 +945,57 @@ async def register_email(request: EmailRegisterRequest, response: Response):
         max_age=7 * 24 * 60 * 60
     )
     
-    # Get updated user data (may have permanent plan applied)
-    updated_user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    
     return {
-        "user_id": user_id,
-        "email": request.email,
-        "name": request.name,
-        "picture": None,
-        "subscription_status": updated_user.get("subscription_status", "trialing"),
-        "plan_type": updated_user.get("plan_type", "free"),
-        "role": role
+        "message": "Email verified successfully!",
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "name": user.get("name"),
+        "plan_type": plan_type,
+        "verified": True
     }
+
+@api_router.post("/auth/resend-verification")
+async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks):
+    """Resend verification email"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    
+    if not user:
+        # Don't reveal if email exists
+        return {"message": "If this email is registered, you will receive a verification link."}
+    
+    if user.get("email_verified", False):
+        raise HTTPException(status_code=400, detail="Email is already verified")
+    
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="This account uses Google sign-in")
+    
+    # Generate new verification token
+    verification_token = secrets.token_urlsafe(32)
+    verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
+    
+    await db.users.update_one(
+        {"email": email},
+        {
+            "$set": {
+                "verification_token": verification_token,
+                "verification_expires": verification_expires.isoformat()
+            }
+        }
+    )
+    
+    # Send verification email
+    first_name = user.get("name", "").split()[0] if user.get("name") else "there"
+    verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+    html_content = get_verification_email_html(first_name, verification_link)
+    
+    background_tasks.add_task(
+        send_email_async,
+        email,
+        "Verify Your RouteMail Account",
+        html_content
+    )
+    
+    return {"message": "If this email is registered, you will receive a verification link."}
 
 @api_router.post("/auth/login")
 async def login_email(request: EmailLoginRequest, response: Response):
@@ -887,6 +1009,10 @@ async def login_email(request: EmailLoginRequest, response: Response):
     # Check if user registered with Google
     if user_doc.get("provider") == "google" or not user_doc.get("password_hash"):
         raise HTTPException(status_code=401, detail="This account uses Google sign-in. Please sign in with Google.")
+    
+    # Check if email is verified
+    if not user_doc.get("email_verified", False):
+        raise HTTPException(status_code=401, detail="Please verify your email before logging in. Check your inbox or spam folder.")
     
     # Verify password
     if not bcrypt.checkpw(request.password.encode('utf-8'), user_doc["password_hash"].encode('utf-8')):
