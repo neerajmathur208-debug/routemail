@@ -124,6 +124,142 @@ def decrypt_data(encrypted_data: str) -> str:
     except Exception:
         return ""
 
+# ==================== EMAIL HELPERS (Resend) ====================
+
+async def send_email_async(to_email: str, subject: str, html_content: str):
+    """Send email using Resend API (non-blocking)"""
+    try:
+        params = {
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Email sent to {to_email}: {result.get('id')}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {str(e)}")
+        return None
+
+def get_verification_email_html(first_name: str, verification_link: str) -> str:
+    """Generate verification email HTML"""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #18181b; font-size: 24px; margin: 0;">Verify Your RouteMail Account</h1>
+            </div>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hi {first_name},</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Welcome to RouteMail!</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">Please confirm your email address to activate your account.</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">Click the button below to verify your account:</p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="{verification_link}" style="display: inline-block; background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Verify My Email</a>
+            </div>
+            <p style="color: #71717a; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">This link will expire in 2 hours.</p>
+            <p style="color: #71717a; font-size: 14px; line-height: 1.6; margin: 16px 0 0;">If you did not create this account, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 32px 0;">
+            <p style="color: #a1a1aa; font-size: 13px; text-align: center; margin: 0;">— RouteMail Team<br>support@routemail.co</p>
+        </div>
+    </body>
+    </html>
+    """
+
+def get_welcome_email_html(first_name: str, plan_type: str) -> tuple:
+    """Generate welcome email subject and HTML based on plan type"""
+    if plan_type == "growth":
+        subject = "Welcome to RouteMail Growth 🚀"
+        features = """
+            <li style="margin-bottom: 8px;">Connect up to <strong>15 email accounts</strong></li>
+            <li style="margin-bottom: 8px;">Send to <strong>10,000 contacts per month</strong></li>
+            <li style="margin-bottom: 8px;">Send up to <strong>120,000 emails per year</strong></li>
+            <li style="margin-bottom: 8px;"><strong>Unlimited emails</strong></li>
+        """
+        intro = "Your Growth Plan is now active."
+        outro = "Time to maximize your outreach."
+    elif plan_type == "starter":
+        subject = "Welcome to RouteMail Starter 🎯"
+        features = """
+            <li style="margin-bottom: 8px;">Connect up to <strong>10 email accounts</strong></li>
+            <li style="margin-bottom: 8px;">Send to <strong>4,000 contacts per month</strong></li>
+            <li style="margin-bottom: 8px;">Send up to <strong>48,000 emails per year</strong></li>
+            <li style="margin-bottom: 8px;"><strong>Unlimited emails</strong></li>
+        """
+        intro = "Your Starter Plan is now active."
+        outro = "You're ready to scale your outreach efficiently."
+    else:  # free/trialing
+        subject = "Welcome to RouteMail – Your 14-Day Trial Has Started 🚀"
+        features = """
+            <li style="margin-bottom: 8px;">Connect up to <strong>3 email accounts</strong></li>
+            <li style="margin-bottom: 8px;">Store up to <strong>500 contacts</strong></li>
+            <li style="margin-bottom: 8px;">Send emails to <strong>500 contacts per month</strong></li>
+        """
+        intro = "Your 14-day free trial is now active."
+        outro = "You can upgrade anytime from your dashboard to unlock higher limits and advanced sending power.<br><br>Let's get your first campaign live!"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #18181b; font-size: 24px; margin: 0;">{subject.replace(' 🚀', '').replace(' 🎯', '')}</h1>
+            </div>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hi {first_name},</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">{intro}</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">You can:</p>
+            <ul style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px; padding-left: 24px;">
+                {features}
+            </ul>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">{outro}</p>
+            <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 32px 0;">
+            <p style="color: #a1a1aa; font-size: 13px; text-align: center; margin: 0;">— RouteMail Team</p>
+        </div>
+    </body>
+    </html>
+    """
+    return subject, html
+
+def get_password_reset_email_html(reset_link: str) -> str:
+    """Generate password reset email HTML"""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="color: #18181b; font-size: 24px; margin: 0;">Reset Your RouteMail Password</h1>
+            </div>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">Hi,</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">We received a request to reset your password.</p>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">Click below to reset it:</p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="{reset_link}" style="display: inline-block; background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Reset Password</a>
+            </div>
+            <p style="color: #71717a; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">This link expires in 30 minutes.</p>
+            <p style="color: #71717a; font-size: 14px; line-height: 1.6; margin: 16px 0 0;">If you didn't request this, ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 32px 0;">
+            <p style="color: #a1a1aa; font-size: 13px; text-align: center; margin: 0;">— RouteMail Team</p>
+        </div>
+    </body>
+    </html>
+    """
+
 # ==================== PLAN ENFORCEMENT HELPERS ====================
 
 async def get_user_plan_limits(user_id: str) -> dict:
