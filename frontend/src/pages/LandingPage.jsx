@@ -1030,8 +1030,37 @@ export default function LandingPage() {
             </p>
           </div>
         </div>
+        {/* Legal Links */}
+        <div className="max-w-[1300px] mx-auto mt-6 pt-6 border-t border-slate-800">
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-8 text-sm">
+            <Link 
+              to="/privacy-policy" 
+              className="text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              Privacy Policy
+            </Link>
+            <Link 
+              to="/terms-and-conditions" 
+              className="text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              Terms & Conditions
+            </Link>
+            <Link 
+              to="/anti-spam-policy" 
+              className="text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              Anti-Spam Policy
+            </Link>
+            <Link 
+              to="/gdpr-compliance" 
+              className="text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              GDPR Compliance
+            </Link>
+          </div>
+        </div>
         {/* Developer Credit */}
-        <div className="max-w-[1300px] mx-auto mt-8 pt-6 border-t border-slate-800">
+        <div className="max-w-[1300px] mx-auto mt-6 pt-6 border-t border-slate-800">
           <p className="text-center text-xs text-slate-500">
             Developed by{" "}
             <a 
