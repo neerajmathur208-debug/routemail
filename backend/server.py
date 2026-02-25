@@ -44,6 +44,11 @@ fernet = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else 
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 
+# Resend configuration for transactional emails
+resend.api_key = os.environ.get('RESEND_API_KEY')
+FROM_EMAIL = os.environ.get('FROM_EMAIL', 'support@routemail.co')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', '')
+
 # Stripe Price IDs (from environment)
 STRIPE_PRICES = {
     "starter_usd": os.environ.get('STRIPE_PRICE_STARTER_USD'),
