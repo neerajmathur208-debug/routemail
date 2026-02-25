@@ -1335,7 +1335,11 @@ async def upload_email_list(
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Only CSV files are allowed")
     
+    # Check file size (max 2MB)
     content = await file.read()
+    if len(content) > 2 * 1024 * 1024:  # 2MB limit
+        raise HTTPException(status_code=400, detail="File size exceeds 2MB limit. Please upload a smaller file.")
+    
     text_content = content.decode('utf-8')
     
     reader = csv.DictReader(io.StringIO(text_content))
