@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState("verifying"); // verifying, success, error
+  const [status, setStatus] = useState("verifying"); // verifying, success, error, expired
   const [message, setMessage] = useState("");
+  const verificationAttempted = useRef(false);
 
   useEffect(() => {
     const token = searchParams.get("token");
@@ -19,6 +20,12 @@ export default function VerifyEmail() {
       setMessage("Invalid verification link. Please request a new one.");
       return;
     }
+
+    // Prevent double execution (React StrictMode or accidental re-renders)
+    if (verificationAttempted.current) {
+      return;
+    }
+    verificationAttempted.current = true;
 
     const verifyEmail = async () => {
       try {
@@ -31,8 +38,19 @@ export default function VerifyEmail() {
           navigate("/dashboard");
         }, 2000);
       } catch (error) {
-        setStatus("error");
-        setMessage(error.response?.data?.detail || "Verification failed. Please try again.");
+        const errorDetail = error.response?.data?.detail || "Verification failed. Please try again.";
+        
+        // Check for specific error types
+        if (errorDetail.toLowerCase().includes("expired")) {
+          setStatus("expired");
+          setMessage("Verification link has expired. Please register again.");
+        } else if (errorDetail.toLowerCase().includes("invalid")) {
+          setStatus("error");
+          setMessage("Invalid verification link. Please request a new one.");
+        } else {
+          setStatus("error");
+          setMessage(errorDetail);
+        }
       }
     };
 
@@ -72,10 +90,26 @@ export default function VerifyEmail() {
           </>
         )}
 
+        {status === "expired" && (
+          <>
+            <AlertTriangle size={48} className="mx-auto text-amber-500 mb-4" />
+            <h2 className="text-xl font-semibold text-slate-800 mb-2">Verification Link Expired</h2>
+            <p className="text-slate-500 mb-6">{message}</p>
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate("/register")}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                Register Again
+              </Button>
+            </div>
+          </>
+        )}
+
         {status === "error" && (
           <>
             <XCircle size={48} className="mx-auto text-red-500 mb-4" />
-            <h2 className="text-xl font-semibold text-slate-800 mb-2">Verification Failed</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-2">Invalid Verification Link</h2>
             <p className="text-slate-500 mb-6">{message}</p>
             <div className="space-y-3">
               <Button 
