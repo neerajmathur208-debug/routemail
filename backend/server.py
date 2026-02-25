@@ -1750,6 +1750,14 @@ async def duplicate_campaign(campaign_id: str, user: User = Depends(get_current_
 @api_router.post("/campaigns/send-test")
 async def send_test_email(request: SendTestEmailRequest, user: User = Depends(get_current_user)):
     """Send a test email preview without affecting campaign stats"""
+    
+    # Validate inputs
+    if not request.subject or not request.subject.strip():
+        raise HTTPException(status_code=400, detail="Subject line is required")
+    
+    if not request.body or not request.body.strip():
+        raise HTTPException(status_code=400, detail="Email body is required")
+    
     # Get user's first connected account to send from
     account = await db.email_accounts.find_one(
         {"user_id": user.user_id, "status": "connected"},
@@ -1759,6 +1767,10 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     if not account:
         raise HTTPException(status_code=400, detail="No connected email account found. Please add an account first.")
     
+    # Check that account has SMTP credentials
+    if not account.get("smtp_password") or not account.get("smtp_host"):
+        raise HTTPException(status_code=400, detail="Selected account is not configured for sending. Please check your SMTP settings.")
+    
     # Get user info for from_name
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     from_name = request.from_name or user_doc.get("name") or account.get("display_name") or "Test"
@@ -1766,8 +1778,11 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     # Decrypt credentials
     try:
         smtp_password = decrypt_data(account["smtp_password"])
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to decrypt account credentials")
+        if not smtp_password:
+            raise ValueError("Empty password after decryption")
+    except Exception as e:
+        logger.error(f"Failed to decrypt account credentials: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to decrypt account credentials. Please re-add your email account.")
     
     # Prepare email content with test indicator
     test_subject = f"[TEST] {request.subject}"
@@ -1795,25 +1810,49 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     msg.attach(part2)
     
     # Send via SMTP
+    server = None
     try:
-        if account.get("smtp_encryption") == "ssl":
-            server = smtplib.SMTP_SSL(account["smtp_host"], account["smtp_port"], timeout=30)
+        smtp_host = account.get("smtp_host")
+        smtp_port = account.get("smtp_port", 587)
+        smtp_username = account.get("smtp_username") or account.get("email")
+        encryption = account.get("smtp_encryption", "tls")
+        
+        logger.info(f"Connecting to SMTP: {smtp_host}:{smtp_port} (encryption: {encryption})")
+        
+        if encryption == "ssl":
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
         else:
-            server = smtplib.SMTP(account["smtp_host"], account["smtp_port"], timeout=30)
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
             server.starttls()
         
-        server.login(account["smtp_username"], smtp_password)
+        server.login(smtp_username, smtp_password)
         server.sendmail(account['email'], request.test_email, msg.as_string())
-        server.quit()
+        
+        logger.info(f"Test email sent successfully to {request.test_email} from {account['email']}")
         
         return {
             "success": True,
-            "message": f"Test email sent to {request.test_email}",
+            "message": f"Test email sent successfully to {request.test_email}",
             "from_account": account["email"]
         }
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP authentication failed: {str(e)}")
+        raise HTTPException(status_code=400, detail="SMTP authentication failed. Please check your email account credentials.")
+    except smtplib.SMTPConnectError as e:
+        logger.error(f"SMTP connection failed: {str(e)}")
+        raise HTTPException(status_code=400, detail="Could not connect to email server. Please check your SMTP settings.")
+    except smtplib.SMTPRecipientsRefused as e:
+        logger.error(f"Recipient refused: {str(e)}")
+        raise HTTPException(status_code=400, detail="The test email address was rejected by the server.")
     except Exception as e:
         logger.error(f"Failed to send test email: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
+    finally:
+        if server:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
 @api_router.post("/campaigns/{campaign_id}/start")
 async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
