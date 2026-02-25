@@ -306,6 +306,46 @@ export default function Campaign({ user, setUser }) {
     }
   };
 
+  // Send Test Email function
+  const handleSendTestEmail = async () => {
+    // Validate
+    if (!testEmailAddress) {
+      toast.error("Please enter a test email address");
+      return;
+    }
+    if (!formData.subject) {
+      toast.error("Please enter a subject line");
+      return;
+    }
+    if (!formData.body) {
+      toast.error("Please enter email content");
+      return;
+    }
+    if (!hasAccounts) {
+      toast.error("Please connect at least one email account first");
+      return;
+    }
+
+    setSendingTestEmail(true);
+    try {
+      const response = await api.post("/campaigns/send-test", {
+        test_email: testEmailAddress,
+        subject: formData.subject,
+        body: formData.body,
+        from_name: formData.from_name || null,
+      });
+      
+      toast.success(`Test email sent to ${testEmailAddress}`);
+      setTestEmailDialogOpen(false);
+      setTestEmailAddress("");
+    } catch (error) {
+      const message = error.response?.data?.detail || "Failed to send test email";
+      toast.error(message);
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   const handlePauseCampaign = async (campaignId) => {
     try {
       await api.post(`/campaigns/${campaignId}/pause`);
