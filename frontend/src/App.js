@@ -28,6 +28,10 @@ import Subscription from "./pages/Subscription";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsAndConditions from "./pages/TermsAndConditions";
+import AntiSpamPolicy from "./pages/AntiSpamPolicy";
+import GDPRCompliance from "./pages/GDPRCompliance";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
