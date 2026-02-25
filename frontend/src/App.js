@@ -235,6 +235,11 @@ function AppRouter() {
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* Legal Pages */}
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+      <Route path="/anti-spam-policy" element={<AntiSpamPolicy />} />
+      <Route path="/gdpr-compliance" element={<GDPRCompliance />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
