@@ -1725,6 +1725,74 @@ async def duplicate_campaign(campaign_id: str, user: User = Depends(get_current_
     
     return {"campaign_id": new_campaign.campaign_id, "status": "draft", "message": "Campaign duplicated"}
 
+@api_router.post("/campaigns/send-test")
+async def send_test_email(request: SendTestEmailRequest, user: User = Depends(get_current_user)):
+    """Send a test email preview without affecting campaign stats"""
+    # Get user's first connected account to send from
+    account = await db.email_accounts.find_one(
+        {"user_id": user.user_id, "status": "connected"},
+        {"_id": 0}
+    )
+    
+    if not account:
+        raise HTTPException(status_code=400, detail="No connected email account found. Please add an account first.")
+    
+    # Get user info for from_name
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    from_name = request.from_name or user_doc.get("name") or account.get("display_name") or "Test"
+    
+    # Decrypt credentials
+    try:
+        smtp_password = decrypt_data(account["smtp_password"])
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decrypt account credentials")
+    
+    # Prepare email content with test indicator
+    test_subject = f"[TEST] {request.subject}"
+    
+    # Add test banner to email body
+    test_banner = """
+    <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: center;">
+        <strong style="color: #92400e;">🧪 TEST EMAIL</strong>
+        <p style="color: #78350f; margin: 4px 0 0 0; font-size: 13px;">This is a test preview. Campaign stats are not affected.</p>
+    </div>
+    """
+    test_body = test_banner + request.body
+    
+    # Create email message
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = test_subject
+    msg['From'] = f"{from_name} <{account['email']}>"
+    msg['To'] = request.test_email
+    
+    # Plain text version
+    plain_text = re.sub('<[^<]+?>', '', request.body)
+    part1 = MIMEText(plain_text, 'plain')
+    part2 = MIMEText(test_body, 'html')
+    msg.attach(part1)
+    msg.attach(part2)
+    
+    # Send via SMTP
+    try:
+        if account.get("smtp_encryption") == "ssl":
+            server = smtplib.SMTP_SSL(account["smtp_host"], account["smtp_port"], timeout=30)
+        else:
+            server = smtplib.SMTP(account["smtp_host"], account["smtp_port"], timeout=30)
+            server.starttls()
+        
+        server.login(account["smtp_username"], smtp_password)
+        server.sendmail(account['email'], request.test_email, msg.as_string())
+        server.quit()
+        
+        return {
+            "success": True,
+            "message": f"Test email sent to {request.test_email}",
+            "from_account": account["email"]
+        }
+    except Exception as e:
+        logger.error(f"Failed to send test email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
+
 @api_router.post("/campaigns/{campaign_id}/start")
 async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
     """Start a campaign"""
