@@ -166,6 +166,49 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] Sidebar visible on: Dashboard, Email Accounts, Email Lists, Campaign, Subscription pages
 - [x] Logo is clickable and navigates to /dashboard
 
+### ✅ Major Platform Update (Feb 2026)
+- [x] **Rebranding**: "RoutEmail" → "RouteMail" across all UI, emails, meta tags
+- [x] **New Logo**: Updated logo displayed across landing, auth, and dashboard pages
+- [x] **Meta Title**: "RouteMail | Bulk Email Sending Platform for SME"
+- [x] **Footer Credit**: "Developed by Perfect Digitals" with link to perfectdigitals.ie
+- [x] **Authentication System (Resend Integration)**:
+  - Email verification on registration (2hr token expiry)
+  - Verification email with branded HTML template
+  - Welcome emails based on plan type (Free/Starter/Growth)
+  - Forgot password with 30-min token, 3 attempts/hour rate limit
+  - Password reset flow with secure token validation
+  - New pages: /verify-email, /forgot-password, /reset-password
+- [x] **Pricing Updates**:
+  - Starter: 4,000 contacts/month, 48,000 emails/year, Unlimited emails
+  - Growth: 10,000 contacts/month, 120,000 emails/year, Unlimited emails
+- [x] **File Upload**: 2MB max file size for CSV uploads
+
+### ✅ Rich Text Editor & Campaign Page Improvements (Feb 2026)
+- [x] **Enhanced Rich Text Editor**:
+  - Font Size selector (dropdown: Small, Normal, Large, Extra Large)
+  - Font Color picker with preset colors + custom color picker
+  - Text alignment (left, center, right)
+  - Bold / Italic / Underline buttons
+  - Bullet & numbered lists
+  - Hyperlink insert with popover dialog
+  - Image upload & insert support (base64, max 2MB)
+- [x] **Campaign Page Layout Reorganized**:
+  - Campaign Name
+  - From Name (optional)
+  - Select Email Accounts (checkboxes)
+  - Select Email List
+  - Subject Line
+  - Email Body (Rich Text Editor)
+  - Save Draft button (below editor)
+  - Send Test Email button (below editor)
+  - Send Now / Schedule Later options
+  - Start Campaign button (at bottom)
+- [x] **Send Test Email Feature**:
+  - Opens modal dialog for test email input
+  - Sends preview with [TEST] prefix in subject
+  - Does not affect campaign stats or logs
+  - Validates: subject, body, connected accounts
+
 ### 🔄 In Progress
 - None currently
 
@@ -179,7 +222,6 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
-2. **Password Reset** - Forgot password flow for email auth users
 
 ---
 
