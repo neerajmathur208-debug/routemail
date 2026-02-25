@@ -539,6 +539,20 @@ class EmailLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str
+
+class SendTestEmailRequest(BaseModel):
+    test_email: EmailStr
+    subject: str
+    body: str
+    from_name: Optional[str] = None
+
 class AddSMTPAccountRequest(BaseModel):
     email: str
     display_name: str
