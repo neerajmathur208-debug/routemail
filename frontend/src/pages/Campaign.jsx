@@ -690,6 +690,29 @@ Best regards"
                 />
               </div>
 
+              {/* Actions Below Editor - Save Draft & Send Test Email */}
+              <div className="flex flex-wrap items-center gap-3 py-4 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  onClick={handleSaveCampaign}
+                  disabled={submitting}
+                  data-testid="save-campaign-btn"
+                >
+                  <Save size={16} className="mr-2" />
+                  {submitting ? "Saving..." : "Save Draft"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setTestEmailDialogOpen(true)}
+                  disabled={!hasAccounts || !formData.subject || !formData.body}
+                  data-testid="send-test-email-btn"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                >
+                  <TestTube size={16} className="mr-2" />
+                  Send Test Email
+                </Button>
+              </div>
+
               {/* Sending Options */}
               <div className="border-t border-slate-100 pt-6">
                 <Label className="mb-3 block">Sending Options</Label>
