@@ -60,7 +60,7 @@ export default function Login() {
           <Link to="/" className="inline-block">
             <img 
               src="/routemail-logo.png" 
-              alt="RoutEmail" 
+              alt="RouteMail" 
               className="h-20 w-auto object-contain mx-auto"
             />
           </Link>

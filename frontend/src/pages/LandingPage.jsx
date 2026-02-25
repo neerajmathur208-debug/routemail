@@ -143,7 +143,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <img 
               src="/routemail-logo.png" 
-              alt="RoutEmail" 
+              alt="RouteMail" 
               className="h-24 sm:h-24 md:h-[100px] w-auto object-contain"
             />
           </div>
@@ -1006,7 +1006,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <img 
               src="/routemail-logo.png" 
-              alt="RoutEmail" 
+              alt="RouteMail" 
               className="h-10 w-auto object-contain brightness-0 invert"
             />
           </div>
@@ -1018,7 +1018,7 @@ export default function LandingPage() {
               support@routemail.co
             </a>
             <p className="text-sm text-slate-500">
-              &copy; {new Date().getFullYear()} RoutEmail. All rights reserved.
+              &copy; {new Date().getFullYear()} RouteMail. All rights reserved.
             </p>
           </div>
         </div>

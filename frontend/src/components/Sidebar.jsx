@@ -114,7 +114,7 @@ export default function Sidebar({ user, setUser }) {
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/dashboard")}>
           <img 
             src="/routemail-logo.png" 
-            alt="RoutEmail" 
+            alt="RouteMail" 
             className="h-14 w-auto object-contain"
           />
         </div>
@@ -149,7 +149,7 @@ export default function Sidebar({ user, setUser }) {
         <div className="h-24 flex items-center px-6 border-b border-slate-200 py-4">
           <img 
             src="/routemail-logo.png" 
-            alt="RoutEmail" 
+            alt="RouteMail" 
             className="h-20 w-auto object-contain cursor-pointer"
             onClick={() => navigate("/dashboard")}
             data-testid="sidebar-logo"

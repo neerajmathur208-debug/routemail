@@ -72,7 +72,7 @@ export default function Dashboard({ user, setUser }) {
   const handleOnboardingComplete = () => {
     localStorage.setItem("onboarding_completed", "true");
     setShowOnboarding(false);
-    toast.success("Welcome to RoutEmail! You're all set.");
+    toast.success("Welcome to RouteMail! You're all set.");
   };
 
   const handleOnboardingSkip = () => {
