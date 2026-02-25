@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Check, Zap, Crown } from "lucide-react";
+import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Check, Zap, Crown, CheckCircle2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -22,6 +22,8 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState("usd");
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
 
   useEffect(() => {
     detectCountry();
@@ -77,39 +79,12 @@ export default function Register() {
     return { score, label: labels[score], color: colors[score] };
   };
 
-  // Helper to detect country and get appropriate price ID
-  const getPriceId = async (plan) => {
-    const priceIds = {
-      starter_usd: "price_1T3JubD2HZgi5NSCVPybSMdk",
-      growth_usd: "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
-      starter_inr: "price_1T3xeED2HZgi5NSCTsHhLaVL",
-      growth_inr: "price_1T3xecD2HZgi5NSC84ntUhgG",
-    };
-    
+  const handleResendVerification = async () => {
     try {
-      const response = await fetch("https://ipapi.co/json/");
-      const data = await response.json();
-      const currency = data.country_code === "IN" ? "inr" : "usd";
-      return priceIds[`${plan}_${currency}`];
-    } catch {
-      return priceIds[`${plan}_usd`];
-    }
-  };
-
-  // Trigger Stripe checkout for selected plan
-  const triggerCheckout = async (plan) => {
-    try {
-      const priceId = await getPriceId(plan);
-      const response = await api.post("/subscription/create-checkout", {
-        price_id: priceId,
-        success_url: `${window.location.origin}/dashboard?subscription=success`,
-        cancel_url: `${window.location.origin}/subscription?canceled=true`,
-      });
-      window.location.href = response.data.checkout_url;
+      await api.post(`/auth/resend-verification?email=${encodeURIComponent(registeredEmail)}`);
+      toast.success("Verification email sent! Check your inbox.");
     } catch (error) {
-      console.error("Checkout error:", error);
-      toast.error("Failed to start checkout. Please try from the subscription page.");
-      navigate("/dashboard");
+      toast.error("Failed to resend. Please try again.");
     }
   };
 
@@ -136,20 +111,22 @@ export default function Register() {
     setLoading(true);
     try {
       const response = await api.post("/auth/register", formData);
-      const userData = response.data;
       
-      toast.success("Account created successfully!");
-      
-      // If a paid plan was selected, redirect to Stripe checkout
-      if (selectedPlan && (selectedPlan === "starter" || selectedPlan === "growth")) {
-        toast.info("Redirecting to checkout...");
-        await triggerCheckout(selectedPlan);
+      // New registration flow - requires email verification
+      if (response.data.requires_verification) {
+        setRegisteredEmail(email);
+        setRegistrationSuccess(true);
+        // Store selected plan for after verification
+        if (selectedPlan) {
+          sessionStorage.setItem("selectedPlan", selectedPlan);
+        }
+        toast.success("Check your email to verify your account!");
         return;
       }
       
-      // Otherwise, redirect based on role
-      const redirectPath = userData.role === "super_admin" ? "/admin" : "/dashboard";
-      navigate(redirectPath, { state: { user: userData }, replace: true });
+      // Fallback for any other response (shouldn't happen)
+      toast.success("Account created successfully!");
+      navigate("/login");
     } catch (error) {
       const message = error.response?.data?.detail || "Registration failed";
       toast.error(message);
@@ -159,6 +136,71 @@ export default function Register() {
   };
 
   const strength = passwordStrength();
+
+  // Show verification success screen
+  if (registrationSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
+        >
+          <div className="mb-6">
+            <Link to="/">
+              <img 
+                src="/routemail-logo.png" 
+                alt="RouteMail" 
+                className="h-16 mx-auto object-contain"
+              />
+            </Link>
+          </div>
+          
+          <CheckCircle2 size={56} className="mx-auto text-emerald-500 mb-4" />
+          
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Check Your Email</h2>
+          
+          <p className="text-slate-600 mb-2">
+            We've sent a verification link to:
+          </p>
+          <p className="font-semibold text-slate-800 mb-4">{registeredEmail}</p>
+          
+          <div className="bg-blue-50 rounded-lg p-4 mb-6 text-left">
+            <p className="text-sm text-blue-800">
+              <strong>Important:</strong> The link expires in 2 hours. Check your spam folder if you don't see it.
+            </p>
+          </div>
+          
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              onClick={handleResendVerification}
+              className="w-full"
+            >
+              Resend Verification Email
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRegistrationSuccess(false);
+                setFormData({ name: "", email: "", password: "", confirm_password: "" });
+              }}
+              className="w-full text-slate-500"
+            >
+              Use Different Email
+            </Button>
+          </div>
+          
+          <p className="mt-6 text-sm text-slate-500">
+            Already verified?{" "}
+            <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-700">
+              Log In
+            </Link>
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
@@ -173,7 +215,7 @@ export default function Register() {
           <Link to="/" className="inline-block">
             <img 
               src="/routemail-logo.png" 
-              alt="RoutEmail" 
+              alt="RouteMail" 
               className="h-20 w-auto object-contain mx-auto"
             />
           </Link>
@@ -195,7 +237,7 @@ export default function Register() {
             <div>
               <p className="font-semibold capitalize">{selectedPlan} Plan Selected</p>
               <p className="text-sm opacity-90">
-                {getDisplayPrice(selectedPlan)} - You'll checkout after registration
+                {getDisplayPrice(selectedPlan)} - You'll checkout after verification
               </p>
             </div>
           </motion.div>
@@ -287,7 +329,7 @@ export default function Register() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handleChange}
-                  placeholder="••••••••"
+                  placeholder="Min 8 characters"
                   className="pl-10 pr-10 py-5"
                   data-testid="password-input"
                 />
@@ -327,7 +369,7 @@ export default function Register() {
                   type={showPassword ? "text" : "password"}
                   value={formData.confirm_password}
                   onChange={handleChange}
-                  placeholder="••••••••"
+                  placeholder="Confirm password"
                   className="pl-10 pr-10 py-5"
                   data-testid="confirm-password-input"
                 />
