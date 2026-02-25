@@ -1,4 +1,4 @@
-# RoutEmail - Email Rotation SaaS Platform
+# RouteMail - Email Rotation SaaS Platform
 
 ## Original Problem Statement
 Build a simple SaaS web application for small businesses to automatically send emails in rotation across multiple connected email accounts with daily sending limits.
@@ -12,6 +12,8 @@ Build a simple SaaS web application for small businesses to automatically send e
 6. **Sending Logs**: Detailed logs showing sent/failed status and error messages
 7. **Admin Panel**: Platform-wide monitoring for super_admin users
 8. **Subscription System**: Stripe-integrated yearly subscriptions with plan limits enforcement
+9. **Email Verification**: Mandatory email verification before login (2hr token expiry)
+10. **Forgot Password**: Secure password reset with rate limiting
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
@@ -19,13 +21,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **Database**: MongoDB
 - **Authentication**: 
   - Emergent-managed Google Social Login
-  - Email + Password (bcrypt hashed)
+  - Email + Password (bcrypt hashed) with email verification
 - **Payments**: Stripe (live keys configured)
+- **Transactional Email**: Resend API
 - **Live Chat**: Tawk.to (authenticated pages only)
 
 ## Database Schema
-- **users**: email, name, google_id, password_hash, provider ('google'/'email'), is_active, created_at, role ('user' | 'super_admin'), plan_type ('free'/'starter'/'growth'), subscription_status, stripe_customer_id, stripe_subscription_id, trial_ends_at, billing_cycle_start, billing_cycle_end, grace_period_end, monthly_unique_recipient_count, last_recipient_reset_date
+- **users**: email, name, google_id, password_hash, provider ('google'/'email'), is_active, created_at, role ('user' | 'super_admin'), plan_type ('free'/'starter'/'growth'), subscription_status, stripe_customer_id, stripe_subscription_id, trial_ends_at, billing_cycle_start, billing_cycle_end, grace_period_end, monthly_unique_recipient_count, last_recipient_reset_date, email_verified, verification_token, verification_expires, reset_token, reset_expires
 - **user_sessions**: user_id, session_token, expires_at
+- **password_reset_attempts**: email, created_at (for rate limiting)
 - **email_accounts**: user_id, email, type, credentials (encrypted), daily_limit, daily_sent_count, status
 - **email_lists**: user_id, list_name, original_filename, column_headers, total_rows
 - **email_list_contacts**: list_id, contact_data, email, status
@@ -33,13 +37,13 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
 
 ## Pricing Plans (Stripe Integrated)
-| Plan | Price (USD/INR) | Accounts | Contacts | Recipients/Month |
-|------|-----------------|----------|----------|------------------|
-| Free Trial | 14 days | 3 | 500 | 500 |
-| Starter | $99/₹7,999/year | 10 | 4,000 | 4,000 |
-| Growth | $149/₹11,999/year | 15 | 10,000 | 10,000 |
+| Plan | Price (USD/INR) | Accounts | Contacts/Month | Emails/Year |
+|------|-----------------|----------|----------------|-------------|
+| Free Trial | 14 days | 3 | 500 | - |
+| Starter | $99/₹5,000/year | 10 | 4,000 | 48,000 |
+| Growth | $149/₹12,000/year | 15 | 10,000 | 120,000 |
 
-### Stripe Price IDs
+### Stripe Price IDs (from environment)
 - Starter USD: `price_1T3JubD2HZgi5NSCVPybSMdk`
 - Growth USD: `price_1T3Jv7D2HZgi5NSCTvsCbPBi`
 - Starter INR: `price_1T3xeED2HZgi5NSCTsHhLaVL`
