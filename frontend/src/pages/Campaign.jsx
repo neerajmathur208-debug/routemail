@@ -78,6 +78,11 @@ export default function Campaign({ user, setUser }) {
   const [submitting, setSubmitting] = useState(false);
   const [showPlainText, setShowPlainText] = useState(false);
   const [view, setView] = useState("list"); // list, create, edit
+  
+  // Send Test Email state
+  const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
