@@ -243,7 +243,7 @@ export default function LandingPage() {
                           className="bg-gradient-to-br from-blue-500/20 to-violet-500/20 rounded-xl p-3 border border-blue-500/30"
                         >
                           <p className="text-[10px] text-blue-300">Connected</p>
-                          <p className="text-xl font-bold text-white">4</p>
+                          <p className="text-xl font-bold text-white">11</p>
                         </motion.div>
                         <div className="bg-slate-700/30 rounded-xl p-3 border border-slate-600/30">
                           <p className="text-[10px] text-slate-400">Contacts</p>
