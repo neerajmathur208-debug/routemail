@@ -109,9 +109,18 @@ export default function VerifyEmail() {
         {status === "success" && (
           <>
             <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-4" />
-            <h2 className="text-xl font-semibold text-slate-800 mb-2">Email Verified!</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-2" data-testid="verify-success-title">Email Verified!</h2>
             <p className="text-slate-500 mb-4">{message}</p>
             <p className="text-sm text-slate-400">Redirecting to dashboard...</p>
+          </>
+        )}
+
+        {status === "already_verified" && (
+          <>
+            <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-4" />
+            <h2 className="text-xl font-semibold text-slate-800 mb-2" data-testid="verify-already-title">Already Verified</h2>
+            <p className="text-slate-500 mb-4">{message}</p>
+            <p className="text-sm text-slate-400">Redirecting...</p>
           </>
         )}
 
