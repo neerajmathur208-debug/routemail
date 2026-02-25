@@ -850,11 +850,15 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">4,000 stored contacts</span>
+                  <span className="text-white/90">4,000 contacts/month</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">4,000 recipients/month</span>
+                  <span className="text-white/90">48,000 emails per year</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-blue-200 flex-shrink-0" />
+                  <span className="text-white/90">Unlimited emails</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
@@ -896,11 +900,15 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">10,000 stored contacts</span>
+                  <span className="text-slate-700">10,000 contacts/month</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">10,000 recipients/month</span>
+                  <span className="text-slate-700">120,000 emails per year</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-slate-700">Unlimited emails</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
