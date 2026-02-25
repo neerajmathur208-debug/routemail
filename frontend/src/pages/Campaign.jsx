@@ -779,53 +779,109 @@ Best regards"
                 )}
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <RotateCw size={16} />
-                  <span>
-                    {formData.account_ids.length > 0 
-                      ? `Will rotate across ${formData.account_ids.length} selected account${formData.account_ids.length > 1 ? "s" : ""}`
-                      : `Will rotate across all ${accounts.length} account${accounts.length !== 1 ? "s" : ""}`
-                    }
-                  </span>
-                </div>
-                <div className="flex gap-3">
+              {/* Rotation Info */}
+              <div className="flex items-center gap-2 text-sm text-slate-500 py-3 border-t border-slate-100">
+                <RotateCw size={16} />
+                <span>
+                  {formData.account_ids.length > 0 
+                    ? `Will rotate across ${formData.account_ids.length} selected account${formData.account_ids.length > 1 ? "s" : ""}`
+                    : `Will rotate across all ${accounts.length} account${accounts.length !== 1 ? "s" : ""}`
+                  }
+                </span>
+              </div>
+
+              {/* Start Campaign Button - At Bottom */}
+              <div className="pt-4 border-t border-slate-200">
+                {view === "edit" && (
                   <Button
-                    variant="outline"
+                    onClick={() => setStartDialogOpen(true)}
+                    disabled={submitting || !formData.list_id || !hasAccounts || !hasLists}
+                    className={`w-full py-6 text-base font-semibold ${
+                      sendOption === "schedule" 
+                        ? "bg-blue-600 hover:bg-blue-700" 
+                        : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                    }`}
+                    data-testid="start-campaign-btn"
+                    title={!hasAccounts || !hasLists ? "Complete setup to launch campaign" : ""}
+                  >
+                    {sendOption === "schedule" ? (
+                      <>
+                        <CalendarClock size={20} className="mr-2" />
+                        Schedule Campaign
+                      </>
+                    ) : (
+                      <>
+                        <Send size={20} className="mr-2" />
+                        Start Campaign
+                      </>
+                    )}
+                  </Button>
+                )}
+                {view === "create" && (
+                  <Button
                     onClick={handleSaveCampaign}
                     disabled={submitting}
-                    data-testid="save-campaign-btn"
+                    className="w-full py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
+                    data-testid="create-campaign-btn-bottom"
                   >
-                    <Save size={16} className="mr-2" />
-                    {submitting ? "Saving..." : "Save Draft"}
+                    <Save size={20} className="mr-2" />
+                    {submitting ? "Creating..." : "Create Campaign"}
                   </Button>
-                  {view === "edit" && (
-                    <Button
-                      onClick={() => setStartDialogOpen(true)}
-                      disabled={submitting || !formData.list_id || !hasAccounts || !hasLists}
-                      className={sendOption === "schedule" ? "bg-blue-600 hover:bg-blue-700" : "bg-signal-orange hover:bg-orange-600"}
-                      data-testid="start-campaign-btn"
-                      title={!hasAccounts || !hasLists ? "Complete setup to launch campaign" : ""}
-                    >
-                      {sendOption === "schedule" ? (
-                        <>
-                          <CalendarClock size={16} className="mr-2" />
-                          Schedule Campaign
-                        </>
-                      ) : (
-                        <>
-                          <Send size={16} className="mr-2" />
-                          Start Campaign
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
         </main>
+
+        {/* Send Test Email Dialog */}
+        <AlertDialog open={testEmailDialogOpen} onOpenChange={setTestEmailDialogOpen}>
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <TestTube size={20} className="text-blue-600" />
+                Send Test Email
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Send a preview of your email without affecting campaign stats.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-4">
+              <Label htmlFor="test-email">Test Email Address</Label>
+              <Input
+                id="test-email"
+                type="email"
+                placeholder="you@example.com"
+                value={testEmailAddress}
+                onChange={(e) => setTestEmailAddress(e.target.value)}
+                className="mt-1.5"
+                data-testid="test-email-input"
+              />
+              <p className="text-xs text-slate-500 mt-2">
+                The test email will include a "[TEST]" prefix in the subject line.
+              </p>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={sendingTestEmail}>Cancel</AlertDialogCancel>
+              <Button
+                onClick={handleSendTestEmail}
+                disabled={sendingTestEmail || !testEmailAddress}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {sendingTestEmail ? (
+                  <>
+                    <RefreshCw size={16} className="mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} className="mr-2" />
+                    Send Test
+                  </>
+                )}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Start/Schedule Campaign Dialog */}
         <AlertDialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
