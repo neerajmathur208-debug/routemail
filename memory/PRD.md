@@ -209,6 +209,22 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Does not affect campaign stats or logs
   - Validates: subject, body, connected accounts
 
+### ✅ Bug Fixes & Legal Pages (Feb 2026)
+- [x] **Fixed "Send Test Email" Not Working**:
+  - Bug: "Failed to decrypt account credentials" error
+  - Root cause: Backend checking for `smtp_password` field but DB uses `smtp_password_encrypted`
+  - Fix: Updated server.py lines 1771, 1780 to use correct field name
+- [x] **Fixed Email Activation "Failed" Message Bug**:
+  - Bug: UI showing "Activation Failed" before immediately showing success
+  - Root cause: Race condition in React useEffect with StrictMode
+  - Fix: Added `verificationCompleted` ref + handled "already verified" case gracefully
+- [x] **Added Legal Pages**:
+  - /privacy-policy - Full Privacy Policy with GDPR compliance
+  - /terms-and-conditions - Terms and Conditions with No Refund Policy
+  - /anti-spam-policy - Zero-tolerance spam policy with prohibited content
+  - /gdpr-compliance - EU GDPR compliance information
+- [x] **Footer Links**: All 4 legal page links added to landing page footer
+
 ### 🔄 In Progress
 - None currently
 
