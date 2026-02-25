@@ -583,26 +583,6 @@ export default function Campaign({ user, setUser }) {
                 </p>
               </div>
 
-              {/* Email List Selection */}
-              <div>
-                <Label>Select Email List *</Label>
-                <Select
-                  value={formData.list_id}
-                  onValueChange={handleListChange}
-                >
-                  <SelectTrigger className="mt-1.5" data-testid="list-select">
-                    <SelectValue placeholder="Choose a list" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lists.map((list) => (
-                      <SelectItem key={list.list_id} value={list.list_id}>
-                        {list.name} ({list.valid_emails} contacts)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Email Accounts Selection */}
               <div>
                 <Label>Select Email Accounts (optional)</Label>
@@ -641,6 +621,26 @@ export default function Campaign({ user, setUser }) {
                     <p className="text-slate-500 text-sm">No accounts connected yet</p>
                   )}
                 </div>
+              </div>
+
+              {/* Email List Selection */}
+              <div>
+                <Label>Select Email List *</Label>
+                <Select
+                  value={formData.list_id}
+                  onValueChange={handleListChange}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="list-select">
+                    <SelectValue placeholder="Choose a list" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lists.map((list) => (
+                      <SelectItem key={list.list_id} value={list.list_id}>
+                        {list.name} ({list.valid_emails} contacts)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Subject Line */}
