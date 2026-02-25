@@ -1767,8 +1767,8 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     if not account:
         raise HTTPException(status_code=400, detail="No connected email account found. Please add an account first.")
     
-    # Check that account has SMTP credentials
-    if not account.get("smtp_password") or not account.get("smtp_host"):
+    # Check that account has SMTP credentials (field is smtp_password_encrypted in DB)
+    if not account.get("smtp_password_encrypted") or not account.get("smtp_host"):
         raise HTTPException(status_code=400, detail="Selected account is not configured for sending. Please check your SMTP settings.")
     
     # Get user info for from_name
@@ -1777,7 +1777,7 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     
     # Decrypt credentials
     try:
-        smtp_password = decrypt_data(account["smtp_password"])
+        smtp_password = decrypt_data(account["smtp_password_encrypted"])
         if not smtp_password:
             raise ValueError("Empty password after decryption")
     except Exception as e:
