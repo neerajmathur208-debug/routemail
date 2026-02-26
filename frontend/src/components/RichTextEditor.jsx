@@ -159,8 +159,20 @@ export default function RichTextEditor({
     reader.onload = (event) => {
       const base64 = event.target?.result;
       editorRef.current?.focus();
-      document.execCommand('insertImage', false, base64);
-      handleInput();
+      
+      // Create img element with proper attributes for email compatibility
+      const img = new window.Image();
+      img.onload = () => {
+        // Calculate initial width (max 600px for email compatibility)
+        const maxWidth = 600;
+        const initialWidth = Math.min(img.naturalWidth, maxWidth);
+        
+        // Insert image with width attribute for email clients
+        const imgHtml = `<img src="${base64}" width="${initialWidth}" style="max-width:100%; height:auto;" />`;
+        document.execCommand('insertHTML', false, imgHtml);
+        handleInput();
+      };
+      img.src = base64;
     };
     reader.readAsDataURL(file);
     
