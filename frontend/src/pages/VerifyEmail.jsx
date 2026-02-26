@@ -68,8 +68,13 @@ export default function VerifyEmail() {
         
         const errorDetail = error.response?.data?.detail || "Verification failed. Please try again.";
         
-        // Check for specific error types
-        if (errorDetail.toLowerCase().includes("expired")) {
+        // Check for specific error types - order matters!
+        // Check "invalid" first since it may also contain "expired" phrase
+        if (errorDetail.toLowerCase().includes("invalid")) {
+          setStatus("error");
+          setMessage("Invalid verification link.");
+        } else if (errorDetail.toLowerCase().includes("has expired") || 
+                   errorDetail.toLowerCase().startsWith("verification link expired")) {
           setStatus("expired");
           setMessage("Verification link expired. Please request a new verification email.");
         } else if (errorDetail.toLowerCase().includes("already been used") || 
@@ -81,9 +86,6 @@ export default function VerifyEmail() {
           setTimeout(() => {
             navigate("/login");
           }, 1500);
-        } else if (errorDetail.toLowerCase().includes("invalid")) {
-          setStatus("error");
-          setMessage("Invalid verification link.");
         } else {
           setStatus("error");
           setMessage(errorDetail);
