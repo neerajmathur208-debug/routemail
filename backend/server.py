@@ -893,11 +893,14 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
     )
     
     # Return success - user is created, email will be sent in background
-    return {
-        "message": "Registration successful! Please check your email to verify your account.",
-        "email": request.email,
-        "requires_verification": True
-    }
+    return JSONResponse(
+        status_code=201,
+        content={
+            "message": "Registration successful! Please check your email to verify your account.",
+            "email": request.email,
+            "requires_verification": True
+        }
+    )
 
 @api_router.get("/auth/verify-email")
 async def verify_email(token: str, response: Response, background_tasks: BackgroundTasks):
