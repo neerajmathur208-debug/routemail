@@ -202,6 +202,147 @@ export default function RichTextEditor({
     handleInput();
   }, [handleInput]);
 
+  // Image resize functionality
+  const handleImageClick = useCallback((e) => {
+    if (e.target.tagName === 'IMG') {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Deselect previous image
+      const prevSelected = editorRef.current?.querySelector('img.image-selected');
+      if (prevSelected) {
+        prevSelected.classList.remove('image-selected');
+      }
+      
+      // Select new image
+      e.target.classList.add('image-selected');
+      setSelectedImage(e.target);
+    } else {
+      // Click outside image - deselect
+      const prevSelected = editorRef.current?.querySelector('img.image-selected');
+      if (prevSelected) {
+        prevSelected.classList.remove('image-selected');
+      }
+      setSelectedImage(null);
+    }
+  }, []);
+
+  const handleResizeStart = useCallback((e, corner) => {
+    if (!selectedImage) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = selectedImage.getBoundingClientRect();
+    resizeStartData.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      aspectRatio: rect.width / rect.height,
+      corner
+    };
+    setImageResizing(true);
+  }, [selectedImage]);
+
+  const handleResizeMove = useCallback((e) => {
+    if (!imageResizing || !selectedImage || !resizeStartData.current) return;
+    e.preventDefault();
+    
+    const { startX, startY, startWidth, startHeight, aspectRatio, corner } = resizeStartData.current;
+    let deltaX = e.clientX - startX;
+    let deltaY = e.clientY - startY;
+    
+    // Calculate new dimensions based on corner
+    let newWidth, newHeight;
+    
+    if (corner === 'se') {
+      newWidth = startWidth + deltaX;
+    } else if (corner === 'sw') {
+      newWidth = startWidth - deltaX;
+    } else if (corner === 'ne') {
+      newWidth = startWidth + deltaX;
+    } else if (corner === 'nw') {
+      newWidth = startWidth - deltaX;
+    }
+    
+    // Maintain aspect ratio
+    newWidth = Math.max(50, newWidth); // Minimum 50px
+    newHeight = newWidth / aspectRatio;
+    
+    // Apply dimensions
+    selectedImage.style.width = `${Math.round(newWidth)}px`;
+    selectedImage.style.height = 'auto';
+    selectedImage.setAttribute('width', Math.round(newWidth));
+    selectedImage.removeAttribute('height'); // Remove height to maintain aspect ratio
+  }, [imageResizing, selectedImage]);
+
+  const handleResizeEnd = useCallback(() => {
+    if (!imageResizing) return;
+    
+    setImageResizing(false);
+    resizeStartData.current = null;
+    handleInput(); // Trigger onChange to save the new dimensions
+  }, [imageResizing, handleInput]);
+
+  // Add mouse event listeners for resize
+  useEffect(() => {
+    if (imageResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+      };
+    }
+  }, [imageResizing, handleResizeMove, handleResizeEnd]);
+
+  // Render resize handles for selected image
+  const renderResizeHandles = () => {
+    if (!selectedImage) return null;
+    
+    const rect = selectedImage.getBoundingClientRect();
+    const editorRect = editorRef.current?.getBoundingClientRect();
+    if (!editorRect) return null;
+    
+    const top = rect.top - editorRect.top;
+    const left = rect.left - editorRect.left;
+    const width = rect.width;
+    const height = rect.height;
+    
+    const handleStyle = {
+      position: 'absolute',
+      width: '10px',
+      height: '10px',
+      backgroundColor: '#3b82f6',
+      border: '2px solid white',
+      borderRadius: '2px',
+      zIndex: 10,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+    };
+    
+    return (
+      <>
+        {/* Corner handles */}
+        <div
+          style={{ ...handleStyle, top: top - 5, left: left - 5, cursor: 'nwse-resize' }}
+          onMouseDown={(e) => handleResizeStart(e, 'nw')}
+        />
+        <div
+          style={{ ...handleStyle, top: top - 5, left: left + width - 5, cursor: 'nesw-resize' }}
+          onMouseDown={(e) => handleResizeStart(e, 'ne')}
+        />
+        <div
+          style={{ ...handleStyle, top: top + height - 5, left: left - 5, cursor: 'nesw-resize' }}
+          onMouseDown={(e) => handleResizeStart(e, 'sw')}
+        />
+        <div
+          style={{ ...handleStyle, top: top + height - 5, left: left + width - 5, cursor: 'nwse-resize' }}
+          onMouseDown={(e) => handleResizeStart(e, 'se')}
+        />
+      </>
+    );
+  };
+
   const ToolbarButton = ({ onClick, active, children, title }) => (
     <button
       type="button"
