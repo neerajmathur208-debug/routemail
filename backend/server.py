@@ -900,12 +900,14 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
 @api_router.get("/auth/verify-email")
 async def verify_email(token: str, response: Response, background_tasks: BackgroundTasks):
     """Verify email address with token"""
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=400, detail="Invalid verification link.")
+    
     # Find user with this token
     user = await db.users.find_one({"verification_token": token}, {"_id": 0})
     
     if not user:
         # Token not found - could be already used or invalid
-        # Check if there's a user who was recently verified (token already consumed)
         raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used or expired.")
     
     # Check if already verified (shouldn't happen, but handle gracefully)
@@ -915,6 +917,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
             {"user_id": user["user_id"]},
             {"$unset": {"verification_token": "", "verification_expires": ""}}
         )
+        logger.info(f"User {user['email']} already verified, clearing token")
         return {
             "message": "Email already verified!",
             "user_id": user["user_id"],
@@ -933,20 +936,28 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         if datetime.now(timezone.utc) > expires:
             # Delete expired user
             await db.users.delete_one({"user_id": user["user_id"]})
+            logger.info(f"Deleted expired unverified user: {user['email']}")
             raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
     
-    # Mark email as verified
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
+    # Mark email as verified and remove token atomically
+    result = await db.users.update_one(
+        {"user_id": user["user_id"], "verification_token": token},  # Ensure token still matches
         {
             "$set": {"email_verified": True},
             "$unset": {"verification_token": "", "verification_expires": ""}
         }
     )
     
+    if result.modified_count == 0:
+        # Token was already consumed (race condition)
+        logger.warning(f"Token already consumed for user {user['email']}")
+        raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used.")
+    
+    logger.info(f"Email verified successfully for: {user['email']}")
+    
     # Get updated user data
     updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
-    plan_type = updated_user.get("plan_type", "free")
+    plan_type = updated_user.get("plan_type", "free") if updated_user else "free"
     
     # Send welcome email in background
     first_name = user.get("name", "").split()[0] if user.get("name") else "there"
