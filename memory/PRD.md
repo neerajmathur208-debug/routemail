@@ -229,6 +229,11 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Privacy Policy Text Updated**: Company info changed to "Registered in India / RouteMail / Perfect Multimedia / 1036C B3 Tower Spaze iTech Park, Gurgaon, Haryana 122018"
 - [x] **Hero Heading Updated**: Removed period from "from Multiple Accounts."
 - [x] **Onboarding Popups Fix**: Changed from localStorage to database-backed (`onboarding_completed` field in users collection). Now shows only on first login, persists across sessions and devices.
+- [x] **Email Verification Redirect Fix**: 
+  - Backend returns `redirect_url` based on `FRONTEND_URL` env var
+  - Frontend uses `window.location.href` for absolute redirect to production domain
+  - On success → redirects to `{FRONTEND_URL}/dashboard` (https://routemail.co/dashboard in production)
+  - Fixed error message parsing to correctly distinguish "invalid" vs "expired" tokens
 
 ### 🔄 In Progress
 - None currently
