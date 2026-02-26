@@ -48,6 +48,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 resend.api_key = os.environ.get('RESEND_API_KEY')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'support@routemail.co')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '')
+SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', '')
 
 # Stripe Price IDs (from environment)
 STRIPE_PRICES = {
