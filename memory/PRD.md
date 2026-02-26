@@ -225,6 +225,11 @@ Build a simple SaaS web application for small businesses to automatically send e
   - /gdpr-compliance - EU GDPR compliance information
 - [x] **Footer Links**: All 4 legal page links added to landing page footer
 
+### ✅ Minor Updates (Feb 2026)
+- [x] **Privacy Policy Text Updated**: Company info changed to "Registered in India / RouteMail / Perfect Multimedia / 1036C B3 Tower Spaze iTech Park, Gurgaon, Haryana 122018"
+- [x] **Hero Heading Updated**: Removed period from "from Multiple Accounts."
+- [x] **Onboarding Popups Fix**: Changed from localStorage to database-backed (`onboarding_completed` field in users collection). Now shows only on first login, persists across sessions and devices.
+
 ### 🔄 In Progress
 - None currently
 
