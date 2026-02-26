@@ -126,6 +126,26 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
+  const handleResetClick = (u) => {
+    setSelectedUser(u);
+    setResetDialogOpen(true);
+  };
+
+  const handleForcePasswordReset = async () => {
+    if (!selectedUser) return;
+    setResetLoading(true);
+    try {
+      await api.post(`/admin/users/${selectedUser.user_id}/force-password-reset`);
+      toast.success(`Password reset email sent to ${selectedUser.email}`);
+      setResetDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to send password reset");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const handleRoleChange = async (userId, newRole) => {
     try {
       await api.put(`/admin/users/${userId}/role`, { role: newRole });
