@@ -59,7 +59,9 @@ export default function AdminDashboard({ user, setUser }) {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
