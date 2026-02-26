@@ -597,6 +597,11 @@ export default function RichTextEditor({
               height: auto;
               border-radius: 4px;
               margin: 8px 0;
+              cursor: pointer;
+            }
+            [contenteditable] img.image-selected {
+              outline: 2px solid #3b82f6;
+              outline-offset: 2px;
             }
           `}</style>
         </div>
