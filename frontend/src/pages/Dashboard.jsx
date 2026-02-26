@@ -57,27 +57,49 @@ export default function Dashboard({ user, setUser }) {
     }
   }, [searchParams]);
 
-  // Check for first-time user onboarding
+  // Check for first-time user onboarding from user data (database-backed)
   useEffect(() => {
-    const checkOnboarding = () => {
-      const onboardingCompleted = localStorage.getItem("onboarding_completed");
-      if (!onboardingCompleted && !loading) {
-        // Delay to let dashboard load first
-        setTimeout(() => setShowOnboarding(true), 1000);
+    const checkOnboarding = async () => {
+      if (!loading && user) {
+        try {
+          // Fetch fresh user data to check onboarding status
+          const response = await api.get("/auth/me");
+          const userData = response.data;
+          
+          // Show onboarding only if not completed in database
+          if (!userData.onboarding_completed) {
+            // Delay to let dashboard load first
+            setTimeout(() => setShowOnboarding(true), 1000);
+          }
+        } catch (error) {
+          console.error("Failed to check onboarding status:", error);
+        }
       }
     };
     checkOnboarding();
-  }, [loading]);
+  }, [loading, user]);
 
-  const handleOnboardingComplete = () => {
-    localStorage.setItem("onboarding_completed", "true");
-    setShowOnboarding(false);
-    toast.success("Welcome to RouteMail! You're all set.");
+  const handleOnboardingComplete = async () => {
+    try {
+      // Save to database via API
+      await api.post("/auth/onboarding-complete");
+      setShowOnboarding(false);
+      toast.success("Welcome to RouteMail! You're all set.");
+    } catch (error) {
+      console.error("Failed to save onboarding status:", error);
+      setShowOnboarding(false);
+    }
   };
 
-  const handleOnboardingSkip = () => {
-    localStorage.setItem("onboarding_completed", "true");
-    setShowOnboarding(false);
+  const handleOnboardingSkip = async () => {
+    try {
+      // Save to database via API
+      await api.post("/auth/onboarding-complete");
+      setShowOnboarding(false);
+    } catch (error) {
+      console.error("Failed to save onboarding status:", error);
+      setShowOnboarding(false);
+    }
   };
 
   const fetchStats = async () => {
