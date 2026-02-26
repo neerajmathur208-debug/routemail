@@ -112,6 +112,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log configuration at startup
+logger.info(f"FRONTEND_URL configured as: {FRONTEND_URL}")
+if 'preview.emergentagent.com' in FRONTEND_URL:
+    logger.warning(f"WARNING: FRONTEND_URL is set to a preview domain. For production, ensure FRONTEND_URL=https://routemail.co")
+
 # ==================== ENCRYPTION HELPERS ====================
 
 def encrypt_data(data: str) -> str:
