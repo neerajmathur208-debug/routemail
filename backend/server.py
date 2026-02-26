@@ -881,6 +881,7 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
     # Send verification email in background (won't block response)
     first_name = request.name.split()[0] if request.name else "there"
     verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+    logger.info(f"Verification link for {request.email}: {verification_link}")
     html_content = get_verification_email_html(first_name, verification_link)
     
     background_tasks.add_task(
