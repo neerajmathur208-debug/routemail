@@ -50,14 +50,6 @@ FROM_EMAIL = os.environ.get('FROM_EMAIL', 'support@routemail.co')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://routemail.co')
 SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', '')
 
-# Log FRONTEND_URL at startup for debugging
-logger.info(f"FRONTEND_URL configured as: {FRONTEND_URL}")
-
-# Validate FRONTEND_URL is not a preview domain in production
-if 'preview.emergentagent.com' in FRONTEND_URL:
-    logger.warning(f"WARNING: FRONTEND_URL is set to a preview domain: {FRONTEND_URL}")
-    logger.warning("For production, set FRONTEND_URL=https://routemail.co in environment variables")
-
 # Stripe Price IDs (from environment)
 STRIPE_PRICES = {
     "starter_usd": os.environ.get('STRIPE_PRICE_STARTER_USD'),
