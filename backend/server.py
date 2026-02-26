@@ -2730,6 +2730,71 @@ async def delete_user(
         logger.error(f"Delete user error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/admin/users/{user_id}/force-password-reset")
+async def force_password_reset(
+    user_id: str,
+    background_tasks: BackgroundTasks,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Force send password reset email to a user (super_admin only)"""
+    try:
+        # Find the target user
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if user registered with Google (cannot reset password)
+        if user.get("provider") == "google":
+            raise HTTPException(status_code=400, detail="This user registered with Google. Cannot reset password for OAuth accounts.")
+        
+        # Generate secure reset token
+        reset_token = secrets.token_urlsafe(32)
+        reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        
+        # Store reset token in user document
+        await db.users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "reset_token": reset_token,
+                    "reset_expires": reset_expires.isoformat()
+                }
+            }
+        )
+        
+        # Log admin action
+        admin_log = {
+            "admin_email": admin["email"],
+            "target_user_email": user["email"],
+            "target_user_id": user_id,
+            "action": "FORCE_PASSWORD_RESET",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        await db.admin_logs.insert_one(admin_log)
+        logger.info(f"Admin {admin['email']} forced password reset for user {user['email']}")
+        
+        # Send reset email in background
+        reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
+        logger.info(f"Force password reset link for {user['email']}: {reset_link}")
+        html_content = get_password_reset_email_html(reset_link)
+        
+        background_tasks.add_task(
+            send_email_async,
+            user["email"],
+            "Reset Your RouteMail Password",
+            html_content
+        )
+        
+        return {
+            "message": "Password reset email sent successfully",
+            "user_email": user["email"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Force password reset error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
 
 class CreateCheckoutRequest(BaseModel):
