@@ -10,6 +10,7 @@ export default function VerifyEmail() {
   const navigate = useNavigate();
   const [status, setStatus] = useState("verifying"); // verifying, success, error, expired, already_verified
   const [message, setMessage] = useState("");
+  const [redirectUrl, setRedirectUrl] = useState(null);
   const verificationAttempted = useRef(false);
   const verificationCompleted = useRef(false);
 
@@ -18,7 +19,7 @@ export default function VerifyEmail() {
     
     if (!token) {
       setStatus("error");
-      setMessage("Invalid verification link. Please request a new one.");
+      setMessage("Invalid verification link.");
       return;
     }
 
@@ -36,19 +37,30 @@ export default function VerifyEmail() {
         if (verificationCompleted.current) return;
         verificationCompleted.current = true;
         
+        const data = response.data;
+        
         // Check if it was already verified
-        if (response.data.message?.toLowerCase().includes("already")) {
+        if (data.message?.toLowerCase().includes("already")) {
           setStatus("already_verified");
           setMessage("Your email has already been verified.");
         } else {
           setStatus("success");
-          setMessage(response.data.message || "Email verified successfully!");
+          setMessage(data.message || "Email verified successfully!");
         }
         
-        // Redirect to dashboard after 2 seconds
+        // Use redirect URL from API response (production URL)
+        const targetUrl = data.redirect_url || "/dashboard";
+        setRedirectUrl(targetUrl);
+        
+        // Redirect to production dashboard after 1.5 seconds
         setTimeout(() => {
-          navigate("/dashboard");
-        }, 2000);
+          // Use window.location.href for absolute URL to ensure we go to production domain
+          if (targetUrl.startsWith("http")) {
+            window.location.href = targetUrl;
+          } else {
+            navigate(targetUrl);
+          }
+        }, 1500);
       } catch (error) {
         // Prevent state updates if verification already succeeded
         if (verificationCompleted.current) return;
@@ -59,19 +71,19 @@ export default function VerifyEmail() {
         // Check for specific error types
         if (errorDetail.toLowerCase().includes("expired")) {
           setStatus("expired");
-          setMessage("Verification link has expired. Please register again.");
+          setMessage("Verification link expired. Please request a new verification email.");
         } else if (errorDetail.toLowerCase().includes("already been used") || 
                    errorDetail.toLowerCase().includes("already verified")) {
           // Link was already used - treat as success since account is verified
           setStatus("already_verified");
           setMessage("Your email has already been verified.");
-          // Try to redirect to dashboard/login
+          // Redirect to login
           setTimeout(() => {
             navigate("/login");
-          }, 2000);
+          }, 1500);
         } else if (errorDetail.toLowerCase().includes("invalid")) {
           setStatus("error");
-          setMessage("Invalid verification link. Please request a new one.");
+          setMessage("Invalid verification link.");
         } else {
           setStatus("error");
           setMessage(errorDetail);
