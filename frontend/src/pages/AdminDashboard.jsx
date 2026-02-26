@@ -395,8 +395,19 @@ export default function AdminDashboard({ user, setUser }) {
                         className="h-8 w-8"
                         onClick={() => navigate(`/admin/users/${u.user_id}`)}
                         data-testid={`view-user-${u.user_id}`}
+                        title="View Details"
                       >
                         <Eye size={16} className="text-slate-400" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleResetClick(u)}
+                        data-testid={`reset-password-${u.user_id}`}
+                        title="Force Password Reset"
+                      >
+                        <KeyRound size={16} className="text-slate-400 hover:text-amber-500" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -405,6 +416,7 @@ export default function AdminDashboard({ user, setUser }) {
                         onClick={() => handleDeleteClick(u)}
                         disabled={u.role === "super_admin"}
                         data-testid={`delete-user-${u.user_id}`}
+                        title="Delete User"
                       >
                         <Trash2 size={16} className="text-slate-400 hover:text-red-500" />
                       </Button>
