@@ -2447,8 +2447,6 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
 
 # ==================== SUPER ADMIN MIDDLEWARE ====================
 
-SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', '')
-
 async def get_super_admin_user(request: Request) -> dict:
     """Get current user and verify super_admin role"""
     user = await get_current_user(request)
