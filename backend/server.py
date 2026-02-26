@@ -863,15 +863,22 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         "grace_period_end": None,
         "monthly_unique_recipient_count": 0,
         "last_recipient_reset_date": datetime.now(timezone.utc).isoformat(),
+        "onboarding_completed": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.users.insert_one(user_doc)
+    # Insert user document - ensure this completes before proceeding
+    try:
+        result = await db.users.insert_one(user_doc)
+        logger.info(f"User created: {request.email} with user_id: {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to create user {request.email}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create account. Please try again.")
     
     # Apply permanent plan assignment if applicable
     await apply_permanent_plan_if_applicable(request.email, user_id)
     
-    # Send verification email in background
+    # Send verification email in background (won't block response)
     first_name = request.name.split()[0] if request.name else "there"
     verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
     html_content = get_verification_email_html(first_name, verification_link)
@@ -883,6 +890,7 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         html_content
     )
     
+    # Return success - user is created, email will be sent in background
     return {
         "message": "Registration successful! Please check your email to verify your account.",
         "email": request.email,
