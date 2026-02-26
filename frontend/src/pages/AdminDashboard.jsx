@@ -485,6 +485,37 @@ export default function AdminDashboard({ user, setUser }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Force Password Reset Confirmation */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading font-semibold flex items-center gap-2">
+              <KeyRound size={20} className="text-amber-500" />
+              Force Password Reset
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send a password reset email to <strong>{selectedUser?.email}</strong>.
+              The user will receive a link to set a new password (expires in 1 hour).
+              <br /><br />
+              <span className="text-slate-600">Note: This does not reveal or change their current password.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="cancel-reset" disabled={resetLoading}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForcePasswordReset}
+              className="bg-amber-600 hover:bg-amber-700"
+              data-testid="confirm-reset"
+              disabled={resetLoading}
+            >
+              {resetLoading ? "Sending..." : "Send Reset Email"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
