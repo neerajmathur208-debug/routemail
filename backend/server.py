@@ -772,7 +772,8 @@ async def get_me(user: User = Depends(get_current_user)):
             "role": user_doc.get("role", "user"),
             "trial_ends_at": user_doc.get("trial_ends_at"),
             "billing_cycle_end": user_doc.get("billing_cycle_end"),
-            "subscription_active": sub_status.get("active", False)
+            "subscription_active": sub_status.get("active", False),
+            "onboarding_completed": user_doc.get("onboarding_completed", False)
         }
     return user.model_dump()
 
