@@ -61,9 +61,10 @@ export default function PrivacyPolicy() {
 
             <h2 className="text-xl font-semibold text-slate-900 mt-8 mb-4">2. Data Fiduciary / Controller Information</h2>
             <p className="text-slate-700 leading-relaxed mb-2">
-              <strong>RouteMail</strong><br />
               Registered in India<br />
-              1036C B3 Tower SPaze iTech Park, Gurgaon, Haryana 122018<br />
+              <strong>RouteMail</strong><br />
+              Perfect Multimedia<br />
+              1036C B3 Tower Spaze iTech Park, Gurgaon, Haryana 122018<br />
               Email: support@routemail.co
             </p>
             <p className="text-slate-700 leading-relaxed mb-4">
