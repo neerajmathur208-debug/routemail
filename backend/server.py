@@ -1159,6 +1159,7 @@ async def forgot_password(request: ForgotPasswordRequest, background_tasks: Back
     
     # Send reset email in background
     reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
+    logger.info(f"Password reset link for {email}: {reset_link}")
     html_content = get_password_reset_email_html(reset_link)
     
     background_tasks.add_task(
