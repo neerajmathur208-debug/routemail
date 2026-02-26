@@ -554,21 +554,26 @@ export default function RichTextEditor({
             />
           </div>
           
-          {/* Editable Area */}
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={handleInput}
-            onPaste={handlePaste}
-            className="min-h-[300px] p-4 outline-none prose prose-sm max-w-none"
-            style={{ 
-              fontFamily: "'Public Sans', sans-serif",
-              lineHeight: 1.6
-            }}
-            data-placeholder={placeholder}
-            data-testid="rich-text-editor"
-            suppressContentEditableWarning={true}
-          />
+          {/* Editable Area with Resize Handles */}
+          <div className="relative">
+            <div
+              ref={editorRef}
+              contentEditable
+              onInput={handleInput}
+              onPaste={handlePaste}
+              onClick={handleImageClick}
+              className="min-h-[300px] p-4 outline-none prose prose-sm max-w-none"
+              style={{ 
+                fontFamily: "'Public Sans', sans-serif",
+                lineHeight: 1.6
+              }}
+              data-placeholder={placeholder}
+              data-testid="rich-text-editor"
+              suppressContentEditableWarning={true}
+            />
+            {/* Image resize handles */}
+            {selectedImage && renderResizeHandles()}
+          </div>
           
           <style>{`
             [contenteditable]:empty:before {
