@@ -112,24 +112,38 @@ export default function Register() {
     try {
       const response = await api.post("/auth/register", formData);
       
-      // New registration flow - requires email verification
-      if (response.data.requires_verification) {
-        setRegisteredEmail(email);
-        setRegistrationSuccess(true);
-        // Store selected plan for after verification
-        if (selectedPlan) {
-          sessionStorage.setItem("selectedPlan", selectedPlan);
+      // Check for successful response (status 200-299)
+      if (response.status >= 200 && response.status < 300) {
+        // New registration flow - requires email verification
+        if (response.data.requires_verification) {
+          setRegisteredEmail(email);
+          setRegistrationSuccess(true);
+          // Store selected plan for after verification
+          if (selectedPlan) {
+            sessionStorage.setItem("selectedPlan", selectedPlan);
+          }
+          toast.success("Check your email to verify your account!");
+          return;
         }
-        toast.success("Check your email to verify your account!");
+        
+        // Fallback for any other success response
+        toast.success("Account created successfully!");
+        navigate("/login");
         return;
       }
-      
-      // Fallback for any other response (shouldn't happen)
-      toast.success("Account created successfully!");
-      navigate("/login");
     } catch (error) {
-      const message = error.response?.data?.detail || "Registration failed";
-      toast.error(message);
+      // Only show error if it's a real error from the server
+      if (error.response) {
+        // Server responded with an error status
+        const message = error.response.data?.detail || "Registration failed";
+        toast.error(message);
+      } else if (error.request) {
+        // Request was made but no response received
+        toast.error("Network error. Please check your connection and try again.");
+      } else {
+        // Something else went wrong
+        toast.error("An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
