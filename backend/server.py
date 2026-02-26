@@ -785,6 +785,15 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
     return {"message": "Logged out"}
 
+@api_router.post("/auth/onboarding-complete")
+async def complete_onboarding(user: User = Depends(get_current_user)):
+    """Mark user's onboarding as completed"""
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {"onboarding_completed": True}}
+    )
+    return {"message": "Onboarding completed", "onboarding_completed": True}
+
 # ==================== EMAIL/PASSWORD AUTH ====================
 
 @api_router.post("/auth/register")
