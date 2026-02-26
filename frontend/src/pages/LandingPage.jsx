@@ -179,7 +179,7 @@ export default function LandingPage() {
             <h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-6xl text-slate-900 leading-tight">
               Send Bulk Emails Safely
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">
-                from Multiple Accounts.
+                from Multiple Accounts
               </span>
             </h1>
             <p className="mt-6 text-xl text-slate-600 font-medium">
