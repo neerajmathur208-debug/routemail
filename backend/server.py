@@ -913,7 +913,8 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
             "email": user["email"],
             "name": user.get("name"),
             "plan_type": user.get("plan_type", "free"),
-            "verified": True
+            "verified": True,
+            "redirect_url": f"{FRONTEND_URL}/dashboard"
         }
     
     # Check if token expired
