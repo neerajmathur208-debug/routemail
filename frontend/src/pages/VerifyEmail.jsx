@@ -123,7 +123,7 @@ export default function VerifyEmail() {
             <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-4" />
             <h2 className="text-xl font-semibold text-slate-800 mb-2" data-testid="verify-success-title">Email Verified!</h2>
             <p className="text-slate-500 mb-4">{message}</p>
-            <p className="text-sm text-slate-400">Redirecting to dashboard...</p>
+            <p className="text-sm text-slate-400">Redirecting to your dashboard...</p>
           </>
         )}
 
@@ -146,7 +146,7 @@ export default function VerifyEmail() {
                 onClick={() => navigate("/register")}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
-                Register Again
+                Request New Verification Email
               </Button>
             </div>
           </>
