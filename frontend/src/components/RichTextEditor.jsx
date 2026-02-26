@@ -35,6 +35,9 @@ export default function RichTextEditor({
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [colorPopoverOpen, setColorPopoverOpen] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#000000');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageResizing, setImageResizing] = useState(false);
+  const resizeStartData = useRef(null);
 
   const fontSizes = [
     { label: 'Small', value: '12px' },
