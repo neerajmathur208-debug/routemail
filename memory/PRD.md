@@ -225,6 +225,22 @@ Build a simple SaaS web application for small businesses to automatically send e
   - /gdpr-compliance - EU GDPR compliance information
 - [x] **Footer Links**: All 4 legal page links added to landing page footer
 
+### ✅ New Features (Feb 2026)
+- [x] **Word-Style Image Resize in Campaign Editor**:
+  - Click image to select (blue outline)
+  - 4 corner drag handles for resize
+  - Maintains aspect ratio during resize
+  - Stores width attribute for email client compatibility
+  - Max 600px on upload for email compatibility
+- [x] **Super Admin Force Password Reset**:
+  - New endpoint: `/api/admin/users/{user_id}/force-password-reset`
+  - KeyRound icon button in admin panel user table
+  - Confirmation dialog with amber styling
+  - Uses routemail.co domain for reset links
+  - 1 hour token expiry
+  - Logs admin actions to `admin_logs` collection
+  - Cannot reset OAuth users (returns error)
+
 ### ✅ Production Auth Fixes (Feb 2026)
 - [x] **Registration "Failed" False Error Fixed**:
   - Changed registration endpoint to return HTTP 201 status explicitly
