@@ -239,6 +239,9 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Added logging for user creation and email verification
   - Made token update atomic to prevent race conditions
   - Added `onboarding_completed: False` to new user documents
+- [x] **Production FRONTEND_URL Fix**:
+  - Updated `FRONTEND_URL` in backend/.env from preview domain to `https://routemail.co`
+  - All email links (verification, password reset, Stripe) now use production domain
 
 ### 🔄 In Progress
 - None currently
