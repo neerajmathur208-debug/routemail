@@ -24,6 +24,33 @@
         <title>RouteMail | Bulk Email Sending Platform for SME</title>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
         <script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>
+        <!-- Remove Emergent badge for production -->
+        <script>
+            (function() {
+                // Check if this is production (routemail.co)
+                if (window.location.hostname === 'routemail.co' || window.location.hostname === 'www.routemail.co') {
+                    // Remove badge after it's injected
+                    function removeBadge() {
+                        var badge = document.getElementById('emergent-badge');
+                        if (badge) {
+                            badge.remove();
+                        }
+                    }
+                    // Try immediately and also after DOM is ready
+                    removeBadge();
+                    document.addEventListener('DOMContentLoaded', removeBadge);
+                    // Also try after a short delay in case the script injects it later
+                    setTimeout(removeBadge, 100);
+                    setTimeout(removeBadge, 500);
+                    setTimeout(removeBadge, 1000);
+                    // Use MutationObserver to catch if badge is added later
+                    var observer = new MutationObserver(function(mutations) {
+                        removeBadge();
+                    });
+                    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+                }
+            })();
+        </script>
         <!--
         These two scripts have been added for the Visual Edits, please do not edit or remove them
         -->
