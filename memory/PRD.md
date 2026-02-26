@@ -225,6 +225,18 @@ Build a simple SaaS web application for small businesses to automatically send e
   - /gdpr-compliance - EU GDPR compliance information
 - [x] **Footer Links**: All 4 legal page links added to landing page footer
 
+### ✅ Production Auth Fixes (Feb 2026)
+- [x] **Registration "Failed" False Error Fixed**:
+  - Changed registration endpoint to return HTTP 201 status explicitly
+  - Improved frontend error handling to distinguish network errors from server errors
+  - Registration now correctly shows success screen
+- [x] **Email Link Domain Fixed**:
+  - All verification links: `https://routemail.co/verify-email?token=...`
+  - All password reset links: `https://routemail.co/reset-password?token=...`
+  - Post-verification redirect: `https://routemail.co/dashboard`
+  - Added logging for all link generation
+- [x] **FRONTEND_URL Configuration**: Set to `https://routemail.co` in backend/.env
+
 ### ✅ Minor Updates (Feb 2026)
 - [x] **Privacy Policy Text Updated**: Company info changed to "Registered in India / RouteMail / Perfect Multimedia / 1036C B3 Tower Spaze iTech Park, Gurgaon, Haryana 122018"
 - [x] **Hero Heading Updated**: Removed period from "from Multiple Accounts."
