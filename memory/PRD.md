@@ -234,6 +234,11 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Frontend uses `window.location.href` for absolute redirect to production domain
   - On success → redirects to `{FRONTEND_URL}/dashboard` (https://routemail.co/dashboard in production)
   - Fixed error message parsing to correctly distinguish "invalid" vs "expired" tokens
+- [x] **Registration & Verification Flow Hardening**:
+  - Added try/catch around user creation with proper error handling
+  - Added logging for user creation and email verification
+  - Made token update atomic to prevent race conditions
+  - Added `onboarding_completed: False` to new user documents
 
 ### 🔄 In Progress
 - None currently
