@@ -979,7 +979,8 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         "email": user["email"],
         "name": user.get("name"),
         "plan_type": plan_type,
-        "verified": True
+        "verified": True,
+        "redirect_url": f"{FRONTEND_URL}/dashboard"
     }
 
 @api_router.post("/auth/resend-verification")
