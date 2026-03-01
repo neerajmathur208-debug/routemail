@@ -115,7 +115,7 @@ logger = logging.getLogger(__name__)
 # Log configuration at startup
 logger.info(f"FRONTEND_URL configured as: {FRONTEND_URL}")
 if 'preview.emergentagent.com' in FRONTEND_URL:
-    logger.warning(f"WARNING: FRONTEND_URL is set to a preview domain. For production, ensure FRONTEND_URL=https://routemail.co")
+    logger.warning("WARNING: FRONTEND_URL is set to a preview domain. For production, ensure FRONTEND_URL=https://routemail.co")
 
 # ==================== BACKGROUND SCHEDULER FOR SCHEDULED CAMPAIGNS ====================
 
@@ -1045,7 +1045,7 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
     
     # Insert user document - ensure this completes before proceeding
     try:
-        result = await db.users.insert_one(user_doc)
+        await db.users.insert_one(user_doc)
         logger.info(f"User created: {request.email} with user_id: {user_id}")
     except Exception as e:
         logger.error(f"Failed to create user {request.email}: {str(e)}")
