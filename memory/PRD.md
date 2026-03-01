@@ -295,6 +295,22 @@ Build a simple SaaS web application for small businesses to automatically send e
   - `POST /api/campaigns/{id}/unschedule` - Returns to `draft` status
   - Campaign creation with `scheduled_at` auto-sets status to `scheduled`
 
+### ✅ Super Admin Subscription Details (March 2026)
+- [x] **New Admin Endpoint**: `GET /api/admin/users/{user_id}/subscription`
+  - Returns detailed subscription info for any user (super_admin only)
+  - Combines local MongoDB data with Stripe API data
+  - Handles Stripe API failures gracefully (shows local data)
+  - Logs admin actions to `admin_logs` collection
+- [x] **Subscription Details Modal** in Admin Panel:
+  - CreditCard icon button in each user row
+  - Displays: Current Plan, Currency, Billing Status, Stripe IDs
+  - Shows: Trial Active (Yes/No), Trial End Date, Subscription End Date
+  - Special handling for permanent plan users (shows badge + notes)
+- [x] **Edge Cases Handled**:
+  - Free plan users: Currency=N/A, Stripe IDs=N/A
+  - Permanent plan users: billing_status=permanent, notes displayed
+  - Trialing users: trial_active=true with end date
+
 ### 🔄 In Progress
 - None currently
 
