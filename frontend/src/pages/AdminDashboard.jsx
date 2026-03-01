@@ -17,6 +17,9 @@ import {
   ArrowLeft,
   AlertTriangle,
   KeyRound,
+  CreditCard,
+  X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -46,6 +49,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { api } from "../App";
 import { toast } from "sonner";
 
