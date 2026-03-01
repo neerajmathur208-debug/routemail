@@ -124,13 +124,44 @@ export default function RichTextEditor({
 
   const insertLink = () => {
     if (linkUrl) {
+      // Ensure URL has protocol
+      let url = linkUrl.trim();
+      if (!url.match(/^https?:\/\//)) {
+        url = 'https://' + url;
+      }
+      
+      editorRef.current?.focus();
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-        execCommand('createLink', linkUrl);
+      
+      // Check if an image is selected
+      if (selectedImage) {
+        // Wrap image in link
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.style.display = 'inline-block';
+        selectedImage.parentNode.insertBefore(link, selectedImage);
+        link.appendChild(selectedImage);
+        setSelectedImage(null);
+        handleInput();
+      } else if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+        // Create link for selected text
+        const range = selection.getRangeAt(0);
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.appendChild(range.extractContents());
+        range.insertNode(link);
+        // Move cursor after link
+        range.setStartAfter(link);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        handleInput();
       } else {
         // Insert link text if no selection
-        editorRef.current?.focus();
-        document.execCommand('insertHTML', false, `<a href="${linkUrl}" target="_blank">${linkUrl}</a>`);
+        const linkHtml = `<a href="${url}" target="_blank">${url}</a>`;
+        document.execCommand('insertHTML', false, linkHtml);
         handleInput();
       }
       setLinkUrl('');
