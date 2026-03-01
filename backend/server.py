@@ -558,6 +558,7 @@ class SendTestEmailRequest(BaseModel):
     subject: str
     body: str
     from_name: Optional[str] = None
+    account_id: Optional[str] = None  # Optional: specific account to use
 
 class AddSMTPAccountRequest(BaseModel):
     email: str
