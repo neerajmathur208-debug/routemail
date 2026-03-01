@@ -13,6 +13,7 @@ import {
   XCircle,
   Edit,
   Eye,
+  FileText,
   TrendingUp,
   Activity,
   Zap,
