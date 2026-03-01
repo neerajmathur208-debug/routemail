@@ -71,6 +71,11 @@ export default function AdminDashboard({ user, setUser }) {
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [resetLoading, setResetLoading] = useState(false);
+  
+  // Subscription modal state
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [subscriptionData, setSubscriptionData] = useState(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
