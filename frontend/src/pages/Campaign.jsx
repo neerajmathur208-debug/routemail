@@ -222,7 +222,10 @@ export default function Campaign({ user, setUser }) {
     // Build scheduled_at from date/time if scheduling
     let scheduled_at = null;
     if (sendOption === "schedule" && scheduleDate && scheduleTime) {
-      const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
+      // Create date in selected timezone and convert to UTC
+      const dateTimeStr = `${scheduleDate}T${scheduleTime}`;
+      const scheduledDateTime = new Date(dateTimeStr);
+      
       if (scheduledDateTime <= new Date()) {
         toast.error("Scheduled time must be in the future");
         return;
@@ -233,6 +236,7 @@ export default function Campaign({ user, setUser }) {
     const payload = {
       ...formData,
       scheduled_at: scheduled_at || "",
+      timezone: selectedTimezone,
     };
 
     setSubmitting(true);
@@ -251,6 +255,19 @@ export default function Campaign({ user, setUser }) {
       toast.error(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Send Now - immediately start campaign
+  const handleSendNow = async (campaignId) => {
+    try {
+      await api.post(`/campaigns/${campaignId}/start`);
+      toast.success("Campaign started successfully!");
+      setStartDialogOpen(false);
+      navigate("/dashboard"); // Redirect to All Campaigns
+    } catch (error) {
+      const message = error.response?.data?.detail || "Failed to start campaign";
+      toast.error(message);
     }
   };
 
