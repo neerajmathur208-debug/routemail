@@ -587,6 +587,129 @@ export default function AdminDashboard({ user, setUser }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Subscription Details Modal */}
+      <Dialog open={subscriptionModalOpen} onOpenChange={setSubscriptionModalOpen}>
+        <DialogContent className="sm:max-w-[500px]" data-testid="subscription-modal">
+          <DialogHeader>
+            <DialogTitle className="font-heading font-semibold flex items-center gap-2">
+              <CreditCard size={20} className="text-violet-500" />
+              Subscription Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {subscriptionLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={32} className="text-violet-500 animate-spin" />
+            </div>
+          ) : subscriptionData ? (
+            <div className="space-y-4">
+              {/* User Info */}
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-sm text-slate-500">User</p>
+                <p className="font-medium text-slate-900">{subscriptionData.email}</p>
+              </div>
+
+              {/* Subscription Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Current Plan */}
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-sm text-slate-500">Current Plan</p>
+                  <p className="font-semibold text-slate-900" data-testid="sub-current-plan">
+                    {subscriptionData.current_plan}
+                  </p>
+                </div>
+
+                {/* Currency */}
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-sm text-slate-500">Currency</p>
+                  <p className="font-semibold text-slate-900" data-testid="sub-currency">
+                    {subscriptionData.currency}
+                  </p>
+                </div>
+
+                {/* Billing Status */}
+                <div className="bg-slate-50 rounded-lg p-3 col-span-2">
+                  <p className="text-sm text-slate-500 mb-1">Billing Status</p>
+                  <Badge 
+                    className={getBillingStatusColor(subscriptionData.billing_status)}
+                    data-testid="sub-billing-status"
+                  >
+                    {subscriptionData.billing_status}
+                  </Badge>
+                  {subscriptionData.is_permanent_plan && (
+                    <span className="ml-2 text-xs text-violet-600">(Permanent Assignment)</span>
+                  )}
+                </div>
+
+                {/* Trial Info */}
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-sm text-slate-500">Trial Active</p>
+                  <p className="font-semibold text-slate-900" data-testid="sub-trial-active">
+                    {subscriptionData.trial_active ? "Yes" : "No"}
+                  </p>
+                </div>
+
+                {/* Trial End Date */}
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-sm text-slate-500">Trial End Date</p>
+                  <p className="font-medium text-slate-900 text-sm" data-testid="sub-trial-end">
+                    {subscriptionData.trial_end_date 
+                      ? formatDateTime(subscriptionData.trial_end_date) 
+                      : "N/A"}
+                  </p>
+                </div>
+
+                {/* Subscription End Date */}
+                <div className="bg-slate-50 rounded-lg p-3 col-span-2">
+                  <p className="text-sm text-slate-500">Subscription End Date</p>
+                  <p className="font-medium text-slate-900" data-testid="sub-end-date">
+                    {subscriptionData.subscription_end_date 
+                      ? formatDateTime(subscriptionData.subscription_end_date) 
+                      : "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Stripe IDs Section */}
+              <div className="border-t border-slate-200 pt-4 mt-4">
+                <h4 className="font-medium text-slate-700 mb-3 text-sm">Stripe Information</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Customer ID</span>
+                    <code className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono text-slate-700" data-testid="sub-stripe-customer">
+                      {subscriptionData.stripe_customer_id}
+                    </code>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Subscription ID</span>
+                    <code className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono text-slate-700" data-testid="sub-stripe-subscription">
+                      {subscriptionData.stripe_subscription_id}
+                    </code>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Price ID</span>
+                    <code className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono text-slate-700" data-testid="sub-stripe-price">
+                      {subscriptionData.stripe_price_id}
+                    </code>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes if any */}
+              {subscriptionData.notes && (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
+                  <p className="text-sm text-violet-700">{subscriptionData.notes}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">
+              Failed to load subscription details
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
