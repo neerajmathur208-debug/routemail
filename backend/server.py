@@ -2973,6 +2973,133 @@ async def force_password_reset(
         logger.error(f"Force password reset error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Helper function to map price_id to plan and currency
+def get_plan_info_from_price_id(price_id: str) -> dict:
+    """Get plan name and currency from Stripe price ID"""
+    if not price_id:
+        return {"plan": "free", "currency": "N/A"}
+    
+    price_mapping = {
+        STRIPE_PRICES.get("starter_usd"): {"plan": "starter", "currency": "USD"},
+        STRIPE_PRICES.get("growth_usd"): {"plan": "growth", "currency": "USD"},
+        STRIPE_PRICES.get("starter_inr"): {"plan": "starter", "currency": "INR"},
+        STRIPE_PRICES.get("growth_inr"): {"plan": "growth", "currency": "INR"},
+    }
+    
+    return price_mapping.get(price_id, {"plan": "unknown", "currency": "unknown"})
+
+@api_router.get("/admin/users/{user_id}/subscription")
+async def get_admin_user_subscription(
+    user_id: str,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Get detailed subscription information for a user (super_admin only)"""
+    try:
+        # Find the user
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        plan_type = user.get("plan_type", "free")
+        subscription_status = user.get("subscription_status", "trialing")
+        stripe_customer_id = user.get("stripe_customer_id")
+        stripe_subscription_id = user.get("stripe_subscription_id")
+        
+        # Initialize response with local data
+        subscription_info = {
+            "user_id": user_id,
+            "email": user.get("email"),
+            "current_plan": plan_type.capitalize() if plan_type else "Free",
+            "billing_status": subscription_status,
+            "stripe_customer_id": stripe_customer_id or "N/A",
+            "stripe_subscription_id": stripe_subscription_id or "N/A",
+            "stripe_price_id": "N/A",
+            "currency": "N/A",
+            "trial_active": False,
+            "trial_end_date": None,
+            "subscription_end_date": None,
+            "grace_period_end": None,
+            "is_permanent_plan": user.get("email", "").lower() in PERMANENT_PLAN_ASSIGNMENTS,
+        }
+        
+        # Check if this is a permanent plan user
+        if subscription_info["is_permanent_plan"]:
+            subscription_info["billing_status"] = "permanent"
+            subscription_info["notes"] = "Permanently assigned plan (bypasses Stripe)"
+        
+        # Check trial status
+        trial_ends_at = user.get("trial_ends_at")
+        if trial_ends_at:
+            if isinstance(trial_ends_at, str):
+                trial_dt = datetime.fromisoformat(trial_ends_at.replace('Z', '+00:00'))
+            else:
+                trial_dt = trial_ends_at
+            if trial_dt.tzinfo is None:
+                trial_dt = trial_dt.replace(tzinfo=timezone.utc)
+            
+            subscription_info["trial_end_date"] = trial_ends_at
+            subscription_info["trial_active"] = datetime.now(timezone.utc) < trial_dt and subscription_status == "trialing"
+        
+        # Get billing cycle end from local storage
+        billing_cycle_end = user.get("billing_cycle_end")
+        if billing_cycle_end:
+            subscription_info["subscription_end_date"] = billing_cycle_end
+        
+        # Get grace period end if any
+        grace_period_end = user.get("grace_period_end")
+        if grace_period_end:
+            subscription_info["grace_period_end"] = grace_period_end
+        
+        # Try to get additional details from Stripe if subscription exists
+        if stripe_subscription_id and stripe_subscription_id != "N/A" and stripe.api_key:
+            try:
+                stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
+                
+                # Get price ID and derive currency/plan
+                if stripe_sub.get("items") and stripe_sub["items"].get("data"):
+                    price_id = stripe_sub["items"]["data"][0].get("price", {}).get("id")
+                    if price_id:
+                        subscription_info["stripe_price_id"] = price_id
+                        plan_info = get_plan_info_from_price_id(price_id)
+                        subscription_info["currency"] = plan_info["currency"]
+                
+                # Get subscription end date from Stripe
+                if stripe_sub.get("current_period_end"):
+                    period_end = datetime.fromtimestamp(stripe_sub["current_period_end"], tz=timezone.utc)
+                    subscription_info["subscription_end_date"] = period_end.isoformat()
+                
+                # Update billing status from Stripe
+                subscription_info["billing_status"] = stripe_sub.get("status", subscription_status)
+                
+            except stripe.error.StripeError as e:
+                logger.warning(f"Could not fetch Stripe subscription for {user_id}: {e}")
+                # Keep local data if Stripe fails
+        
+        # For free users with no Stripe info, derive currency as N/A
+        if plan_type == "free" and not stripe_subscription_id:
+            subscription_info["currency"] = "N/A"
+            subscription_info["stripe_price_id"] = "N/A"
+            subscription_info["stripe_customer_id"] = stripe_customer_id or "N/A"
+            subscription_info["stripe_subscription_id"] = "N/A"
+        
+        # Log admin action
+        admin_log = {
+            "admin_email": admin["email"],
+            "target_user_email": user.get("email"),
+            "target_user_id": user_id,
+            "action": "VIEW_SUBSCRIPTION_DETAILS",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        await db.admin_logs.insert_one(admin_log)
+        
+        return subscription_info
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin subscription detail error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
 
 class CreateCheckoutRequest(BaseModel):
