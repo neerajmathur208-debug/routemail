@@ -233,12 +233,16 @@ export default function RichTextEditor({
   };
 
   const insertVariable = useCallback((variable) => {
-    editorRef.current?.focus();
     const variableText = `{{${variable}}}`;
     
-    // Insert at cursor position
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
+    // Restore saved cursor position first
+    if (savedRange.current && editorRef.current) {
+      editorRef.current.focus();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
+      
+      // Insert at cursor position
       const range = selection.getRangeAt(0);
       range.deleteContents();
       const textNode = document.createTextNode(variableText);
@@ -249,9 +253,28 @@ export default function RichTextEditor({
       range.setEndAfter(textNode);
       selection.removeAllRanges();
       selection.addRange(range);
+      
+      // Update saved position
+      savedRange.current = range.cloneRange();
     } else {
-      // Fallback: append to end
-      editorRef.current.innerHTML += variableText;
+      // Fallback: focus and try current selection
+      editorRef.current?.focus();
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && editorRef.current?.contains(selection.anchorNode)) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        const textNode = document.createTextNode(variableText);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        // Last resort: append to end
+        if (editorRef.current) {
+          editorRef.current.innerHTML += variableText;
+        }
+      }
     }
     
     handleInput();
