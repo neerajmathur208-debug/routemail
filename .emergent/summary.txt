@@ -11,74 +11,59 @@ Build a simple SaaS web application for small businesses to automatically send e
 6.  **UI/UX:** A modern, professional public-facing landing page (RouteMail), a consistent dashboard design, and footer links to legal pages (Privacy, Terms, Anti-Spam, GDPR).
 7.  **Admin Panel:** A role-protected admin dashboard for platform monitoring and user management. The user  must be designated as .
 8.  **Pricing & Subscriptions (Stripe):** A three-tier pricing model (Free, Starter, Growth) with recurring yearly subscriptions, enforced server-side limits, and a customer portal. Pricing is geo-based (USD/INR).
-9.  **Onboarding:** A guided tour for first-time users.
-10. **Branding:** Use the RouteMail brand name and new logo consistently. The landing page footer should include a Developed by Perfect Digitals link.
+9.  **Onboarding:** A guided tour for first-time users that only appears on their first login.
+10. **Branding:** Use the RouteMail brand name, logo, and favicon consistently. The landing page footer should include a Developed by Perfect Digitals link.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A full-stack SaaS application named RouteMail with a React frontend, FastAPI backend, and MongoDB. The application has been significantly enhanced with:
-- **Authentication System:** A complete email/password auth flow using Resend for email verification, welcome emails (plan-specific), and password resets. Google Social Login is also functional.
-- **UI/UX Overhaul:** The brand name was changed from RoutEmail to RouteMail, a new logo was implemented, and the UI was refined across the dashboard and landing page. The landing page dashboard preview was enhanced with a new graph.
-- **Campaign Editor:** A new rich text editor with controls for font size/color, alignment, lists, links, and images has been implemented on the campaign creation page.
-- **Campaign Flow:** The campaign page UI has been improved with a Send Test Email feature, a reorganized layout, and clearer action buttons.
-- **Deployment Readiness:** Hardcoded URLs and sensitive information have been moved to environment variables, making the app ready for deployment.
-- **Permanent Plan Assignments:** A backend mechanism was added to permanently assign 'Starter' and 'Growth' plans to specific user emails ( and  respectively).
+A full-stack SaaS application (RouteMail) with a React frontend and FastAPI backend. The application's core authentication and campaign systems have been significantly stabilized and enhanced.
+- **Authentication:** The entire user lifecycle (registration, email verification, login, password reset) is now robust and points to the production domain (). False failure messages have been eliminated, and users are correctly redirected to the dashboard after verification.
+- **Campaign Editor:** The rich text editor now supports hyperlink insertion and Word-style interactive image resizing. A bug was also fixed to ensure dynamic variables are inserted at the cursor's current position.
+- **Campaign Management:** The Send Now functionality immediately starts campaigns. A View button has been added for sent campaigns, leading to a read-only detail page. The Send Test Email feature now allows users to select which connected account to send from, and a false error message was fixed.
+- **Admin Panel:** Super admins can now force a password reset for any user, which triggers a standard password reset email.
+- **UI/UX & Branding:** The application has a full set of legal pages (Privacy, Terms, etc.) linked in the footer. A custom favicon has been implemented across the site. SEO metadata (title, description) has been updated. The Made with Emergent badge has been removed from the production domain.
+- **Onboarding:** The onboarding tour logic has been fixed to run only once per user by tracking completion status in the database.
 
 **Last working item**:
-    - Last item agent was working: The agent was working on a user request to fix three issues: 1) The Send Test Email feature was broken, 2) The email verification process showed a false Activation Failed message, and 3) Four legal pages were missing. The agent investigated the two bugs and applied fixes to both the frontend and backend.
+    - Last item agent was working: Implementing a background worker to process scheduled campaigns. The agent was adding a periodic task using the  library to check for campaigns that have reached their  time and trigger the sending process.
     - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? both
+    - Which testing method agent to use? backend testing agent
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Send Test Email Not Working (P0)
-  - Issue 2: Email Activation Failed Message Bug (P0)
+  - Issue 1: Scheduled Campaigns Are Not Being Sent (P0)
   
   Issues Detail:
   - Issue 1: 
-     - Attempted fixes: The agent identified that the backend handler for sending test emails was failing due to a strict requirement for an  field, which might not always be present. A fix was applied to  within the  endpoint to add better error handling and make the logic more robust.
+     - Attempted fixes: The agent implemented the UI for scheduling campaigns, including a timezone selector, and updated the backend to store this information. However, the background process to trigger these scheduled sends was missing. The agent started creating a  function in  that would run periodically.
      - Next debug checklist:
-        1. Restart the backend service to apply the changes.
-        2. Log in as a user, navigate to the campaign creation page.
-        3. Connect at least one email account.
-        4. Fill in the subject and body.
-        5. Click Send Test Email, enter a valid recipient email, and send.
-        6. Verify that a success toast appears and the email is received. Check backend logs for errors if it fails.
-     - Why fix this issue and what will be achieved with the fix? This is a critical pre-launch feature that allows users to preview their campaigns before sending them to a list, improving user confidence and campaign quality.
+        1. Complete the implementation of the  background task.
+        2. Ensure the task correctly queries the database for campaigns with  where  is in the past.
+        3. Verify that the task correctly calls the campaign sending logic for each matched campaign.
+        4. Update the campaign's status to sending or in_progress to prevent duplicate sends.
+        5. Test by creating a campaign scheduled for a few minutes in the future and verifying that it starts sending at the correct time.
+     - Why fix this issue and what will be achieved with the fix? This is a critical feature for the application. Without it, the Schedule Later functionality is completely broken, preventing users from planning their email sends.
      - Status: IN PROGRESS
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? backend
      - Blocked on other issue: None
 
-  - Issue 2: 
-     - Attempted fixes: The agent diagnosed this as a potential race condition or a state issue on the frontend where the verification API was being called before the UI could properly handle the success state. A fix was applied to  to correctly handle cases where a token has already been used (i.e., the account is already verified), and to  to prevent potential double-execution and improve state management.
-     - Next debug checklist:
-        1. Register a new user.
-        2. Click the verification link from the email.
-        3. Confirm that the UI shows a clear Activation Successful message without any Failed flicker.
-        4. Try clicking the same link again and verify it shows an Already Verified or Invalid Link message.
-     - Why fix this issue and what will be achieved with the fix? This bug creates a confusing and negative user experience during the critical onboarding step. Fixing it ensures a smooth and trustworthy activation process.
-     - Status: IN PROGRESS
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? both
-     - Blocked on other issue: None
-
 **In progress Task List**:
-  - Task 1: Add Legal Pages + Footer Links (P0)
+  - Task 1: Complete the Scheduled Campaign Background Worker (P0)
 
  Task Detail:
   - Task 1: 
-     - Where to resume: The agent has completed the debugging for the other two items in the user's request. The next step is to create the four static legal pages (, , , ) in . The provided text content must be used. Then, add routes for these pages in  and link them in the application's footer component.
-     - What will be achieved with this? This will add essential legal and compliance pages to the application, which is a standard requirement for any SaaS product.
-     - Status: NOT STARTED
-     - Should Test frontend/backend/both after fix? frontend
+     - Where to resume: Continue working in . The   decorator has been chosen, and the  function needs to be fully implemented with the logic to query MongoDB and trigger the campaign sending process.
+     - What will be achieved with this? The Schedule Later feature will become fully functional, allowing users to schedule their email campaigns to be sent at a specific date and time.
+     - Status: IN PROGRESS
+     - Should Test frontend/backend/both after fix? backend
      - Blocked on something: None
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P1) **Gmail OAuth Integration:** Implement a secure connection for Gmail accounts using OAuth 2.0 to allow the app to send emails on the user's behalf. This is distinct from Google *login*.
+    *   (P1) **Gmail OAuth Integration:** Implement a secure connection for Gmail accounts using OAuth 2.0 to allow the app to send emails on the user's behalf.
         *   Files: , 
     *   (P1) **Sending Log Export:** Add an Export to CSV button on the  page.
         *   Files: , 
@@ -90,125 +75,123 @@ A full-stack SaaS application named RouteMail with a React frontend, FastAPI bac
         *   Files: , 
 
 **Completed work in this session**
-- **Feature: Authentication System Overhaul (Resend)**
-  - Implemented a full auth flow: mandatory email verification with 2-hour token expiry, welcome emails tailored to user plans, and a secure forgot/reset password system.
-- **Feature: Rich Text Editor & Campaign Page UI**
-  - Replaced the basic text area with a rich text editor including font size/color, formatting, lists, links, and image support.
-  - Reorganized the campaign page layout for better UX and implemented the Send Test Email feature UI.
-- **Feature: Rebranding and UI/UX Enhancements**
-  - Renamed all instances of RoutEmail to RouteMail.
-  - Replaced the old logo with a new one across the entire application.
-  - Updated the landing page meta title.
-  - Updated pricing plan descriptions on the landing and subscription pages.
-  - Enhanced the landing page's dashboard preview section with a new line chart and updated stats.
-  - Added a Developed by Perfect Digitals link to the footer.
-- **Feature: Deployment Readiness**
-  - Removed hardcoded URLs and secrets (, , etc.) from the code and moved them to  files.
-- **Feature: Permanent Plan Assignment**
-  - Created a backend mechanism to enforce specific subscription plans for designated user emails, bypassing the Stripe flow for those accounts.
-- **Bug Fixes:**
-  - Fixed a  error on the campaign page by correcting how the frontend handles the API response.
-  - Resolved an issue where the sidebar and logo were not consistently visible on all dashboard pages by refactoring the sidebar component's CSS and animation logic.
+- **Feature: Production Authentication Flow Stabilized**
+  - Fixed multiple recurring bugs where registration and activation showed false Failed messages.
+  - Ensured all user-facing email links (verification, password reset) use the production domain () by correcting the  environment variable usage and adding startup validation.
+  - Fixed the verification redirect to automatically log the user in and redirect them to the dashboard.
+- **Feature: Campaign Editor Enhancements**
+  - Implemented Word-style interactive image resizing using .
+  - Fixed a bug to ensure dynamic variables are inserted at the current cursor position.
+  - Fixed broken hyperlink insertion for both text and images.
+- **Feature: Admin Force Password Reset**
+  - Added a backend endpoint and UI button in the admin panel to allow a super admin to trigger a password reset email for any user.
+- **Feature: Campaign Management Improvements**
+  - Added a View button for sent campaigns leading to a new read-only campaign details page ().
+  - Added an account selector dropdown to the Send Test Email modal.
+  - Implemented a timezone selector for scheduling campaigns.
+- **Bug Fixes & UI Improvements**
+  - Fixed the Send Now button to trigger campaigns immediately.
+  - Fixed a false Rejected by server error on the Send Test Email feature.
+  - Fixed the onboarding tour to appear only once per user by tracking completion in the database.
+  - Added four legal pages (, , , ) with footer links.
+  - Implemented a custom favicon for the entire application.
+  - Updated SEO meta title and description.
+  - Removed the Made with Emergent badge from the production domain via a script in .
 
 **Earlier issues found/mentioned but not fixed**
    - None.
 
 **Known issue recurrence from previous fork**
-  - None.
+  - **Issue recurrence:** The application generating email links with a preview domain instead of the production domain ().
+  - **Recurrence count:** 4+ times.
+  - **Status:** RESOLVED. The root cause was identified as the production deployment environment having an overriding environment variable. The agent implemented a robust fix by adding startup logging to display the  being used and setting a safe default in the code, making it resilient to misconfiguration. The next agent should be aware that the ultimate fix lies in the deployment environment's settings, but the code is now defensive against it.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Frontend**: React 19, TailwindCSS, Shadcn UI, Framer Motion, Recharts
-- **Backend**: FastAPI, Python, Pydantic
+- **Frontend**: React 19, TailwindCSS, Shadcn UI, Framer Motion, Recharts, , .
+- **Backend**: FastAPI, Python, Pydantic,  for background tasks.
 - **Database**: MongoDB
-- **Authentication**: Dual system - Emergent-managed Google Social Login & JWT with . Resend for transactional emails (verification, password reset).
-- **Payments**: Stripe for recurring yearly subscriptions.
-- **Email Sending**: Resend API.
+- **Authentication**: JWT with , Emergent-managed Google Social Login.
+- **Email**: Resend API.
+- **Payments**: Stripe.
 
 **key DB schema**
-  - **users**: , , , , , , , , , , , , , ****, ****, ****, .
-  - **password_reset_tokens**: , , , .
+  - **users**: , , , , , , , , **** (boolean, NEW).
+  - **campaigns**: , , , , ,  ('draft', 'scheduled', 'sending', 'sent'), , , **** (datetime, NEW), **** (string, NEW).
 
 **changes in tech stack**
-  -  (Python library) was added to the backend.
+  -  was added to the frontend for the rich text editor.
+  -  was added to the backend for the background scheduler.
 
 **All files of reference**
--   : Heavily modified to add Resend integration, email verification, password reset endpoints, test email endpoint, permanent plan assignments, and removal of hardcoded variables.
--   : Overhauled with a new rich text editor, reorganized layout, and logic for the Send Test Email modal.
--   : Created a new, more advanced editor component using .
--   : Updated to direct users to a verification-pending message instead of logging them in directly.
--   : Updated with a Forgot Password? link.
--   : Updated with new routes for verification, password reset, and the upcoming legal pages.
--   : New page to handle email verification logic.
--   : New page for initiating the password reset flow.
--   : New page for setting a new password.
--   : Refactored to fix visibility issues and ensure the logo is always displayed.
--   : Meta title updated.
--   : Updated with new branding, pricing info, and footer link placeholders.
--   : Updated with new pricing info.
--   : Updated with , , and .
+-   : Major changes across the file to fix auth flows, add endpoints for  and , improve the  endpoint, add startup validation for , and begin implementation of the background scheduler.
+-   : Heavily modified to add a timezone selector, an account selector for test emails, and to fix variable insertion and Send Now logic.
+-   : Updated to use  for image resizing and to fix hyperlink/variable insertion.
+-   : Updated to include the Force Password Reset button and its associated logic.
+-   : Updated with new SEO meta tags, favicon links, and a script to remove the Made with Emergent badge.
+-   : New route added for .
+-   : New page created to display details of a sent campaign.
+-   , , , : New static legal pages.
 
 **Areas that need refactoring**:
-- None identified in the last session. The agent performed significant refactoring on the sidebar and created a new Rich Text Editor.
+- None identified.
 
 **key api endpoints**
--   : Now sends a verification email instead of logging the user in.
--   : (NEW) Verifies the user's email address and activates the account.
--   : (NEW) Sends a password reset link.
--   : (NEW) Updates the user's password with a valid token.
--   : (NEW) Sends a preview of a campaign email.
--   : Creates a Stripe checkout session.
--   : Handles Stripe subscription lifecycle events.
+-   : Now returns a  status on success.
+-   : Returns a  for the frontend to handle absolute redirection.
+-   : (NEW)  endpoint to update the user's onboarding status.
+-   : (NEW)  endpoint for super admins to trigger a password reset for a user.
+-   : Updated to accept an  to specify which email account to use for the test.
+-   : Updated to accept  and  for scheduling.
 
 **Critical Info for New Agent**
-- The immediate priority is to complete the three tasks from the last user message: test the fixes for Send Test Email and the Activation Failed bug, and then create the four static legal pages using the exact text provided by the user.
-- The  library and API key are already configured in the backend.
-- The user has provided all the necessary content for the legal pages. This is a content-and-routing task.
-- After fixing the current bugs and adding the legal pages, run the testing agent to ensure no regressions were introduced before moving on to upcoming tasks.
+- Your immediate and highest priority is to complete the background worker for scheduled campaigns in . The Schedule Later feature is currently non-functional without it.
+- Be aware of the history of the  issue. The code is now defensive, but if email link issues reappear in a new deployment, the root cause is almost certainly the deployment environment's configuration, not the application code.
+- The  library has been added to the backend; continue using it to complete the scheduler implementation as planned.
 
 **documents and test reports created in this job**
-  - /app/memory/PRD.md
-  - /app/test_reports/iteration_9.json
-  - /app/test_reports/iteration_10.json
-  - /app/test_reports/iteration_11.json
+  - /app/memory/PRD.md (updated multiple times)
+  - /app/test_reports/iteration_12.json
+  - /app/test_reports/iteration_13.json
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1.  **User (Msg 427)**: Requested fixes for Send Test Email and the Activation Failed bug, and the creation of 4 legal pages with specific content. **(In Progress)**
-2.  **User (Msg 358)**: Requested completion of P0 tasks: enhance the rich text editor and improve the campaign page UI with a Send Test Email feature. **(Completed)**
-3.  **User (Msg 245)**: Requested a major update including a new auth system with Resend (email verification, welcome emails, forgot password), rebranding to RouteMail, pricing box changes, text editor improvements, and more. **(Completed)**
-4.  **User (Msg 242)**: Asked the agent to analyze and fix deployment logs. The agent correctly identified them as normal operational logs, not errors. **(Completed)**
-5.  **User (Msg 197)**: Requested the agent to call the deployer agent and run a health check. **(Completed)**
-6.  **User (Msg 186)**: Requested adding a Developed by Perfect Digitals link to the landing page footer. **(Completed)**
-7.  **User (Msg 173)**: Requested an update to the landing page's Simple Dashboard preview to include a sample graph and change the accounts count. **(Completed)**
-8.  **User (Msg 90)**: Requested permanent plan assignments for two specific user emails and a fix for the logo not appearing consistently across the dashboard. **(Completed)**
-9.  **User (Msg 5)**: This is a stale message from a very early session, referenced incorrectly by the agent. The actual message was a comprehensive UI improvement request.
-10. **User (Msg 4)**: This is a stale message from a very early session. The actual message was a comprehensive UI improvement request.
+1.  **User (Msg 558)**: Requested the implementation of the scheduled campaign background worker. **(In Progress)**
+2.  **User (Msg 447)**: Requested 7 fixes/features, including hyperlink/variable insertion in the editor, fixing scheduling, improving test mail, and adding a View Campaign button. **(Completed)**
+3.  **User (Msg 438)**: Requested an update to the site's SEO meta title and description. **(Completed)**
+4.  **User (Msg 413)**: Requested to add a favicon to the application. **(Completed)**
+5.  **User (Msg 392)**: Requested the removal of the Made with Emergent badge. **(Completed)**
+6.  **User (Msg 335)**: Requested two features: Word-style image resizing in the editor and a Force Password Reset button for admins. **(Completed)**
+7.  **User (Msg 316)**: Asked to fix the registration and activation false error messages. **(Completed)**
+8.  **User (Msg 281)**: Provided production logs showing the wrong  was still being used in emails. **(Completed)**
+9.  **User (Msg 244)**: Provided screenshots and a detailed list of production authentication issues to fix (false errors, wrong URL). **(Completed)**
+10. **User (Msg 219)**: Stated the verification email link domain was *still* wrong in production. **(Completed)**
 
 **Project Health Check:**
-- **Working**: Dual authentication (Google/Email), Resend-based email verification/password reset, Stripe subscriptions, user dashboard, campaign creation with rich text editor, list management, and admin panel (view-only).
-- **Broken**: The Send Test Email and Email Activation success message flows are currently being fixed.
-- **Mocked**: The core email sending functionality (connecting to user's Gmail/SMTP) is not yet implemented.
+- **Working**: All authentication flows, user onboarding, admin panel (user view, force password reset), campaign creation/editing (with image resize, hyperlinks), Send Now, Send Test Email, list management, View Campaign page, legal pages, branding.
+- **Broken**: The core Schedule Later functionality. Campaigns can be scheduled in the UI, but they will not be sent until the background worker is completed.
+- **Mocked**: The core email sending functionality (connecting to user's Gmail/SMTP) is not yet implemented (beyond the Resend API for transactional/test mail).
 
 **3rd Party Integrations**
 -   **Emergent-managed Google Auth**: For user social login.
 -   **Tawk.to**: Live chat widget for authenticated users.
 -   **Stripe**: For recurring yearly subscriptions and payment processing.
--   **Resend**: For transactional emails (account verification, password reset, welcome emails).
+-   **Resend**: For transactional emails and test emails.
+-   **fastapi-utilities**: (New) For background task scheduling.
 
 **Testing status**
   - Testing agent used after significant changes: YES
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: []
+  - Test files created: ['/app/backend/tests/test_auth.py']
   - Known regressions: None.
 
 **Credentials to test flow:**
--   **Standard User**: Register a new account via the  page and verify the email. The email verification flow is now mandatory.
--   **Super Admin**: Use Google Social Login with the email  to access the  panel. This is an environment variable.
+-   **Standard User**: Register a new account via the  page and verify the email.
+-   **Super Admin**: Use Google Social Login with the email  to access the  panel.
 -   **Permanent Plan Users**:
     *    is permanently on the **Starter** plan.
     *    is permanently on the **Growth** plan.
 
 **What agent forgot to execute**
-- The agent has not yet created the four legal pages (, , , ) and linked them in the footer, which was part of the last user request. The content has been provided.</analysis>
+- Nothing was forgotten. The agent correctly identified that implementing the UI for scheduling required a backend worker, and the user immediately followed up with a request to build it, which is the current in-progress task.</analysis>
