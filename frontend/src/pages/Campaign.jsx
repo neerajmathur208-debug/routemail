@@ -298,18 +298,18 @@ export default function Campaign({ user, setUser }) {
     }
 
     try {
-      // Update campaign with scheduled_at
+      // Update campaign with scheduled_at and timezone
       await api.put(`/campaigns/${campaignId}`, {
         ...formData,
         scheduled_at: scheduledDateTime.toISOString(),
+        timezone: selectedTimezone,
       });
       
       // Then schedule it
       await api.post(`/campaigns/${campaignId}/schedule`);
       toast.success("Campaign scheduled successfully");
       setStartDialogOpen(false);
-      setView("list");
-      fetchData();
+      navigate("/dashboard"); // Redirect to All Campaigns
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to schedule campaign";
       toast.error(message);
