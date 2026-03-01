@@ -598,6 +598,7 @@ class CreateCampaignRequest(BaseModel):
     list_id: Optional[str] = None
     account_ids: List[str] = []
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
+    timezone: Optional[str] = None  # User's selected timezone
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -608,6 +609,7 @@ class UpdateCampaignRequest(BaseModel):
     list_id: Optional[str] = None
     account_ids: Optional[List[str]] = None
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
+    timezone: Optional[str] = None  # User's selected timezone
 
 class AddToSuppressionRequest(BaseModel):
     email: str
