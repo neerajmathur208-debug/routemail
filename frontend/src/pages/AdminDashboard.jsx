@@ -454,6 +454,16 @@ export default function AdminDashboard({ user, setUser }) {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        onClick={() => handleViewSubscription(u)}
+                        data-testid={`view-subscription-${u.user_id}`}
+                        title="View Subscription Details"
+                      >
+                        <CreditCard size={16} className="text-slate-400 hover:text-violet-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
                         onClick={() => navigate(`/admin/users/${u.user_id}`)}
                         data-testid={`view-user-${u.user_id}`}
                         title="View Details"
