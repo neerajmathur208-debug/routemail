@@ -280,6 +280,21 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Updated `FRONTEND_URL` in backend/.env from preview domain to `https://routemail.co`
   - All email links (verification, password reset, Stripe) now use production domain
 
+### ✅ Scheduled Campaign Background Worker (March 2026)
+- [x] **Background Scheduler Implementation**:
+  - Async background task runs every 30 seconds
+  - Checks for campaigns with `status: "scheduled"` and `scheduled_at` in the past
+  - Automatically starts campaigns when scheduled time arrives
+  - Creates email queue items with correct `queue_id` field
+  - Transitions campaign status: `scheduled` → `running` → `completed`
+  - Proper error handling with status set to `failed` if issues occur
+  - Graceful startup/shutdown with asyncio task management
+- [x] **Bug Fix**: Fixed queue item field name from `queue_item_id` to `queue_id` (matching model and processing code)
+- [x] **Endpoints Working**:
+  - `POST /api/campaigns/{id}/schedule` - Sets status to `scheduled`
+  - `POST /api/campaigns/{id}/unschedule` - Returns to `draft` status
+  - Campaign creation with `scheduled_at` auto-sets status to `scheduled`
+
 ### 🔄 In Progress
 - None currently
 
