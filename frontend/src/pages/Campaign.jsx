@@ -83,7 +83,14 @@ export default function Campaign({ user, setUser }) {
   // Send Test Email state
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [testEmailAccountId, setTestEmailAccountId] = useState(""); // Selected account for test email
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
+
+  // Scheduler state with timezone
+  const [sendOption, setSendOption] = useState("now"); // "now" or "schedule"
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [selectedTimezone, setSelectedTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -95,12 +102,8 @@ export default function Campaign({ user, setUser }) {
     list_id: "",
     account_ids: [],
     scheduled_at: "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
-  
-  // Scheduler state
-  const [sendOption, setSendOption] = useState("now"); // "now" or "schedule"
-  const [scheduleDate, setScheduleDate] = useState("");
-  const [scheduleTime, setScheduleTime] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
