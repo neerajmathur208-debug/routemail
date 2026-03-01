@@ -207,6 +207,14 @@ function AppRouter() {
         }
       />
       <Route
+        path="/campaign/:campaignId/view"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <CampaignView user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin"
         element={
           <ProtectedRoute>
