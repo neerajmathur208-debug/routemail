@@ -1022,12 +1022,12 @@ Best regards"
                 </AlertDialogAction>
               ) : (
                 <AlertDialogAction
-                  onClick={() => handleStartCampaign(editId)}
-                  className="bg-signal-orange hover:bg-orange-600"
+                  onClick={() => handleSendNow(editId)}
+                  className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
                   data-testid="confirm-start-btn"
                 >
-                  <Play size={16} className="mr-2" />
-                  Start Now
+                  <Send size={16} className="mr-2" />
+                  Send Now
                 </AlertDialogAction>
               )}
             </AlertDialogFooter>
