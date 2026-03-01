@@ -1801,11 +1801,19 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     if not request.body or not request.body.strip():
         raise HTTPException(status_code=400, detail="Email body is required")
     
-    # Get user's first connected account to send from
-    account = await db.email_accounts.find_one(
-        {"user_id": user.user_id, "status": "connected"},
-        {"_id": 0}
-    )
+    # Get specific account if account_id provided, otherwise get first connected account
+    if request.account_id:
+        account = await db.email_accounts.find_one(
+            {"user_id": user.user_id, "account_id": request.account_id, "status": "connected"},
+            {"_id": 0}
+        )
+        if not account:
+            raise HTTPException(status_code=400, detail="Selected account not found or not connected.")
+    else:
+        account = await db.email_accounts.find_one(
+            {"user_id": user.user_id, "status": "connected"},
+            {"_id": 0}
+        )
     
     if not account:
         raise HTTPException(status_code=400, detail="No connected email account found. Please add an account first.")
