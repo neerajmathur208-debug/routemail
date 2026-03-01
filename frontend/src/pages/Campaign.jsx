@@ -880,18 +880,38 @@ Best regards"
                 Send a preview of your email without affecting campaign stats.
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <div className="py-4">
-              <Label htmlFor="test-email">Test Email Address</Label>
-              <Input
-                id="test-email"
-                type="email"
-                placeholder="you@example.com"
-                value={testEmailAddress}
-                onChange={(e) => setTestEmailAddress(e.target.value)}
-                className="mt-1.5"
-                data-testid="test-email-input"
-              />
-              <p className="text-xs text-slate-500 mt-2">
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="test-email-account">Send From Account</Label>
+                <Select
+                  value={testEmailAccountId}
+                  onValueChange={setTestEmailAccountId}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="test-email-account-select">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.account_id} value={acc.account_id}>
+                        {acc.email} ({acc.display_name || acc.smtp_host})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="test-email">Test Email Address</Label>
+                <Input
+                  id="test-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={testEmailAddress}
+                  onChange={(e) => setTestEmailAddress(e.target.value)}
+                  className="mt-1.5"
+                  data-testid="test-email-input"
+                />
+              </div>
+              <p className="text-xs text-slate-500">
                 The test email will include a "[TEST]" prefix in the subject line.
               </p>
             </div>
@@ -899,7 +919,7 @@ Best regards"
               <AlertDialogCancel disabled={sendingTestEmail}>Cancel</AlertDialogCancel>
               <Button
                 onClick={handleSendTestEmail}
-                disabled={sendingTestEmail || !testEmailAddress}
+                disabled={sendingTestEmail || !testEmailAddress || !testEmailAccountId}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {sendingTestEmail ? (
