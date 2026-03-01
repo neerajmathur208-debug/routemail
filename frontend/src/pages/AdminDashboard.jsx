@@ -170,6 +170,53 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
+  const handleViewSubscription = async (u) => {
+    setSelectedUser(u);
+    setSubscriptionModalOpen(true);
+    setSubscriptionLoading(true);
+    setSubscriptionData(null);
+    
+    try {
+      const response = await api.get(`/admin/users/${u.user_id}/subscription`);
+      setSubscriptionData(response.data);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to load subscription details");
+      setSubscriptionModalOpen(false);
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return "N/A";
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getBillingStatusColor = (status) => {
+    switch (status) {
+      case "active":
+      case "permanent":
+        return "bg-emerald-100 text-emerald-700";
+      case "trialing":
+        return "bg-blue-100 text-blue-700";
+      case "past_due":
+        return "bg-amber-100 text-amber-700";
+      case "canceled":
+      case "incomplete":
+      case "unpaid":
+        return "bg-red-100 text-red-700";
+      default:
+        return "bg-slate-100 text-slate-600";
+    }
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("en-US", {
