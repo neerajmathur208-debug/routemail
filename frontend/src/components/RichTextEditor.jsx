@@ -647,6 +647,8 @@ export default function RichTextEditor({
               onInput={handleInput}
               onPaste={handlePaste}
               onClick={handleImageClick}
+              onBlur={saveCursorPosition}
+              onKeyUp={saveCursorPosition}
               className="min-h-[300px] p-4 outline-none prose prose-sm max-w-none"
               style={{ 
                 fontFamily: "'Public Sans', sans-serif",
