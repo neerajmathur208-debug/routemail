@@ -31,6 +31,7 @@ export default function RichTextEditor({
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
   const isInitialized = useRef(false);
+  const savedRange = useRef(null); // Store cursor position
   const [linkUrl, setLinkUrl] = useState('');
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [colorPopoverOpen, setColorPopoverOpen] = useState(false);
