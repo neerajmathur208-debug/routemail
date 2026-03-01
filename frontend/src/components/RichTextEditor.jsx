@@ -77,6 +77,24 @@ export default function RichTextEditor({
     }
   }, [onChange]);
 
+  // Save cursor position when editor loses focus
+  const saveCursorPosition = useCallback(() => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0 && editorRef.current?.contains(selection.anchorNode)) {
+      savedRange.current = selection.getRangeAt(0).cloneRange();
+    }
+  }, []);
+
+  // Restore cursor position
+  const restoreCursorPosition = useCallback(() => {
+    if (savedRange.current && editorRef.current) {
+      editorRef.current.focus();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
+    }
+  }, []);
+
   const execCommand = useCallback((command, value = null) => {
     editorRef.current?.focus();
     document.execCommand(command, false, value);
