@@ -900,16 +900,28 @@ export default function Dashboard({ user, setUser }) {
                                 </Button>
                               )}
                               {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused") && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="rounded-xl"
-                                  onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
-                                  data-testid={`view-logs-${campaign.campaign_id}`}
-                                >
-                                  <Eye size={14} className="mr-1" />
-                                  Logs
-                                </Button>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/view`)}
+                                    data-testid={`view-campaign-${campaign.campaign_id}`}
+                                  >
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
+                                    data-testid={`view-logs-${campaign.campaign_id}`}
+                                  >
+                                    <FileText size={14} className="mr-1" />
+                                    Logs
+                                  </Button>
+                                </>
                               )}
                             </div>
                           </div>
