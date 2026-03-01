@@ -159,7 +159,7 @@ class TestCampaignScheduling:
     """Tests for the complete scheduling workflow"""
     
     def test_create_campaign_with_scheduled_at(self, session, test_email_list, test_email_account, mongo_client):
-        """Test creating a campaign with scheduled_at field"""
+        """Test creating a campaign with scheduled_at field - should auto-set status to 'scheduled'"""
         scheduled_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         
         payload = {
@@ -183,9 +183,10 @@ class TestCampaignScheduling:
         campaign = mongo_client.campaigns.find_one({"campaign_id": campaign_id})
         assert campaign is not None
         assert campaign.get("scheduled_at") is not None
-        assert campaign.get("status") == "draft"  # Should be draft initially
+        # When scheduled_at is provided, status is auto-set to "scheduled"
+        assert campaign.get("status") == "scheduled", f"Expected 'scheduled' status when scheduled_at is provided, got: {campaign.get('status')}"
         
-        print(f"PASS: Campaign created with scheduled_at field: {campaign_id}")
+        print(f"PASS: Campaign created with scheduled_at field and status='scheduled': {campaign_id}")
         
         # Cleanup
         mongo_client.campaigns.delete_one({"campaign_id": campaign_id})
