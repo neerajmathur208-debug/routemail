@@ -117,6 +117,173 @@ logger.info(f"FRONTEND_URL configured as: {FRONTEND_URL}")
 if 'preview.emergentagent.com' in FRONTEND_URL:
     logger.warning(f"WARNING: FRONTEND_URL is set to a preview domain. For production, ensure FRONTEND_URL=https://routemail.co")
 
+# ==================== BACKGROUND SCHEDULER FOR SCHEDULED CAMPAIGNS ====================
+
+scheduler_running = False
+scheduler_task = None
+
+async def check_scheduled_campaigns():
+    """Check for scheduled campaigns that need to be started"""
+    global scheduler_running
+    
+    while scheduler_running:
+        try:
+            now = datetime.now(timezone.utc)
+            
+            # Find campaigns that are scheduled and ready to send
+            scheduled_campaigns = await db.campaigns.find({
+                "status": "scheduled",
+                "scheduled_at": {"$ne": None}
+            }, {"_id": 0}).to_list(100)
+            
+            for campaign in scheduled_campaigns:
+                try:
+                    scheduled_at = campaign.get("scheduled_at")
+                    if not scheduled_at:
+                        continue
+                    
+                    # Parse scheduled_at datetime
+                    if isinstance(scheduled_at, str):
+                        scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+                    else:
+                        scheduled_dt = scheduled_at
+                    
+                    # Make it timezone-aware if not
+                    if scheduled_dt.tzinfo is None:
+                        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                    
+                    # Check if it's time to send
+                    if now >= scheduled_dt:
+                        logger.info(f"Starting scheduled campaign: {campaign['campaign_id']} - scheduled for {scheduled_at}")
+                        
+                        # Start the campaign
+                        await start_scheduled_campaign(campaign)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing scheduled campaign {campaign.get('campaign_id')}: {e}")
+            
+        except Exception as e:
+            logger.error(f"Error in scheduled campaign checker: {e}")
+        
+        # Wait 30 seconds before checking again
+        await asyncio.sleep(30)
+
+async def start_scheduled_campaign(campaign: dict):
+    """Start a scheduled campaign (internal function)"""
+    campaign_id = campaign["campaign_id"]
+    user_id = campaign["user_id"]
+    
+    try:
+        # Get email accounts
+        account_ids = campaign.get("account_ids", [])
+        if not account_ids:
+            accounts = await db.email_accounts.find(
+                {"user_id": user_id, "status": "connected"},
+                {"_id": 0}
+            ).to_list(100)
+            account_ids = [a["account_id"] for a in accounts]
+        else:
+            accounts = await db.email_accounts.find(
+                {"user_id": user_id, "account_id": {"$in": account_ids}, "status": "connected"},
+                {"_id": 0}
+            ).to_list(100)
+            account_ids = [a["account_id"] for a in accounts]
+        
+        if not accounts:
+            logger.error(f"Scheduled campaign {campaign_id}: No connected email accounts")
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"status": "failed", "error": "No connected email accounts", "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            return
+        
+        # Get email list
+        email_list = await db.email_lists.find_one(
+            {"list_id": campaign["list_id"], "user_id": user_id},
+            {"_id": 0}
+        )
+        
+        if not email_list:
+            logger.error(f"Scheduled campaign {campaign_id}: Email list not found")
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"status": "failed", "error": "Email list not found", "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            return
+        
+        if not email_list.get("emails") or len(email_list["emails"]) == 0:
+            logger.error(f"Scheduled campaign {campaign_id}: Email list is empty")
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"status": "failed", "error": "Email list is empty", "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            return
+        
+        # Check for existing queue (prevent duplicate creation)
+        existing_queue = await db.email_queue.count_documents({"campaign_id": campaign_id})
+        
+        if existing_queue == 0:
+            queue_items = []
+            for email_data in email_list["emails"]:
+                item = {
+                    "queue_item_id": f"queue_{uuid.uuid4().hex[:12]}",
+                    "campaign_id": campaign_id,
+                    "user_id": user_id,
+                    "recipient_email": email_data.get("email", ""),
+                    "recipient_data": email_data,
+                    "status": "pending",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                queue_items.append(item)
+            
+            if queue_items:
+                await db.email_queue.insert_many(queue_items)
+        
+        # Update campaign status and lock it
+        await db.campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$set": {
+                "status": "running",
+                "is_locked": True,
+                "account_ids": account_ids,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        logger.info(f"Scheduled campaign {campaign_id} started successfully")
+        
+        # Start the email queue processing in background
+        asyncio.create_task(process_campaign_queue(campaign_id, user_id))
+        
+    except Exception as e:
+        logger.error(f"Error starting scheduled campaign {campaign_id}: {e}")
+        await db.campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$set": {"status": "failed", "error": str(e), "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the background scheduler on app startup"""
+    global scheduler_running, scheduler_task
+    scheduler_running = True
+    scheduler_task = asyncio.create_task(check_scheduled_campaigns())
+    logger.info("Background scheduler for scheduled campaigns started")
+
+@app.on_event("shutdown") 
+async def shutdown_event():
+    """Stop the background scheduler on app shutdown"""
+    global scheduler_running, scheduler_task
+    scheduler_running = False
+    if scheduler_task:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+    logger.info("Background scheduler for scheduled campaigns stopped")
+
 # ==================== ENCRYPTION HELPERS ====================
 
 def encrypt_data(data: str) -> str:
