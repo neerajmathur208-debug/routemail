@@ -823,9 +823,35 @@ Best regards"
                         />
                       </div>
                     </div>
+                    <div className="mt-4">
+                      <Label htmlFor="timezone" className="text-sm">Timezone</Label>
+                      <Select value={selectedTimezone} onValueChange={setSelectedTimezone}>
+                        <SelectTrigger className="mt-1.5" data-testid="timezone-select">
+                          <SelectValue placeholder="Select timezone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="America/New_York">Eastern Time (US & Canada)</SelectItem>
+                          <SelectItem value="America/Chicago">Central Time (US & Canada)</SelectItem>
+                          <SelectItem value="America/Denver">Mountain Time (US & Canada)</SelectItem>
+                          <SelectItem value="America/Los_Angeles">Pacific Time (US & Canada)</SelectItem>
+                          <SelectItem value="America/Phoenix">Arizona Time</SelectItem>
+                          <SelectItem value="Europe/London">London (GMT/BST)</SelectItem>
+                          <SelectItem value="Europe/Paris">Paris (CET/CEST)</SelectItem>
+                          <SelectItem value="Europe/Berlin">Berlin (CET/CEST)</SelectItem>
+                          <SelectItem value="Europe/Dublin">Dublin (IST)</SelectItem>
+                          <SelectItem value="Asia/Kolkata">India (IST)</SelectItem>
+                          <SelectItem value="Asia/Dubai">Dubai (GST)</SelectItem>
+                          <SelectItem value="Asia/Singapore">Singapore (SGT)</SelectItem>
+                          <SelectItem value="Asia/Tokyo">Tokyo (JST)</SelectItem>
+                          <SelectItem value="Australia/Sydney">Sydney (AEST)</SelectItem>
+                          <SelectItem value="Pacific/Auckland">Auckland (NZST)</SelectItem>
+                          <SelectItem value="UTC">UTC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <p className="text-xs text-slate-500 mt-3 flex items-center gap-1">
                       <Clock size={12} />
-                      Time zone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                      Campaign will be sent at the selected time in your chosen timezone
                     </p>
                   </motion.div>
                 )}
