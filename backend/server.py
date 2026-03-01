@@ -226,7 +226,7 @@ async def start_scheduled_campaign(campaign: dict):
             queue_items = []
             for email_data in email_list["emails"]:
                 item = {
-                    "queue_item_id": f"queue_{uuid.uuid4().hex[:12]}",
+                    "queue_id": f"q_{uuid.uuid4().hex[:12]}",
                     "campaign_id": campaign_id,
                     "user_id": user_id,
                     "recipient_email": email_data.get("email", ""),
