@@ -329,6 +329,10 @@ export default function Campaign({ user, setUser }) {
       toast.error("Please connect at least one email account first");
       return;
     }
+    if (!testEmailAccountId) {
+      toast.error("Please select an email account to send from");
+      return;
+    }
 
     setSendingTestEmail(true);
     try {
@@ -337,9 +341,14 @@ export default function Campaign({ user, setUser }) {
         subject: formData.subject,
         body: formData.body,
         from_name: formData.from_name || null,
+        account_id: testEmailAccountId, // Send selected account
       });
       
-      toast.success(`Test email sent to ${testEmailAddress}`);
+      if (response.data?.success) {
+        toast.success("Test email sent successfully!");
+      } else {
+        toast.success(`Test email sent to ${testEmailAddress}`);
+      }
       setTestEmailDialogOpen(false);
       setTestEmailAddress("");
     } catch (error) {
