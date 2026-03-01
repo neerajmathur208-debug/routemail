@@ -225,6 +225,15 @@ Build a simple SaaS web application for small businesses to automatically send e
   - /gdpr-compliance - EU GDPR compliance information
 - [x] **Footer Links**: All 4 legal page links added to landing page footer
 
+### ✅ Major Feature Fixes (March 2026)
+- [x] **Hyperlink Fix**: Links now properly wrap text and images with `<a href="..." target="_blank">` tags
+- [x] **Variable Insertion Fix**: Variables now insert at cursor position using savedRange ref
+- [x] **Send Now Fix**: Immediately starts campaign and redirects to Dashboard with success toast
+- [x] **Timezone Selector**: Added 16 timezone options to scheduling UI, stored with campaign
+- [x] **Test Email Account Selection**: Dropdown to choose which connected account to use
+- [x] **Test Email Response Fix**: Proper success/error handling with clear messages
+- [x] **Campaign View Page**: New page at `/campaign/:id/view` showing full campaign details (read-only)
+
 ### ✅ New Features (Feb 2026)
 - [x] **Word-Style Image Resize in Campaign Editor**:
   - Click image to select (blue outline)
