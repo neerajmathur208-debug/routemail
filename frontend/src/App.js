@@ -20,6 +20,7 @@ import ListDetails from "./pages/ListDetails";
 import UploadList from "./pages/UploadList";
 import Campaign from "./pages/Campaign";
 import CampaignLogs from "./pages/CampaignLogs";
+import CampaignView from "./pages/CampaignView";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
