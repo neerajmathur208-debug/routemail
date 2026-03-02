@@ -311,6 +311,31 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Permanent plan users: billing_status=permanent, notes displayed
   - Trialing users: trial_active=true with end date
 
+### ✅ Campaign & Email Account Improvements (March 2026)
+- [x] **Hyperlink Fix Enhanced**: 
+  - Selected text now properly wrapped in `<a href="..." target="_blank" rel="noopener noreferrer">` tags
+  - Uses `range.extractContents()` to correctly wrap selected content
+  - Restores cursor position from `savedRange` before insertion
+- [x] **Campaign Page Button Improvements**:
+  - "Save Draft" renamed to "Save Campaign" - saves campaign as draft
+  - Merged "Start Campaign" into single primary CTA
+  - Shows "Send Now" when immediate send option selected
+  - Shows "Schedule Now" when schedule option selected
+- [x] **Add New List Option**:
+  - Added "➕ Add New List" option at bottom of list dropdown
+  - Auto-saves current campaign as draft before redirecting
+  - Stores `returnToCampaign` in sessionStorage for return navigation
+- [x] **Campaign View Page Enhanced**: 
+  - `/campaign/:campaignId/view` shows full campaign details
+  - Displays: name, subject, body (rendered HTML), status, stats
+  - Shows: selected accounts, selected list, from_name, timezone
+  - Read-only view for sent/completed campaigns
+- [x] **Send Delay Configuration**:
+  - New `send_delay` field on email accounts (10-300 seconds, default 30)
+  - `PUT /api/accounts/{id}/delay` endpoint to update delay
+  - Frontend UI in add account dialog and account card editor
+  - Sending logic uses account's `send_delay` with ±2s randomization
+
 ### 🔄 In Progress
 - None currently
 
