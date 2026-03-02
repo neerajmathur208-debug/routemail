@@ -149,7 +149,16 @@ export default function RichTextEditor({
         url = 'https://' + url;
       }
       
-      editorRef.current?.focus();
+      // Restore cursor position first if we have a saved range
+      if (savedRange.current && editorRef.current) {
+        editorRef.current.focus();
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedRange.current);
+      } else {
+        editorRef.current?.focus();
+      }
+      
       const selection = window.getSelection();
       
       // Check if an image is selected
@@ -158,28 +167,40 @@ export default function RichTextEditor({
         const link = document.createElement('a');
         link.href = url;
         link.target = '_blank';
+        link.rel = 'noopener noreferrer';
         link.style.display = 'inline-block';
         selectedImage.parentNode.insertBefore(link, selectedImage);
         link.appendChild(selectedImage);
         setSelectedImage(null);
         handleInput();
       } else if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-        // Create link for selected text
+        // Wrap selected text with link
         const range = selection.getRangeAt(0);
-        const link = document.createElement('a');
-        link.href = url;
-        link.target = '_blank';
-        link.appendChild(range.extractContents());
-        range.insertNode(link);
-        // Move cursor after link
-        range.setStartAfter(link);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        handleInput();
+        const selectedText = range.toString();
+        
+        if (selectedText) {
+          // Create link element and wrap the selected content
+          const link = document.createElement('a');
+          link.href = url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          
+          // Extract the selected content and put it in the link
+          const contents = range.extractContents();
+          link.appendChild(contents);
+          range.insertNode(link);
+          
+          // Move cursor after the link
+          range.setStartAfter(link);
+          range.setEndAfter(link);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          handleInput();
+        }
       } else {
-        // Insert link text if no selection
-        const linkHtml = `<a href="${url}" target="_blank">${url}</a>`;
+        // No selection - insert the URL as linked text
+        const linkHtml = `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
         document.execCommand('insertHTML', false, linkHtml);
         handleInput();
       }

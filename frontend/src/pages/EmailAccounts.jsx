@@ -67,7 +67,9 @@ export default function EmailAccounts({ user, setUser }) {
   const [testing, setTesting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingLimit, setEditingLimit] = useState({});
+  const [editingDelay, setEditingDelay] = useState({});
   const [savingLimit, setSavingLimit] = useState({});
+  const [savingDelay, setSavingDelay] = useState({});
 
   const [formData, setFormData] = useState({
     preset: "custom",
@@ -79,6 +81,7 @@ export default function EmailAccounts({ user, setUser }) {
     smtp_password: "",
     smtp_encryption: "tls",
     daily_limit: 50,
+    send_delay: 30,
   });
 
   const fetchAccounts = async () => {
@@ -88,12 +91,15 @@ export default function EmailAccounts({ user, setUser }) {
       const accountsData = response.data?.accounts || response.data || [];
       const accounts = Array.isArray(accountsData) ? accountsData : [];
       setAccounts(accounts);
-      // Initialize editing limits
+      // Initialize editing limits and delays
       const limits = {};
+      const delays = {};
       accounts.forEach(acc => {
         limits[acc.account_id] = acc.daily_limit || 50;
+        delays[acc.account_id] = acc.send_delay || 30;
       });
       setEditingLimit(limits);
+      setEditingDelay(delays);
     } catch (error) {
       console.error("Failed to fetch accounts:", error);
       toast.error("Failed to load accounts");
@@ -168,6 +174,7 @@ export default function EmailAccounts({ user, setUser }) {
         smtp_password: formData.smtp_password,
         smtp_encryption: formData.smtp_encryption,
         daily_limit: formData.daily_limit,
+        send_delay: formData.send_delay,
       });
       toast.success("Email account added successfully");
       setAddDialogOpen(false);
@@ -200,6 +207,25 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
+  const handleUpdateDelay = async (accountId) => {
+    const newDelay = editingDelay[accountId];
+    if (newDelay < 10 || newDelay > 300) {
+      toast.error("Send delay must be between 10 and 300 seconds");
+      return;
+    }
+
+    setSavingDelay({ ...savingDelay, [accountId]: true });
+    try {
+      await api.put(`/accounts/${accountId}/delay`, { send_delay: newDelay });
+      toast.success("Send delay updated");
+      fetchAccounts();
+    } catch (error) {
+      toast.error("Failed to update delay");
+    } finally {
+      setSavingDelay({ ...savingDelay, [accountId]: false });
+    }
+  };
+
   const handleDeleteAccount = async () => {
     if (!selectedAccount) return;
 
@@ -225,6 +251,7 @@ export default function EmailAccounts({ user, setUser }) {
       smtp_password: "",
       smtp_encryption: "tls",
       daily_limit: 50,
+      send_delay: 30,
     });
     setShowPassword(false);
   };
@@ -346,7 +373,7 @@ export default function EmailAccounts({ user, setUser }) {
                   )}
 
                   <div className="mt-4 pt-4 border-t border-slate-100">
-                    <div className="flex items-center gap-6">
+                    <div className="flex flex-wrap items-center gap-4">
                       {/* Daily Limit Editor */}
                       <div className="flex items-center gap-2">
                         <Label className="text-xs text-slate-500 whitespace-nowrap">Daily Limit:</Label>
@@ -378,26 +405,58 @@ export default function EmailAccounts({ user, setUser }) {
                         </Button>
                       </div>
 
-                      {/* Usage Stats */}
-                      <div className="flex-1 flex items-center gap-4">
-                        <div>
-                          <p className="text-xs text-slate-500">Sent Today</p>
-                          <p className="font-semibold text-slate-900">
-                            {account.daily_send_count || 0} / {account.daily_limit || 50}
-                          </p>
-                        </div>
-                        <div className="flex-1">
-                          <Progress
-                            value={((account.daily_send_count || 0) / (account.daily_limit || 50)) * 100}
-                            className="h-2"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500">Remaining</p>
-                          <p className="font-semibold text-slate-900">
-                            {(account.daily_limit || 50) - (account.daily_send_count || 0)}
-                          </p>
-                        </div>
+                      {/* Send Delay Editor */}
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-slate-500 whitespace-nowrap">Send Delay:</Label>
+                        <Input
+                          type="number"
+                          min="10"
+                          max="300"
+                          value={editingDelay[account.account_id] || 30}
+                          onChange={(e) => setEditingDelay({
+                            ...editingDelay,
+                            [account.account_id]: parseInt(e.target.value) || 30
+                          })}
+                          className="w-20 h-8 text-sm"
+                          data-testid={`delay-input-${account.account_id}`}
+                        />
+                        <span className="text-xs text-slate-400">sec</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUpdateDelay(account.account_id)}
+                          disabled={savingDelay[account.account_id]}
+                          className="h-8"
+                          data-testid={`save-delay-${account.account_id}`}
+                        >
+                          {savingDelay[account.account_id] ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Save size={14} />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Usage Stats */}
+                    <div className="flex items-center gap-4 mt-4">
+                      <div>
+                        <p className="text-xs text-slate-500">Sent Today</p>
+                        <p className="font-semibold text-slate-900">
+                          {account.daily_send_count || 0} / {account.daily_limit || 50}
+                        </p>
+                      </div>
+                      <div className="flex-1">
+                        <Progress
+                          value={((account.daily_send_count || 0) / (account.daily_limit || 50)) * 100}
+                          className="h-2"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Remaining</p>
+                        <p className="font-semibold text-slate-900">
+                          {(account.daily_limit || 50) - (account.daily_send_count || 0)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -533,6 +592,16 @@ export default function EmailAccounts({ user, setUser }) {
                       onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) || 50 })}
                       className="mt-1.5" data-testid="daily-limit-input" />
                   </div>
+                </div>
+
+                <div>
+                  <Label>Delay Between Emails (seconds)</Label>
+                  <Input type="number" min="10" max="300" value={formData.send_delay}
+                    onChange={(e) => setFormData({ ...formData, send_delay: parseInt(e.target.value) || 30 })}
+                    className="mt-1.5" data-testid="send-delay-input" />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Time to wait between consecutive emails (10-300 seconds). Default: 30 seconds.
+                  </p>
                 </div>
               </div>
             </div>

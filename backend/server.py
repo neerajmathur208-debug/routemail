@@ -648,6 +648,7 @@ class EmailAccount(BaseModel):
     status: str = "connected"
     last_error: Optional[str] = None
     daily_limit: int = 50  # User-configurable (10-200)
+    send_delay: int = 30  # Delay between emails in seconds (10-300)
     daily_send_count: int = 0
     last_send_date: Optional[str] = None
     last_reset_at: Optional[datetime] = None
@@ -736,9 +737,13 @@ class AddSMTPAccountRequest(BaseModel):
     smtp_password: str
     smtp_encryption: str = "tls"
     daily_limit: int = 50
+    send_delay: int = 30  # Delay between emails in seconds (10-300)
 
 class UpdateAccountLimitRequest(BaseModel):
     daily_limit: int
+
+class UpdateAccountDelayRequest(BaseModel):
+    send_delay: int
 
 class TestSMTPRequest(BaseModel):
     smtp_host: str
@@ -1444,6 +1449,9 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
     # Validate daily limit (10-200)
     daily_limit = max(10, min(200, request.daily_limit))
     
+    # Validate send delay (10-300 seconds)
+    send_delay = max(10, min(300, request.send_delay))
+    
     encrypted_password = encrypt_data(request.smtp_password)
     
     account = EmailAccount(
@@ -1457,6 +1465,7 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
         smtp_password_encrypted=encrypted_password,
         smtp_encryption=request.smtp_encryption,
         daily_limit=daily_limit,
+        send_delay=send_delay,
         status="connected",
         last_reset_at=datetime.now(timezone.utc)
     )
@@ -1489,6 +1498,22 @@ async def update_account_limit(account_id: str, request: UpdateAccountLimitReque
         raise HTTPException(status_code=404, detail="Account not found")
     
     return {"message": "Daily limit updated", "daily_limit": daily_limit}
+
+@api_router.put("/accounts/{account_id}/delay")
+async def update_account_delay(account_id: str, request: UpdateAccountDelayRequest, user: User = Depends(get_current_user)):
+    """Update sending delay between emails for an account"""
+    # Validate delay (10-300 seconds)
+    send_delay = max(10, min(300, request.send_delay))
+    
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": {"send_delay": send_delay}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {"message": "Sending delay updated", "send_delay": send_delay}
 
 @api_router.post("/accounts/test-smtp")
 async def test_smtp_endpoint(request: TestSMTPRequest, user: User = Depends(get_current_user)):
@@ -2627,9 +2652,11 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                     {"$set": {"status": "error", "last_error": result.get("error", "Multiple failures")}}
                 )
         
-        # Random delay between sends
-        delay = random.uniform(3, 8)
-        logger.info(f"Waiting {delay:.1f}s before next email")
+        # Use account's configured send delay (with small randomization)
+        base_delay = account.get("send_delay", 30)
+        delay = base_delay + random.uniform(-2, 2)  # Add slight randomization
+        delay = max(10, delay)  # Minimum 10 seconds
+        logger.info(f"Waiting {delay:.1f}s before next email (account delay: {base_delay}s)")
         await asyncio.sleep(delay)
 
 # ==================== SUPER ADMIN MIDDLEWARE ====================

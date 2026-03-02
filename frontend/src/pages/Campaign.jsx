@@ -24,6 +24,7 @@ import {
   Calendar,
   CalendarClock,
   TestTube,
+  Plus,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -193,6 +194,32 @@ export default function Campaign({ user, setUser }) {
   };
 
   const handleListChange = async (listId) => {
+    // Handle special "add_new_list" option
+    if (listId === "add_new_list") {
+      // Auto-save campaign as draft first
+      if (formData.name || formData.subject || formData.body) {
+        try {
+          if (editId) {
+            await api.put(`/campaigns/${editId}`, formData);
+            toast.success("Campaign saved as draft");
+          } else if (formData.name && formData.subject) {
+            const response = await api.post("/campaigns", formData);
+            toast.success("Campaign saved as draft");
+            // Store the campaign ID to return to after list upload
+            sessionStorage.setItem("returnToCampaign", response.data.campaign_id);
+          }
+        } catch (error) {
+          console.error("Failed to auto-save:", error);
+        }
+      }
+      // Store current campaign ID to return after uploading
+      if (editId) {
+        sessionStorage.setItem("returnToCampaign", editId);
+      }
+      navigate("/upload");
+      return;
+    }
+    
     setFormData({ ...formData, list_id: listId });
     if (listId) {
       try {
@@ -668,6 +695,16 @@ export default function Campaign({ user, setUser }) {
                         {list.name} ({list.valid_emails} contacts)
                       </SelectItem>
                     ))}
+                    <SelectItem 
+                      value="add_new_list" 
+                      className="text-blue-600 font-medium border-t border-slate-100 mt-1 pt-1"
+                      data-testid="add-new-list-option"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Plus size={14} />
+                        Add New List
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -719,7 +756,7 @@ Best regards"
                 />
               </div>
 
-              {/* Actions Below Editor - Save Draft & Send Test Email */}
+              {/* Actions Below Editor - Save Campaign & Send Test Email */}
               <div className="flex flex-wrap items-center gap-3 py-4 border-t border-slate-100">
                 <Button
                   variant="outline"
@@ -728,7 +765,7 @@ Best regards"
                   data-testid="save-campaign-btn"
                 >
                   <Save size={16} className="mr-2" />
-                  {submitting ? "Saving..." : "Save Draft"}
+                  {submitting ? "Saving..." : "Save Campaign"}
                 </Button>
                 <Button
                   variant="outline"
@@ -868,29 +905,29 @@ Best regards"
                 </span>
               </div>
 
-              {/* Start Campaign Button - At Bottom */}
+              {/* Primary Campaign Action Button - At Bottom */}
               <div className="pt-4 border-t border-slate-200">
                 {view === "edit" && (
                   <Button
                     onClick={() => setStartDialogOpen(true)}
-                    disabled={submitting || !formData.list_id || !hasAccounts || !hasLists}
+                    disabled={submitting || !formData.list_id || !hasAccounts || !hasLists || !formData.subject || !formData.body}
                     className={`w-full py-6 text-base font-semibold ${
                       sendOption === "schedule" 
                         ? "bg-blue-600 hover:bg-blue-700" 
                         : "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
                     }`}
-                    data-testid="start-campaign-btn"
+                    data-testid="primary-campaign-btn"
                     title={!hasAccounts || !hasLists ? "Complete setup to launch campaign" : ""}
                   >
                     {sendOption === "schedule" ? (
                       <>
                         <CalendarClock size={20} className="mr-2" />
-                        Schedule Campaign
+                        Schedule Now
                       </>
                     ) : (
                       <>
                         <Send size={20} className="mr-2" />
-                        Start Campaign
+                        Send Now
                       </>
                     )}
                   </Button>
@@ -1296,15 +1333,27 @@ Best regards"
                           <Copy size={18} className="text-slate-400" />
                         </Button>
                         {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused") && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
-                            data-testid={`view-logs-${campaign.campaign_id}`}
-                          >
-                            <Eye size={14} className="mr-1" />
-                            Logs
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/campaign/${campaign.campaign_id}/view`)}
+                              data-testid={`view-campaign-${campaign.campaign_id}`}
+                              className="text-slate-600 hover:text-violet-600"
+                            >
+                              <Eye size={14} className="mr-1" />
+                              View
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
+                              data-testid={`view-logs-${campaign.campaign_id}`}
+                            >
+                              <FileText size={14} className="mr-1" />
+                              Logs
+                            </Button>
+                          </>
                         )}
                         <Button
                           variant="ghost"
