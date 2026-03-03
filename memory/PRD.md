@@ -336,6 +336,24 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Frontend UI in add account dialog and account card editor
   - Sending logic uses account's `send_delay` with ±2s randomization
 
+### ✅ Excel Upload & Pricing Updates (March 2026)
+- [x] **Excel File Upload Support**:
+  - Backend now accepts `.csv`, `.xlsx`, and `.xls` files
+  - Uses pandas with openpyxl (for .xlsx) and xlrd (for .xls) engines
+  - First row treated as column headers (same as CSV)
+  - Email column validation remains enforced
+  - 2MB file size limit maintained
+  - Variables from columns work identically to CSV
+- [x] **Pricing Text Updates**:
+  - Free Plan: Changed "500 stored contacts" to "500 contacts/month"
+  - Removed duplicate "500 recipients/month" line from Free plan
+  - Starter Plan: Changed "48,000 emails per year" to "48,000 contacts per year"
+  - Growth Plan: Changed "120,000 emails per year" to "120,000 contacts per year"
+- [x] **"/year" Visual Enhancement**:
+  - Price suffix now uses `text-xl font-medium` styling
+  - More prominent display on both Landing and Subscription pages
+  - Consistent across all paid plans
+
 ### 🔄 In Progress
 - None currently
 
