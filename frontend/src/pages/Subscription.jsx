@@ -319,11 +319,7 @@ export default function Subscription({ user, setUser }) {
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
-                  500 contacts
-                </li>
-                <li className="flex items-center gap-2 text-sm text-slate-600">
-                  <Check size={16} className="text-green-500" />
-                  500 recipients/month
+                  500 contacts/month
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
@@ -372,8 +368,10 @@ export default function Subscription({ user, setUser }) {
               )}
               <h3 className="text-xl font-bold mb-1 mt-2">Starter</h3>
               <p className="text-blue-200 text-sm mb-4">For growing businesses</p>
-              <div className="text-3xl font-bold mb-1">{getPrice("starter")}</div>
-              <p className="text-blue-200 text-sm mb-6">/year</p>
+              <div className="flex items-baseline gap-1 mb-6">
+                <span className="text-3xl font-bold">{getPrice("starter")}</span>
+                <span className="text-xl font-medium text-blue-200">/year</span>
+              </div>
               
               <ul className="space-y-3 mb-6">
                 <li className="flex items-center gap-2 text-sm text-white/90">
@@ -386,7 +384,7 @@ export default function Subscription({ user, setUser }) {
                 </li>
                 <li className="flex items-center gap-2 text-sm text-white/90">
                   <Check size={16} className="text-blue-200" />
-                  48,000 emails per year
+                  48,000 contacts per year
                 </li>
                 <li className="flex items-center gap-2 text-sm text-white/90">
                   <Check size={16} className="text-blue-200" />
@@ -461,8 +459,10 @@ export default function Subscription({ user, setUser }) {
               )}
               <h3 className="text-xl font-bold text-slate-900 mb-1">Growth</h3>
               <p className="text-slate-500 text-sm mb-4">For scaling teams</p>
-              <div className="text-3xl font-bold text-slate-900 mb-1">{getPrice("growth")}</div>
-              <p className="text-slate-500 text-sm mb-6">/year</p>
+              <div className="flex items-baseline gap-1 mb-6">
+                <span className="text-3xl font-bold text-slate-900">{getPrice("growth")}</span>
+                <span className="text-xl font-medium text-slate-500">/year</span>
+              </div>
               
               <ul className="space-y-3 mb-6">
                 <li className="flex items-center gap-2 text-sm text-slate-600">
@@ -475,7 +475,7 @@ export default function Subscription({ user, setUser }) {
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />
-                  120,000 emails per year
+                  120,000 contacts per year
                 </li>
                 <li className="flex items-center gap-2 text-sm text-slate-600">
                   <Check size={16} className="text-green-500" />

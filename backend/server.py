@@ -1586,52 +1586,92 @@ async def upload_email_list(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user)
 ):
-    """Upload and parse CSV file"""
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+    """Upload and parse CSV or Excel file"""
+    import pandas as pd
+    
+    filename = file.filename.lower()
+    allowed_extensions = ['.csv', '.xlsx', '.xls']
+    file_ext = None
+    for ext in allowed_extensions:
+        if filename.endswith(ext):
+            file_ext = ext
+            break
+    
+    if not file_ext:
+        raise HTTPException(status_code=400, detail="Only CSV and Excel files (.csv, .xlsx, .xls) are allowed")
     
     # Check file size (max 2MB)
     content = await file.read()
     if len(content) > 2 * 1024 * 1024:  # 2MB limit
         raise HTTPException(status_code=400, detail="File size exceeds 2MB limit. Please upload a smaller file.")
     
-    text_content = content.decode('utf-8')
-    
-    reader = csv.DictReader(io.StringIO(text_content))
-    column_headers = reader.fieldnames or []
-    column_headers = [h.strip().lower() for h in column_headers]
-    
-    if 'email' not in column_headers:
-        raise HTTPException(status_code=400, detail="CSV must contain an 'email' column")
-    
-    emails = []
-    seen_emails = set()
-    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-    
-    for row in reader:
-        normalized_row = {k.lower().strip(): v.strip() if v else "" for k, v in row.items()}
-        email = normalized_row.get('email', '')
+    try:
+        # Parse based on file type
+        if file_ext == '.csv':
+            text_content = content.decode('utf-8')
+            reader = csv.DictReader(io.StringIO(text_content))
+            column_headers = reader.fieldnames or []
+            column_headers = [h.strip().lower() for h in column_headers]
+            
+            rows = []
+            for row in reader:
+                normalized_row = {k.lower().strip(): v.strip() if v else "" for k, v in row.items()}
+                rows.append(normalized_row)
+        else:
+            # Excel file (.xlsx or .xls)
+            try:
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl' if file_ext == '.xlsx' else 'xlrd')
+            except Exception:
+                # Fallback to openpyxl for both
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+            
+            # Clean column headers
+            df.columns = [str(col).strip().lower() for col in df.columns]
+            column_headers = df.columns.tolist()
+            
+            # Convert to list of dicts
+            df = df.fillna('')
+            rows = df.to_dict('records')
+            # Ensure all values are strings
+            for row in rows:
+                for key in row:
+                    row[key] = str(row[key]).strip() if row[key] != '' else ''
         
-        if not email or not email_pattern.match(email):
-            continue
+        if 'email' not in column_headers:
+            raise HTTPException(status_code=400, detail="File must contain an 'email' column")
         
-        if email.lower() in seen_emails:
-            continue
+        emails = []
+        seen_emails = set()
+        email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
         
-        seen_emails.add(email.lower())
-        emails.append(normalized_row)
-    
-    if not emails:
-        raise HTTPException(status_code=400, detail="No valid emails found in CSV")
-    
-    return {
-        "original_filename": file.filename,
-        "column_headers": column_headers,
-        "total_rows": len(emails),
-        "valid_emails": len(emails),
-        "preview": emails[:10],
-        "emails": emails
-    }
+        for row in rows:
+            email = row.get('email', '')
+            
+            if not email or not email_pattern.match(email):
+                continue
+            
+            if email.lower() in seen_emails:
+                continue
+            
+            seen_emails.add(email.lower())
+            emails.append(row)
+        
+        if not emails:
+            raise HTTPException(status_code=400, detail="No valid emails found in file")
+        
+        return {
+            "original_filename": file.filename,
+            "column_headers": column_headers,
+            "total_rows": len(emails),
+            "valid_emails": len(emails),
+            "preview": emails[:10],
+            "emails": emails
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error parsing file: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
 @api_router.post("/lists")
 async def create_email_list(request: CreateListRequest, user: User = Depends(get_current_user)):

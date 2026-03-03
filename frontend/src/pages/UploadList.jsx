@@ -80,8 +80,12 @@ export default function UploadList({ user, setUser }) {
   const handleFileUpload = async (file) => {
     if (!file) return;
 
-    if (!file.name.endsWith(".csv")) {
-      toast.error("Please upload a CSV file");
+    const filename = file.name.toLowerCase();
+    const allowedExtensions = ['.csv', '.xlsx', '.xls'];
+    const isValidFile = allowedExtensions.some(ext => filename.endsWith(ext));
+    
+    if (!isValidFile) {
+      toast.error("Please upload a CSV or Excel file (.csv, .xlsx, .xls)");
       return;
     }
 
@@ -94,10 +98,12 @@ export default function UploadList({ user, setUser }) {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setPreviewData(response.data);
-      setListName(file.name.replace(".csv", ""));
+      // Remove extension from filename for list name
+      const baseName = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
+      setListName(baseName);
       setPreviewDialogOpen(true);
     } catch (error) {
-      const message = error.response?.data?.detail || "Failed to process CSV";
+      const message = error.response?.data?.detail || "Failed to process file";
       toast.error(message);
     } finally {
       setUploading(false);
@@ -207,7 +213,7 @@ export default function UploadList({ user, setUser }) {
                 Upload Email List
               </h1>
               <p className="text-slate-500 mt-1">
-                Upload a new CSV file to create an email list
+                Upload a CSV or Excel file to create an email list
               </p>
             </div>
           </div>
@@ -227,12 +233,12 @@ export default function UploadList({ user, setUser }) {
               <Upload size={32} className="text-slate-400" />
             </div>
             <h3 className="font-heading font-semibold text-lg text-slate-900 mb-2">
-              Drop your CSV file here
+              Drop your file here
             </h3>
-            <p className="text-slate-500 mb-4">or click to browse</p>
+            <p className="text-slate-500 mb-4">CSV or Excel files (.csv, .xlsx, .xls)</p>
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
               id="csv-upload"
               onChange={(e) => handleFileUpload(e.target.files?.[0])}
@@ -251,7 +257,7 @@ export default function UploadList({ user, setUser }) {
               </Button>
             </label>
             <p className="text-xs text-slate-400 mt-4">
-              CSV must include an "email" column. Additional columns become personalization variables.
+              File must include an "email" column. Additional columns become personalization variables.
             </p>
           </div>
 
@@ -343,11 +349,11 @@ export default function UploadList({ user, setUser }) {
             )}
           </div>
 
-          {/* CSV Format Guide */}
+          {/* File Format Guide */}
           <div className="mt-8 p-4 bg-slate-100 rounded-md">
-            <h3 className="font-semibold text-slate-900 mb-2">CSV Format Guide</h3>
+            <h3 className="font-semibold text-slate-900 mb-2">File Format Guide</h3>
             <p className="text-sm text-slate-600 mb-3">
-              Your CSV file should have these columns (additional columns become variables):
+              Upload CSV or Excel files (.csv, .xlsx, .xls). First row should contain column headers:
             </p>
             <div className="bg-white rounded border border-slate-200 p-3 font-mono text-sm overflow-x-auto">
               <p className="text-slate-500">email,first_name,company,city,custom_field</p>

@@ -802,7 +802,7 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">500 stored contacts</span>
+                  <span className="text-slate-700">500 contacts/month</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
@@ -838,9 +838,9 @@ export default function LandingPage() {
                 </span>
               </div>
               <h3 className="font-heading font-bold text-2xl mb-2 mt-2">Starter</h3>
-              <div className="flex items-baseline gap-2 mb-6">
+              <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-extrabold">{getPrice("starter")}</span>
-                <span className="text-blue-200">/year</span>
+                <span className="text-xl font-medium text-blue-200">/year</span>
               </div>
               
               <div className="space-y-4 mb-8">
@@ -854,7 +854,7 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">48,000 emails per year</span>
+                  <span className="text-white/90">48,000 contacts per year</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-blue-200 flex-shrink-0" />
@@ -888,9 +888,9 @@ export default function LandingPage() {
               className="bg-slate-50 rounded-[24px] p-8 border border-slate-200"
             >
               <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Growth</h3>
-              <div className="flex items-baseline gap-2 mb-6">
+              <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-extrabold text-slate-900">{getPrice("growth")}</span>
-                <span className="text-slate-500">/year</span>
+                <span className="text-xl font-medium text-slate-500">/year</span>
               </div>
               
               <div className="space-y-4 mb-8">
@@ -904,7 +904,7 @@ export default function LandingPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">120,000 emails per year</span>
+                  <span className="text-slate-700">120,000 contacts per year</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Check size={18} className="text-emerald-500 flex-shrink-0" />
