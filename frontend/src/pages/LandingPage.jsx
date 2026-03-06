@@ -534,6 +534,26 @@ export default function LandingPage() {
               <p className="mt-6 text-slate-500 text-lg">
                 Small businesses face unique challenges with email outreach. We built this to solve them.
               </p>
+              
+              {/* Bulk Email Platform Image */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                viewport={{ once: true }}
+                className="mt-10 hidden lg:block"
+              >
+                <img
+                  src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/qyxbl14u_pexels-burst-374074.jpg"
+                  alt="Professional working on bulk email campaigns"
+                  loading="lazy"
+                  className="w-full max-w-[450px] h-auto object-cover"
+                  style={{
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+                  }}
+                />
+              </motion.div>
             </motion.div>
 
             <motion.div
@@ -543,6 +563,26 @@ export default function LandingPage() {
               viewport={{ once: true }}
               className="space-y-5"
             >
+              {/* Mobile Image - Above pain points on mobile */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                viewport={{ once: true }}
+                className="lg:hidden mb-8"
+              >
+                <img
+                  src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/qyxbl14u_pexels-burst-374074.jpg"
+                  alt="Professional working on bulk email campaigns"
+                  loading="lazy"
+                  className="w-full max-w-[450px] mx-auto h-auto object-cover"
+                  style={{
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+                  }}
+                />
+              </motion.div>
+              
               {painPoints.map((point, index) => (
                 <motion.div
                   key={index}
@@ -586,6 +626,26 @@ export default function LandingPage() {
             <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
               How It Works
             </h2>
+            
+            {/* Email Icon Image - Centered */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              viewport={{ once: true }}
+              className="mt-8 flex justify-center"
+            >
+              <img
+                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/edg8pmj5_jakub-zerdzicki-Xb1myRNASiM-unsplash.jpg"
+                alt="Email automation icon"
+                loading="lazy"
+                className="w-full max-w-[320px] h-auto object-cover"
+                style={{
+                  borderRadius: '16px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+                }}
+              />
+            </motion.div>
           </motion.div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -621,92 +681,142 @@ export default function LandingPage() {
       {/* 4️⃣ WHAT MAKES IT DIFFERENT */}
       <section className="py-24 px-6 bg-white">
         <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
-              What Makes It Different?
-            </h2>
-          </motion.div>
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Smartphone Image - Left side */}
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="flex justify-center lg:justify-start order-2 lg:order-1"
+            >
+              <img
+                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/x6qxmuht_mariia-shalabaieva-HyyHIYz_l0A-unsplash.jpg"
+                alt="Campaign control on mobile"
+                loading="lazy"
+                className="w-full max-w-[280px] h-auto object-cover"
+                style={{
+                  borderRadius: '16px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+                }}
+              />
+            </motion.div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto mb-12">
-            {differentiators.map((item, index) => (
+            {/* Content - Right side */}
+            <div className="order-1 lg:order-2">
               <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, delay: index * 0.05 }}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
                 viewport={{ once: true }}
-                className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl"
+                className="text-center lg:text-left mb-12"
               >
-                <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Check size={14} className="text-white" />
-                </div>
-                <span className="text-slate-800 font-medium">{item}</span>
+                <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
+                  What Makes It Different?
+                </h2>
               </motion.div>
-            ))}
-          </div>
 
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            viewport={{ once: true }}
-            className="text-center text-xl max-w-2xl mx-auto"
-          >
-            <span className="font-semibold text-slate-900">Most tools are built for venture-backed startups.</span>
-            <br />
-            <span className="text-slate-600">This one is built for businesses that actually sell.</span>
-          </motion.p>
+              <div className="grid sm:grid-cols-2 gap-4 mb-8">
+                {differentiators.map((item, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.4, delay: index * 0.05 }}
+                    viewport={{ once: true }}
+                    className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl"
+                  >
+                    <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Check size={14} className="text-white" />
+                    </div>
+                    <span className="text-slate-800 font-medium">{item}</span>
+                  </motion.div>
+                ))}
+              </div>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                viewport={{ once: true }}
+                className="text-lg text-center lg:text-left"
+              >
+                <span className="font-semibold text-slate-900">Most tools are built for venture-backed startups.</span>
+                <br />
+                <span className="text-slate-600">This one is built for businesses that actually sell.</span>
+              </motion.p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* 5️⃣ USE CASES */}
       <section className="py-24 px-6 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
-              Built for Real Use Cases
-            </h2>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {useCases.map((item, index) => (
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Content - Left side */}
+            <div>
               <motion.div
-                key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.05 }}
+                transition={{ duration: 0.5 }}
                 viewport={{ once: true }}
-                className="flex items-center gap-4 p-5 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow"
+                className="text-center lg:text-left mb-12"
               >
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <item.icon size={22} className="text-blue-600" />
-                </div>
-                <span className="text-slate-700 font-medium">{item.text}</span>
+                <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
+                  Built for Real Use Cases
+                </h2>
               </motion.div>
-            ))}
-          </div>
 
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            viewport={{ once: true }}
-            className="text-center text-slate-600 mt-12 text-lg"
-          >
-            If outbound email is part of your growth strategy — this tool supports it properly.
-          </motion.p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {useCases.map((item, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.05 }}
+                    viewport={{ once: true }}
+                    className="flex items-center gap-4 p-5 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <item.icon size={22} className="text-blue-600" />
+                    </div>
+                    <span className="text-slate-700 font-medium">{item.text}</span>
+                  </motion.div>
+                ))}
+              </div>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                viewport={{ once: true }}
+                className="text-slate-600 mt-10 text-lg text-center lg:text-left"
+              >
+                If outbound email is part of your growth strategy — this tool supports it properly.
+              </motion.p>
+            </div>
+
+            {/* Laptop Typing Image - Right side */}
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="flex justify-center lg:justify-end"
+            >
+              <img
+                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/ez8mlmjf_pexels-burst-374720.jpg"
+                alt="Professional typing on laptop for email campaigns"
+                loading="lazy"
+                className="w-full max-w-[450px] h-auto object-cover"
+                style={{
+                  borderRadius: '16px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+                }}
+              />
+            </motion.div>
+          </div>
         </div>
       </section>
 
