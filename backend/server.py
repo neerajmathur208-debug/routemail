@@ -435,13 +435,56 @@ def get_password_reset_email_html(reset_link: str) -> str:
 
 # ==================== PLAN ENFORCEMENT HELPERS ====================
 
+async def get_effective_user_plan(user_id: str) -> dict:
+    """
+    Get the effective plan for a user following priority:
+    1. Admin override (if active)
+    2. Stripe subscription (if exists)
+    3. Free plan (default)
+    """
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        return {"plan": "free", "source": "free", "admin_override_active": False}
+    
+    # Priority 1: Admin override
+    if user.get("admin_override_active"):
+        override_plan = user.get("admin_override_plan", "free")
+        return {
+            "plan": override_plan,
+            "source": "admin_override",
+            "admin_override_active": True,
+            "admin_override_plan": override_plan,
+            "admin_override_updated_at": user.get("admin_override_updated_at")
+        }
+    
+    # Priority 2: Stripe subscription
+    stripe_sub_id = user.get("stripe_subscription_id")
+    if stripe_sub_id:
+        plan_type = user.get("plan_type", "free")
+        return {
+            "plan": plan_type,
+            "source": "stripe",
+            "admin_override_active": False,
+            "stripe_subscription_id": stripe_sub_id
+        }
+    
+    # Priority 3: Free plan (or assigned plan_type for backward compatibility)
+    plan_type = user.get("plan_type", "free")
+    return {
+        "plan": plan_type,
+        "source": "free",
+        "admin_override_active": False
+    }
+
 async def get_user_plan_limits(user_id: str) -> dict:
     """Get the plan limits for a user"""
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user:
         return PLAN_LIMITS["free"]
     
-    plan_type = user.get("plan_type", "free")
+    # Use effective plan resolution
+    effective = await get_effective_user_plan(user_id)
+    plan_type = effective.get("plan", "free")
     return PLAN_LIMITS.get(plan_type, PLAN_LIMITS["free"])
 
 async def check_account_limit(user_id: str) -> dict:
@@ -523,13 +566,23 @@ async def check_subscription_active(user_id: str) -> dict:
     if not user:
         return {"active": False, "reason": "User not found"}
     
+    # Check admin override first
+    if user.get("admin_override_active"):
+        override_plan = user.get("admin_override_plan", "free")
+        return {
+            "active": True,
+            "plan": override_plan,
+            "status": "admin_override",
+            "source": "admin_override"
+        }
+    
     plan_type = user.get("plan_type", "free")
     status = user.get("subscription_status", "trialing")
     
-    # Check for paid plans
+    # Check for paid plans (Stripe)
     if plan_type in ["starter", "growth"]:
         if status == "active":
-            return {"active": True, "plan": plan_type, "status": status}
+            return {"active": True, "plan": plan_type, "status": status, "source": "stripe"}
         elif status == "past_due":
             # Check grace period
             grace_end = user.get("grace_period_end")
@@ -539,7 +592,7 @@ async def check_subscription_active(user_id: str) -> dict:
                 if grace_end.tzinfo is None:
                     grace_end = grace_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < grace_end:
-                    return {"active": True, "plan": plan_type, "status": "grace_period", "grace_ends": grace_end.isoformat()}
+                    return {"active": True, "plan": plan_type, "status": "grace_period", "grace_ends": grace_end.isoformat(), "source": "stripe"}
             return {"active": False, "reason": "Payment overdue", "status": status}
         elif status == "canceled":
             # Check if still in billing period
@@ -550,7 +603,7 @@ async def check_subscription_active(user_id: str) -> dict:
                 if cycle_end.tzinfo is None:
                     cycle_end = cycle_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < cycle_end:
-                    return {"active": True, "plan": plan_type, "status": "canceled_active", "ends": cycle_end.isoformat()}
+                    return {"active": True, "plan": plan_type, "status": "canceled_active", "ends": cycle_end.isoformat(), "source": "stripe"}
             return {"active": False, "reason": "Subscription canceled", "status": status}
     
     # Free plan - check trial
@@ -562,7 +615,7 @@ async def check_subscription_active(user_id: str) -> dict:
             if trial_end.tzinfo is None:
                 trial_end = trial_end.replace(tzinfo=timezone.utc)
             if datetime.now(timezone.utc) < trial_end:
-                return {"active": True, "plan": "free", "status": "trialing", "trial_ends": trial_end.isoformat()}
+                return {"active": True, "plan": "free", "status": "trialing", "trial_ends": trial_end.isoformat(), "source": "free"}
             else:
                 # Trial expired
                 await db.users.update_one(
@@ -570,12 +623,12 @@ async def check_subscription_active(user_id: str) -> dict:
                     {"$set": {"subscription_status": "expired"}}
                 )
                 return {"active": False, "reason": "Trial expired", "status": "expired"}
-        return {"active": True, "plan": "free", "status": "trialing"}
+        return {"active": True, "plan": "free", "status": "trialing", "source": "free"}
     
     if status == "expired":
         return {"active": False, "reason": "Trial expired", "status": "expired"}
     
-    return {"active": True, "plan": plan_type, "status": status}
+    return {"active": True, "plan": plan_type, "status": status, "source": "free"}
 
 async def increment_recipient_count(user_id: str, count: int = 1):
     """Increment the monthly recipient counter"""
@@ -3078,6 +3131,7 @@ async def get_admin_user_subscription(
             "email": user.get("email"),
             "current_plan": plan_type.capitalize() if plan_type else "Free",
             "billing_status": subscription_status,
+            "plan_source": user.get("plan_source", "free"),
             "stripe_customer_id": stripe_customer_id or "N/A",
             "stripe_subscription_id": stripe_subscription_id or "N/A",
             "stripe_price_id": "N/A",
@@ -3087,12 +3141,23 @@ async def get_admin_user_subscription(
             "subscription_end_date": None,
             "grace_period_end": None,
             "is_permanent_plan": user.get("email", "").lower() in PERMANENT_PLAN_ASSIGNMENTS,
+            "admin_override_active": user.get("admin_override_active", False),
+            "admin_override_plan": user.get("admin_override_plan"),
+            "admin_override_updated_at": user.get("admin_override_updated_at"),
+            "has_stripe_subscription": bool(stripe_subscription_id),
         }
         
-        # Check if this is a permanent plan user
-        if subscription_info["is_permanent_plan"]:
+        # Determine effective plan source
+        if subscription_info["admin_override_active"]:
+            subscription_info["plan_source"] = "admin_override"
+            subscription_info["billing_status"] = "admin_override"
+            subscription_info["current_plan"] = user.get("admin_override_plan", "free").capitalize()
+        elif subscription_info["is_permanent_plan"]:
+            subscription_info["plan_source"] = "permanent"
             subscription_info["billing_status"] = "permanent"
             subscription_info["notes"] = "Permanently assigned plan (bypasses Stripe)"
+        elif stripe_subscription_id:
+            subscription_info["plan_source"] = "stripe"
         
         # Check trial status
         trial_ends_at = user.get("trial_ends_at")
@@ -3165,6 +3230,150 @@ async def get_admin_user_subscription(
         raise
     except Exception as e:
         logger.error(f"Admin subscription detail error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== ADMIN PLAN OVERRIDE ENDPOINTS ====================
+
+class AdminPlanOverrideRequest(BaseModel):
+    plan: str  # "starter" or "growth"
+
+@api_router.post("/admin/users/{user_id}/assign-plan")
+async def admin_assign_plan(
+    user_id: str,
+    request: AdminPlanOverrideRequest,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """
+    Assign a plan to a user via admin override.
+    Only works for users WITHOUT an active Stripe subscription.
+    """
+    try:
+        # Find the user
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Validate plan type
+        if request.plan not in ["starter", "growth"]:
+            raise HTTPException(status_code=400, detail="Plan must be 'starter' or 'growth'")
+        
+        # Check if user has active Stripe subscription
+        stripe_sub_id = user.get("stripe_subscription_id")
+        if stripe_sub_id:
+            raise HTTPException(
+                status_code=400, 
+                detail="This user has an active Stripe subscription. Plan changes must be handled through Stripe billing."
+            )
+        
+        # Check if user is a permanent plan user
+        if user.get("email", "").lower() in PERMANENT_PLAN_ASSIGNMENTS:
+            raise HTTPException(
+                status_code=400,
+                detail="This user has a permanently assigned plan that cannot be overridden."
+            )
+        
+        # Apply admin override
+        update_data = {
+            "admin_override_active": True,
+            "admin_override_plan": request.plan,
+            "plan_type": request.plan,
+            "plan_source": "admin_override",
+            "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
+            # Clear trial expiry since they now have a plan
+            "subscription_status": "active"
+        }
+        
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": update_data}
+        )
+        
+        # Log admin action
+        action_type = f"ADMIN_ASSIGN_{request.plan.upper()}"
+        admin_log = {
+            "admin_email": admin["email"],
+            "target_user_email": user.get("email"),
+            "target_user_id": user_id,
+            "action": action_type,
+            "plan_assigned": request.plan,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        await db.admin_logs.insert_one(admin_log)
+        
+        logger.info(f"Admin {admin['email']} assigned {request.plan} plan to user {user.get('email')}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully assigned {request.plan.capitalize()} plan to user",
+            "user_id": user_id,
+            "plan": request.plan,
+            "source": "admin_override"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin plan assignment error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/admin/users/{user_id}/remove-override")
+async def admin_remove_override(
+    user_id: str,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """
+    Remove admin plan override and revert user to free plan.
+    """
+    try:
+        # Find the user
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if override is active
+        if not user.get("admin_override_active"):
+            raise HTTPException(status_code=400, detail="User does not have an active admin override")
+        
+        # Remove override and revert to free
+        update_data = {
+            "admin_override_active": False,
+            "admin_override_plan": None,
+            "plan_type": "free",
+            "plan_source": "free",
+            "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
+            "subscription_status": "trialing"  # Revert to trial status
+        }
+        
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": update_data}
+        )
+        
+        # Log admin action
+        admin_log = {
+            "admin_email": admin["email"],
+            "target_user_email": user.get("email"),
+            "target_user_id": user_id,
+            "action": "ADMIN_REMOVE_OVERRIDE",
+            "previous_plan": user.get("admin_override_plan"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        await db.admin_logs.insert_one(admin_log)
+        
+        logger.info(f"Admin {admin['email']} removed plan override for user {user.get('email')}")
+        
+        return {
+            "success": True,
+            "message": "Successfully removed admin override. User reverted to free plan.",
+            "user_id": user_id,
+            "plan": "free",
+            "source": "free"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin remove override error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================

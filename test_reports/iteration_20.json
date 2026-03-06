@@ -1,0 +1,117 @@
+{
+  "summary": "Admin Plan Override functionality testing completed. Backend: 14/14 tests passed (100%). Frontend: All UI components verified and working correctly. Feature enables super admins to manually assign Starter/Growth plans to users without Stripe subscriptions.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Subscription Modal & Override Modal",
+        "issues": ["React console warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent} - accessibility improvement recommended"]
+      }
+    ]
+  },
+
+  "passed_tests": [
+    "API health check (200 OK)",
+    "POST /api/admin/users/{id}/assign-plan - Starter plan assignment works",
+    "POST /api/admin/users/{id}/assign-plan - Growth plan assignment works",
+    "POST /api/admin/users/{id}/assign-plan - blocked for users with stripe_subscription_id",
+    "POST /api/admin/users/{id}/assign-plan - invalid plan type rejected",
+    "POST /api/admin/users/{id}/assign-plan - 404 for non-existent user",
+    "POST /api/admin/users/{id}/remove-override - reverts user to free plan",
+    "POST /api/admin/users/{id}/remove-override - error when no active override",
+    "GET /api/admin/users/{id}/subscription - shows admin_override_active field",
+    "GET /api/admin/users/{id}/subscription - shows plan_source field",
+    "GET /api/admin/users/{id}/subscription - shows has_stripe_subscription for Stripe users",
+    "Admin logs created for ADMIN_ASSIGN_STARTER action",
+    "Admin logs created for ADMIN_REMOVE_OVERRIDE action",
+    "Endpoints require super admin authentication",
+    "Plan assignment blocked for permanent plan users",
+    "Frontend: Plan Override modal opens correctly",
+    "Frontend: Assign Starter button visible and clickable",
+    "Frontend: Assign Growth button visible and clickable",
+    "Frontend: Success toast displayed after plan assignment",
+    "Frontend: Admin Override Active badge displayed when override active",
+    "Frontend: Remove Override button visible when override active",
+    "Frontend: Remove Override confirmation dialog works"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_admin_plan_override.py",
+    "/app/test_reports/pytest/admin_plan_override_results.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [
+    "Consider adding aria-describedby to DialogContent components for improved accessibility"
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_admin_plan_override.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "100% (All UI interactions verified)"
+  },
+
+  "test_credentials": null,
+
+  "seed_data_creation": "Test data created and cleaned up automatically during test execution",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Admin Plan Override feature fully tested and working. Key endpoints: POST /api/admin/users/{id}/assign-plan (assigns starter/growth), POST /api/admin/users/{id}/remove-override (reverts to free). Plan resolution priority: 1) admin_override_active=true → use admin_override_plan, 2) stripe_subscription_id exists → use stripe plan, 3) default to free. Backend helper functions get_effective_user_plan() and check_subscription_active() respect this priority. Frontend Plan Override Modal (AdminDashboard.jsx lines 820-960) shows Assign buttons for non-Stripe users and Remove Override button when override is active. Admin logs collection stores all override actions.",
+
+  "verified_features": {
+    "assign_plan_endpoint": {
+      "endpoint": "POST /api/admin/users/{id}/assign-plan",
+      "file": "backend/server.py",
+      "lines": "3240-3317",
+      "functionality": "Assigns Starter/Growth plan with admin_override",
+      "blocked_for": ["users with stripe_subscription_id", "permanent plan users"],
+      "status": "WORKING"
+    },
+    "remove_override_endpoint": {
+      "endpoint": "POST /api/admin/users/{id}/remove-override",
+      "file": "backend/server.py",
+      "lines": "3319-3377",
+      "functionality": "Removes admin override, reverts to free plan",
+      "status": "WORKING"
+    },
+    "get_effective_user_plan": {
+      "function": "get_effective_user_plan()",
+      "file": "backend/server.py",
+      "lines": "438-477",
+      "priority_order": ["admin_override", "stripe", "free"],
+      "status": "WORKING"
+    },
+    "check_subscription_active": {
+      "function": "check_subscription_active()",
+      "file": "backend/server.py",
+      "lines": "563-631",
+      "includes_admin_override_check": true,
+      "status": "WORKING"
+    },
+    "frontend_override_modal": {
+      "component": "Plan Override Modal",
+      "file": "frontend/src/pages/AdminDashboard.jsx",
+      "lines": "820-960",
+      "features": ["Assign Starter/Growth buttons", "Remove Override button", "Admin Override Active badge", "Stripe user warning"],
+      "status": "WORKING"
+    },
+    "admin_logs": {
+      "collection": "admin_logs",
+      "action_types": ["ADMIN_ASSIGN_STARTER", "ADMIN_ASSIGN_GROWTH", "ADMIN_REMOVE_OVERRIDE"],
+      "status": "WORKING"
+    }
+  }
+}

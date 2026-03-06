@@ -20,6 +20,8 @@ import {
   CreditCard,
   X,
   Loader2,
+  Crown,
+  UserCog,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -54,6 +56,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "../components/ui/dialog";
 import { api } from "../App";
 import { toast } from "sonner";
@@ -76,6 +80,11 @@ export default function AdminDashboard({ user, setUser }) {
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  
+  // Plan override state
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [removeOverrideDialogOpen, setRemoveOverrideDialogOpen] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -204,6 +213,8 @@ export default function AdminDashboard({ user, setUser }) {
       case "active":
       case "permanent":
         return "bg-emerald-100 text-emerald-700";
+      case "admin_override":
+        return "bg-violet-100 text-violet-700";
       case "trialing":
         return "bg-blue-100 text-blue-700";
       case "past_due":
@@ -214,6 +225,68 @@ export default function AdminDashboard({ user, setUser }) {
         return "bg-red-100 text-red-700";
       default:
         return "bg-slate-100 text-slate-600";
+    }
+  };
+
+  // Plan Override Functions
+  const handleOpenOverrideModal = async (u) => {
+    setSelectedUser(u);
+    // Fetch subscription data to check if user has Stripe subscription
+    setSubscriptionLoading(true);
+    try {
+      const response = await api.get(`/admin/users/${u.user_id}/subscription`);
+      setSubscriptionData(response.data);
+      setOverrideModalOpen(true);
+    } catch (error) {
+      toast.error("Failed to load user subscription data");
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  const handleAssignPlan = async (plan) => {
+    if (!selectedUser) return;
+    
+    setOverrideLoading(true);
+    try {
+      await api.post(`/admin/users/${selectedUser.user_id}/assign-plan`, { plan });
+      toast.success(`Successfully assigned ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`);
+      setOverrideModalOpen(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to assign plan");
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
+  const handleRemoveOverride = async () => {
+    if (!selectedUser) return;
+    
+    setOverrideLoading(true);
+    try {
+      await api.post(`/admin/users/${selectedUser.user_id}/remove-override`);
+      toast.success("Admin override removed. User reverted to Free plan.");
+      setRemoveOverrideDialogOpen(false);
+      setOverrideModalOpen(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to remove override");
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
+  const getPlanSourceBadge = (source) => {
+    switch (source) {
+      case "stripe":
+        return <Badge className="bg-blue-100 text-blue-700">Stripe</Badge>;
+      case "admin_override":
+        return <Badge className="bg-violet-100 text-violet-700">Admin Override</Badge>;
+      case "permanent":
+        return <Badge className="bg-amber-100 text-amber-700">Permanent</Badge>;
+      default:
+        return <Badge className="bg-slate-100 text-slate-600">Free</Badge>;
     }
   };
 
@@ -450,6 +523,16 @@ export default function AdminDashboard({ user, setUser }) {
                   <TableCell className="text-slate-500 text-sm">{formatDate(u.last_login)}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleOpenOverrideModal(u)}
+                        data-testid={`plan-override-${u.user_id}`}
+                        title="Manage Plan Override"
+                      >
+                        <UserCog size={16} className="text-slate-400 hover:text-violet-500" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -710,6 +793,176 @@ export default function AdminDashboard({ user, setUser }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Plan Override Modal */}
+      <Dialog open={overrideModalOpen} onOpenChange={setOverrideModalOpen}>
+        <DialogContent className="sm:max-w-[500px]" data-testid="plan-override-modal">
+          <DialogHeader>
+            <DialogTitle className="font-heading font-semibold flex items-center gap-2">
+              <UserCog size={20} className="text-violet-500" />
+              Manage Plan Override
+            </DialogTitle>
+            <DialogDescription>
+              Assign or remove plan access for <strong>{selectedUser?.email}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          
+          {subscriptionLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={32} className="text-violet-500 animate-spin" />
+            </div>
+          ) : subscriptionData ? (
+            <div className="space-y-4">
+              {/* Current Status */}
+              <div className="bg-slate-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-slate-500">Current Plan</p>
+                    <p className="font-semibold text-slate-900">{subscriptionData.current_plan}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500">Plan Source</p>
+                    {getPlanSourceBadge(subscriptionData.plan_source)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Admin Override Badge if active */}
+              {subscriptionData.admin_override_active && (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Crown size={16} className="text-violet-600" />
+                    <span className="font-medium text-violet-700">Admin Override Active</span>
+                  </div>
+                  <p className="text-sm text-violet-600 mt-1">
+                    Override plan: {subscriptionData.admin_override_plan?.charAt(0).toUpperCase() + subscriptionData.admin_override_plan?.slice(1)}
+                  </p>
+                  {subscriptionData.admin_override_updated_at && (
+                    <p className="text-xs text-violet-500 mt-1">
+                      Assigned: {formatDateTime(subscriptionData.admin_override_updated_at)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Check if user has Stripe subscription */}
+              {subscriptionData.has_stripe_subscription ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">Stripe Subscription Active</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        This user has an active Stripe subscription. Plan changes must be handled through Stripe billing.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : subscriptionData.is_permanent_plan ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">Permanent Plan User</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        This user has a permanently assigned plan that cannot be overridden.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Plan Assignment Buttons */}
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-slate-700">Assign Plan:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        onClick={() => handleAssignPlan("starter")}
+                        disabled={overrideLoading || subscriptionData.admin_override_plan === "starter"}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        data-testid="assign-starter-btn"
+                      >
+                        {overrideLoading ? (
+                          <Loader2 size={16} className="animate-spin mr-2" />
+                        ) : (
+                          <Crown size={16} className="mr-2" />
+                        )}
+                        Assign Starter
+                      </Button>
+                      <Button
+                        onClick={() => handleAssignPlan("growth")}
+                        disabled={overrideLoading || subscriptionData.admin_override_plan === "growth"}
+                        className="bg-violet-600 hover:bg-violet-700"
+                        data-testid="assign-growth-btn"
+                      >
+                        {overrideLoading ? (
+                          <Loader2 size={16} className="animate-spin mr-2" />
+                        ) : (
+                          <Crown size={16} className="mr-2" />
+                        )}
+                        Assign Growth
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Remove Override Button (if override is active) */}
+                  {subscriptionData.admin_override_active && (
+                    <div className="pt-4 border-t border-slate-200">
+                      <Button
+                        variant="outline"
+                        onClick={() => setRemoveOverrideDialogOpen(true)}
+                        disabled={overrideLoading}
+                        className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                        data-testid="remove-override-btn"
+                      >
+                        <Trash2 size={16} className="mr-2" />
+                        Remove Admin Override
+                      </Button>
+                      <p className="text-xs text-slate-500 mt-2 text-center">
+                        User will be reverted to Free plan
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">
+              Failed to load user data
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Override Confirmation Dialog */}
+      <AlertDialog open={removeOverrideDialogOpen} onOpenChange={setRemoveOverrideDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading font-semibold flex items-center gap-2">
+              <AlertTriangle size={20} className="text-red-500" />
+              Remove Admin Override
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the admin override for <strong>{selectedUser?.email}</strong>?
+              <br /><br />
+              The user will be reverted to the <strong>Free plan</strong> and will lose access to premium features.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="cancel-remove-override" disabled={overrideLoading}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveOverride}
+              className="bg-red-600 hover:bg-red-700"
+              data-testid="confirm-remove-override"
+              disabled={overrideLoading}
+            >
+              {overrideLoading ? "Removing..." : "Remove Override"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
