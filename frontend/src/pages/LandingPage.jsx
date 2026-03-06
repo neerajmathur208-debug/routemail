@@ -633,13 +633,13 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6, delay: 0.2 }}
               viewport={{ once: true }}
-              className="mt-8 flex justify-center"
+              className="mt-8 mb-6 flex justify-center"
             >
               <img
                 src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/edg8pmj5_jakub-zerdzicki-Xb1myRNASiM-unsplash.jpg"
                 alt="Email automation icon"
                 loading="lazy"
-                className="w-full max-w-[320px] h-auto object-cover"
+                className="w-full max-w-[600px] h-auto object-cover block mx-auto"
                 style={{
                   borderRadius: '16px',
                   boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
@@ -694,7 +694,7 @@ export default function LandingPage() {
                 src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/x6qxmuht_mariia-shalabaieva-HyyHIYz_l0A-unsplash.jpg"
                 alt="Campaign control on mobile"
                 loading="lazy"
-                className="w-full max-w-[280px] h-auto object-cover"
+                className="w-full max-w-[550px] h-auto object-cover block"
                 style={{
                   borderRadius: '16px',
                   boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
