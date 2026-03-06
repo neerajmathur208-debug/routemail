@@ -354,6 +354,33 @@ Build a simple SaaS web application for small businesses to automatically send e
   - More prominent display on both Landing and Subscription pages
   - Consistent across all paid plans
 
+### ✅ Admin Plan Override System (March 2026)
+- [x] **New Database Fields**:
+  - `admin_override_active` (boolean) - whether admin override is active
+  - `admin_override_plan` (string) - "starter" or "growth"
+  - `plan_source` (string) - "free", "stripe", or "admin_override"
+  - `admin_override_updated_at` (datetime) - when override was last changed
+- [x] **Plan Resolution Priority**:
+  1. Admin override (if `admin_override_active = true`)
+  2. Stripe subscription (if `stripe_subscription_id` exists)
+  3. Free plan (default)
+- [x] **Helper Function**: `get_effective_user_plan()` - centralized plan resolution
+- [x] **Backend Endpoints**:
+  - `POST /api/admin/users/{id}/assign-plan` - Assign Starter or Growth plan
+  - `POST /api/admin/users/{id}/remove-override` - Remove override, revert to Free
+- [x] **Security**:
+  - Only super_admin can use override endpoints
+  - Blocked for users with active Stripe subscriptions
+  - Blocked for permanent plan users
+  - All actions logged to `admin_logs` collection
+- [x] **Frontend Plan Override Modal**:
+  - UserCog icon button in admin user table
+  - Shows current plan and plan source
+  - "Admin Override Active" badge when override is active
+  - Assign Starter/Growth buttons (disabled for Stripe users)
+  - Remove Override button with confirmation dialog
+  - Warning message for Stripe and permanent plan users
+
 ### 🔄 In Progress
 - None currently
 
