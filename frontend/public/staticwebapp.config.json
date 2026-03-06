@@ -1,0 +1,28 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/api/*", "*.{css,scss,js,png,gif,ico,jpg,svg,json,txt}"]
+  },
+  "routes": [
+    {
+      "route": "/reset-password*",
+      "rewrite": "/index.html"
+    },
+    {
+      "route": "/verify-email*",
+      "rewrite": "/index.html"
+    },
+    {
+      "route": "/forgot-password",
+      "rewrite": "/index.html"
+    },
+    {
+      "route": "/login",
+      "rewrite": "/index.html"
+    },
+    {
+      "route": "/register",
+      "rewrite": "/index.html"
+    }
+  ]
+}
