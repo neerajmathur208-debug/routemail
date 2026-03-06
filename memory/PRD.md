@@ -381,6 +381,21 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Remove Override button with confirmation dialog
   - Warning message for Stripe and permanent plan users
 
+### ✅ Reset Password Fix (March 2026)
+- [x] **SPA Routing Configuration Added**:
+  - `/app/frontend/public/_redirects` - For Netlify and general hosting
+  - `/app/frontend/vercel.json` - For Vercel hosting
+  - `/app/frontend/public/staticwebapp.config.json` - For Azure Static Web Apps
+- [x] **Backend URL Generation Verified**:
+  - FRONTEND_URL correctly set to `https://routemail.co`
+  - Reset links generated as: `https://routemail.co/reset-password?token=...`
+- [x] **Reset Password Flow Tested**:
+  - `POST /api/auth/forgot-password` - Sends email with correct link
+  - `POST /api/auth/reset-password` - Validates token, updates password
+  - Frontend ResetPassword.jsx - Shows form with token, error without
+  - Token expiry (30 minutes) handled correctly
+- [x] **Note**: Production fix requires deployment with SPA routing config
+
 ### 🔄 In Progress
 - None currently
 
