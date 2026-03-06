@@ -396,6 +396,23 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Token expiry (30 minutes) handled correctly
 - [x] **Note**: Production fix requires deployment with SPA routing config
 
+### ✅ Admin Notifications & Signup Improvements (March 2026)
+- [x] **FRONTEND_URL Trailing Slash Fix**:
+  - Added `.rstrip('/')` to prevent double slashes in URLs
+  - Fixes `routemail.co//reset-password` → `routemail.co/reset-password`
+- [x] **Admin Notification Emails** (to support@routemail.co):
+  - New user signup (Email + Password): background task in registration
+  - New user signup (Google OAuth): asyncio task on first session
+  - Paid subscription: triggered on `checkout.session.completed` webhook
+  - All notifications are fail-safe (logged errors, don't interrupt user flow)
+- [x] **Footer Cleanup**:
+  - Removed "Developed by Perfect Digitals" text and link from landing page
+- [x] **Terms & Privacy Acceptance Required for Signup**:
+  - Checkbox with links to `/terms-and-conditions` and `/privacy-policy`
+  - Mandatory for both email and Google signup
+  - Error message: "You must accept the Terms and Conditions and Privacy Policy"
+  - Validated client-side before API calls
+
 ### 🔄 In Progress
 - None currently
 
