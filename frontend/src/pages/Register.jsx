@@ -24,6 +24,8 @@ export default function Register() {
   const [currency, setCurrency] = useState("usd");
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
 
   useEffect(() => {
     detectCountry();
@@ -50,6 +52,14 @@ export default function Register() {
   };
 
   const handleGoogleLogin = () => {
+    // Check terms acceptance first
+    if (!acceptedTerms) {
+      setTermsError(true);
+      toast.error("You must accept the Terms and Conditions and Privacy Policy to create an account.");
+      return;
+    }
+    setTermsError(false);
+    
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     // Store selected plan in sessionStorage before Google auth
     if (selectedPlan) {
@@ -90,6 +100,14 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check terms acceptance first
+    if (!acceptedTerms) {
+      setTermsError(true);
+      toast.error("You must accept the Terms and Conditions and Privacy Policy to create an account.");
+      return;
+    }
+    setTermsError(false);
     
     const { name, email, password, confirm_password } = formData;
 
@@ -392,6 +410,48 @@ export default function Register() {
                 )}
               </div>
             </div>
+
+            {/* Terms and Privacy Checkbox */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="accept-terms"
+                checked={acceptedTerms}
+                onChange={(e) => {
+                  setAcceptedTerms(e.target.checked);
+                  if (e.target.checked) setTermsError(false);
+                }}
+                className={`mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 ${
+                  termsError ? "border-red-500 ring-1 ring-red-500" : ""
+                }`}
+                data-testid="accept-terms-checkbox"
+              />
+              <label htmlFor="accept-terms" className="text-sm text-slate-600">
+                I agree to the{" "}
+                <a
+                  href="/terms-and-conditions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Terms and Conditions
+                </a>{" "}
+                and{" "}
+                <a
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+              </label>
+            </div>
+            {termsError && (
+              <p className="text-sm text-red-500 -mt-2">
+                You must accept the Terms and Conditions and Privacy Policy to create an account.
+              </p>
+            )}
 
             <Button
               type="submit"

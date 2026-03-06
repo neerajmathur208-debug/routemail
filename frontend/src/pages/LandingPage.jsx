@@ -1059,20 +1059,6 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
-        {/* Developer Credit */}
-        <div className="max-w-[1300px] mx-auto mt-6 pt-6 border-t border-slate-800">
-          <p className="text-center text-xs text-slate-500">
-            Developed by{" "}
-            <a 
-              href="https://perfectdigitals.ie" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-slate-400 hover:text-slate-300 hover:underline transition-colors"
-            >
-              Perfect Digitals
-            </a>
-          </p>
-        </div>
       </footer>
     </div>
   );

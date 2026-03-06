@@ -47,7 +47,9 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 # Resend configuration for transactional emails
 resend.api_key = os.environ.get('RESEND_API_KEY')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'support@routemail.co')
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://routemail.co')
+ADMIN_NOTIFICATION_EMAIL = 'support@routemail.co'
+# Strip trailing slash from FRONTEND_URL to prevent double slashes in URLs
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://routemail.co').rstrip('/')
 SUPER_ADMIN_EMAIL = os.environ.get('SUPER_ADMIN_EMAIL', '')
 
 # Stripe Price IDs (from environment)
@@ -428,6 +430,124 @@ def get_password_reset_email_html(reset_link: str) -> str:
             <p style="color: #71717a; font-size: 14px; line-height: 1.6; margin: 16px 0 0;">If you didn't request this, ignore this email.</p>
             <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 32px 0;">
             <p style="color: #a1a1aa; font-size: 13px; text-align: center; margin: 0;">— RouteMail Team</p>
+        </div>
+    </body>
+    </html>
+    """
+
+# ==================== ADMIN NOTIFICATION EMAILS ====================
+
+async def send_admin_notification(subject: str, html_content: str):
+    """Send admin notification email - non-blocking, logs errors"""
+    try:
+        if resend.api_key:
+            resend.Emails.send({
+                "from": FROM_EMAIL,
+                "to": [ADMIN_NOTIFICATION_EMAIL],
+                "subject": subject,
+                "html": html_content
+            })
+            logger.info(f"Admin notification sent: {subject}")
+    except Exception as e:
+        logger.error(f"Failed to send admin notification: {e}")
+        # Don't raise - admin notifications should not interrupt user flow
+
+def get_admin_signup_notification_html(user_email: str, signup_method: str, ip_address: str = "Unknown") -> str:
+    """Generate admin notification for new user signup"""
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #18181b; font-size: 24px; margin: 0;">🎉 New User Signup</h1>
+            </div>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">A new user has registered on RouteMail.</p>
+            <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="color: #64748b; font-size: 14px; padding: 8px 0;">User Email:</td>
+                        <td style="color: #18181b; font-size: 14px; font-weight: 600; padding: 8px 0;">{user_email}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #64748b; font-size: 14px; padding: 8px 0;">Signup Time:</td>
+                        <td style="color: #18181b; font-size: 14px; padding: 8px 0;">{timestamp}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #64748b; font-size: 14px; padding: 8px 0;">Signup Method:</td>
+                        <td style="color: #18181b; font-size: 14px; padding: 8px 0;">{signup_method}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #64748b; font-size: 14px; padding: 8px 0;">IP Address:</td>
+                        <td style="color: #18181b; font-size: 14px; padding: 8px 0;">{ip_address}</td>
+                    </tr>
+                </table>
+            </div>
+            <p style="color: #3f3f46; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+                <strong>Trial Status:</strong> 14-day trial started.
+            </p>
+            <p style="color: #71717a; font-size: 13px; margin: 0;">
+                You can view the user in the Super Admin dashboard.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+def get_admin_subscription_notification_html(
+    user_email: str,
+    plan: str,
+    currency: str,
+    amount: str,
+    customer_id: str,
+    subscription_id: str
+) -> str:
+    """Generate admin notification for new paid subscription"""
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #18181b; font-size: 24px; margin: 0;">💰 New Paid Subscription</h1>
+            </div>
+            <p style="color: #3f3f46; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">A user has upgraded their plan.</p>
+            <div style="background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 100%); border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">User Email:</td>
+                        <td style="color: #18181b; font-size: 14px; font-weight: 600; padding: 8px 0;">{user_email}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Plan:</td>
+                        <td style="color: #18181b; font-size: 14px; font-weight: 600; padding: 8px 0;">{plan.capitalize()}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Currency:</td>
+                        <td style="color: #18181b; font-size: 14px; padding: 8px 0;">{currency.upper()}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Amount Paid:</td>
+                        <td style="color: #059669; font-size: 14px; font-weight: 600; padding: 8px 0;">{amount}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Stripe Customer ID:</td>
+                        <td style="color: #18181b; font-size: 12px; font-family: monospace; padding: 8px 0;">{customer_id}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Subscription ID:</td>
+                        <td style="color: #18181b; font-size: 12px; font-family: monospace; padding: 8px 0;">{subscription_id}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #475569; font-size: 14px; padding: 8px 0;">Date:</td>
+                        <td style="color: #18181b; font-size: 14px; padding: 8px 0;">{timestamp}</td>
+                    </tr>
+                </table>
+            </div>
         </div>
     </body>
     </html>
@@ -951,6 +1071,13 @@ async def exchange_session(request: SessionRequest, response: Response):
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.users.insert_one(user_dict)
+        
+        # Send admin notification for new Google signup (non-blocking)
+        try:
+            admin_html = get_admin_signup_notification_html(email, "Google OAuth")
+            asyncio.create_task(send_admin_notification("New User Signup on RouteMail", admin_html))
+        except Exception as e:
+            logger.error(f"Failed to send admin signup notification: {e}")
     
     # Apply permanent plan assignment if applicable (after user exists)
     await apply_permanent_plan_if_applicable(email, user_id)
@@ -1123,6 +1250,14 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         request.email,
         "Verify Your RouteMail Account",
         html_content
+    )
+    
+    # Send admin notification for new signup
+    admin_html = get_admin_signup_notification_html(request.email, "Email + Password")
+    background_tasks.add_task(
+        send_admin_notification,
+        "New User Signup on RouteMail",
+        admin_html
     )
     
     # Return success - user is created, email will be sent in background
@@ -3621,6 +3756,38 @@ async def handle_checkout_completed(session):
         )
         
         logger.info(f"User {user_id} upgraded to {plan_type}")
+        
+        # Send admin notification for new subscription (non-blocking, fail-safe)
+        try:
+            # Get user email and subscription details
+            user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
+            user_email = user.get("email", "Unknown") if user else "Unknown"
+            
+            # Get amount from subscription
+            amount_total = session.get("amount_total", 0)
+            currency = session.get("currency", "usd").upper()
+            
+            # Format amount (convert from cents)
+            if amount_total:
+                if currency == "INR":
+                    amount_str = f"₹{amount_total / 100:,.0f}"
+                else:
+                    amount_str = f"${amount_total / 100:,.2f}"
+            else:
+                amount_str = "N/A"
+            
+            admin_html = get_admin_subscription_notification_html(
+                user_email=user_email,
+                plan=plan_type,
+                currency=currency,
+                amount=amount_str,
+                customer_id=customer_id or "N/A",
+                subscription_id=subscription_id or "N/A"
+            )
+            asyncio.create_task(send_admin_notification("New Paid Subscription on RouteMail", admin_html))
+        except Exception as notify_err:
+            logger.error(f"Failed to send admin subscription notification: {notify_err}")
+            # Don't interrupt webhook processing
         
     except Exception as e:
         logger.error(f"handle_checkout_completed error: {e}")
