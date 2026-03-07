@@ -35,12 +35,12 @@ export default function VerifyEmail() {
 
     const verifyEmail = async () => {
       try {
-        // URL encode the token to handle special characters properly
-        const encodedToken = encodeURIComponent(token);
-        console.log("[VERIFY] Encoded token:", encodedToken);
+        // UUID tokens are URL-safe, no encoding needed
+        console.log("[VERIFY] Token from URL:", token);
+        console.log("[VERIFY] Token length:", token.length);
         console.log("[VERIFY] Making API request...");
         
-        const response = await api.get(`/auth/verify-email?token=${encodedToken}`);
+        const response = await api.get(`/auth/verify-email?token=${token}`);
         
         console.log("[VERIFY] API Response:", response.data);
         

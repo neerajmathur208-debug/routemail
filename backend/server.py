@@ -1218,15 +1218,16 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         else:
             raise HTTPException(status_code=400, detail="Email already registered")
     
-    # ========== STEP 3: Generate Token ONCE ==========
-    logger.info(f"[REGISTRATION] Step 3: Generating verification token for: {request.email}")
+    # ========== STEP 3: Generate UUID Token ==========
+    logger.info(f"[REGISTRATION] Step 3: Generating UUID verification token for: {request.email}")
     
-    verification_token = secrets.token_urlsafe(32)
+    # Use UUID for consistent, URL-safe token format (no special chars at start)
+    verification_token = str(uuid.uuid4())
     verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
     
-    # Log token for debugging (first 20 chars only for security)
-    logger.info(f"[REGISTRATION] Generated token (first 20 chars): {verification_token[:20]}...")
-    logger.info(f"[REGISTRATION] Token full length: {len(verification_token)}")
+    # Log full token (UUID format is safe to log)
+    logger.info(f"[REGISTRATION] Generated UUID token: {verification_token}")
+    logger.info("[REGISTRATION] Token format: UUID (36 chars with hyphens)")
     
     # ========== STEP 4: Prepare User Document ==========
     logger.info(f"[REGISTRATION] Step 4: Preparing user document for: {request.email}")
@@ -1348,92 +1349,46 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
 
 @api_router.get("/auth/verify-email")
 async def verify_email(token: str, response: Response, background_tasks: BackgroundTasks):
-    """Verify email address with token"""
-    from urllib.parse import unquote
+    """Verify email address with UUID token"""
     
-    # ========== STEP 1: Log Raw Token ==========
-    logger.info(f"[VERIFICATION] Step 1: Raw token received, length: {len(token) if token else 0}")
-    if token:
-        logger.info(f"[VERIFICATION] Raw token (first 20 chars): {token[:20]}...")
+    # ========== STEP 1: Log Received Token ==========
+    logger.info("[VERIFICATION] Step 1: Token received")
+    logger.info(f"[VERIFICATION] Token value: {token}")
+    logger.info(f"[VERIFICATION] Token length: {len(token) if token else 0}")
     
-    # ========== STEP 2: URL Decode Token ==========
-    original_token = token
-    token = unquote(token)
-    
-    if token != original_token:
-        logger.info("[VERIFICATION] Step 2: Token was URL-encoded")
-        logger.info(f"[VERIFICATION] Original: {original_token[:20]}...")
-        logger.info(f"[VERIFICATION] Decoded: {token[:20]}...")
-        
-        # Try double decoding in case email client double-encoded
-        token_double = unquote(token)
-        if token_double != token:
-            logger.info("[VERIFICATION] Token was double-encoded, using double-decoded version")
-            token = token_double
-    else:
-        logger.info("[VERIFICATION] Step 2: Token was not URL-encoded")
-    
-    # ========== STEP 3: Validate Token Format ==========
-    if not token or len(token) < 10:
-        logger.warning("[VERIFICATION] Step 3: INVALID - Token too short or empty")
+    # ========== STEP 2: Validate Token Format ==========
+    if not token or len(token) < 32:
+        logger.warning("[VERIFICATION] Step 2: INVALID - Token too short or empty")
         raise HTTPException(status_code=400, detail="Invalid verification link.")
     
-    logger.info(f"[VERIFICATION] Step 3: Token validated, length: {len(token)}")
-    logger.info(f"[VERIFICATION] Token to lookup (first 20 chars): {token[:20]}...")
+    # Clean token (strip whitespace, trailing slashes)
+    clean_token = token.strip().rstrip('/').rstrip('?').rstrip('&')
+    if clean_token != token:
+        logger.info(f"[VERIFICATION] Token cleaned: '{token}' -> '{clean_token}'")
+        token = clean_token
     
-    # ========== STEP 4: Find User by Token ==========
-    logger.info("[VERIFICATION] Step 4: Searching for user with this token...")
+    logger.info("[VERIFICATION] Step 2: Token validated")
     
-    # Try finding user with the decoded token first
+    # ========== STEP 3: Find User by Token (Direct Lookup) ==========
+    logger.info(f"[VERIFICATION] Step 3: Searching for user with token: {token}")
+    
     user = await db.users.find_one({"verification_token": token}, {"_id": 0})
     
-    # If not found and we decoded, try with original token as fallback
-    if not user and token != original_token:
-        logger.info("[VERIFICATION] Step 4a: Trying with original (non-decoded) token...")
-        user = await db.users.find_one({"verification_token": original_token}, {"_id": 0})
-        if user:
-            logger.info("[VERIFICATION] Step 4a: Found user with original token!")
-            token = original_token  # Use original for rest of flow
-    
-    # If still not found, try stripping whitespace and common URL artifacts
     if not user:
-        # Clean the token of common artifacts
-        cleaned_token = token.strip().rstrip('/').rstrip('?').rstrip('&')
-        if cleaned_token != token:
-            logger.info(f"[VERIFICATION] Step 4b: Trying with cleaned token: {cleaned_token[:20]}...")
-            user = await db.users.find_one({"verification_token": cleaned_token}, {"_id": 0})
-            if user:
-                logger.info("[VERIFICATION] Step 4b: Found user with cleaned token!")
-                token = cleaned_token
-    
-    # If STILL not found, do a partial match search to help debug
-    if not user:
-        logger.warning(f"[VERIFICATION] Step 4: FAILED - No user found with token: {token[:20]}...")
-        logger.warning(f"[VERIFICATION] Full token for debugging: {token}")
+        logger.warning(f"[VERIFICATION] Step 3: FAILED - No user found with token: {token}")
         
-        # Debug: Check if there are any unverified users to understand the issue
+        # Debug: Count unverified users
         unverified_count = await db.users.count_documents({"email_verified": False, "provider": "email"})
-        logger.info(f"[VERIFICATION] Debug: Total unverified email users in DB: {unverified_count}")
-        
-        # Check for similar tokens (first 20 chars match) to detect encoding issues
-        if len(token) >= 20:
-            partial_match = await db.users.find_one(
-                {"verification_token": {"$regex": f"^{token[:20]}"}},
-                {"_id": 0, "email": 1, "verification_token": 1}
-            )
-            if partial_match:
-                logger.warning(f"[VERIFICATION] PARTIAL MATCH FOUND! User: {partial_match.get('email')}")
-                logger.warning(f"[VERIFICATION] DB token: {partial_match.get('verification_token')}")
-                logger.warning(f"[VERIFICATION] Received token: {token}")
+        logger.info(f"[VERIFICATION] Debug: Total unverified email users: {unverified_count}")
         
         raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used or expired.")
     
-    logger.info(f"[VERIFICATION] Step 4: Found user: {user['email']}")
-    logger.info(f"[VERIFICATION] User's stored token (first 20 chars): {user.get('verification_token', 'NONE')[:20]}...")
+    logger.info(f"[VERIFICATION] Step 3: Found user: {user['email']}")
+    logger.info(f"[VERIFICATION] User's stored token: {user.get('verification_token')}")
     
-    # ========== STEP 5: Check If Already Verified ==========
+    # ========== STEP 4: Check If Already Verified ==========
     if user.get("email_verified", False):
-        logger.info(f"[VERIFICATION] Step 5: User {user['email']} is already verified")
+        logger.info(f"[VERIFICATION] Step 4: User {user['email']} is already verified")
         
         # Clear any remaining token
         await db.users.update_one(
@@ -1452,8 +1407,8 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
             "redirect_url": f"{FRONTEND_URL}/dashboard"
         }
     
-    # ========== STEP 6: Check Token Expiration ==========
-    logger.info("[VERIFICATION] Step 6: Checking token expiration...")
+    # ========== STEP 5: Check Token Expiration ==========
+    logger.info("[VERIFICATION] Step 5: Checking token expiration...")
     
     expires = user.get("verification_expires")
     if expires:
@@ -1467,7 +1422,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         logger.info(f"[VERIFICATION] Current time: {now.isoformat()}")
         
         if now > expires:
-            logger.warning(f"[VERIFICATION] Step 6: EXPIRED - Token expired for {user['email']}")
+            logger.warning(f"[VERIFICATION] Step 5: EXPIRED - Token expired for {user['email']}")
             
             # Delete expired user
             await db.users.delete_one({"user_id": user["user_id"]})
@@ -1475,10 +1430,10 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
             
             raise HTTPException(status_code=400, detail="Verification link has expired. Please register again.")
     
-    logger.info("[VERIFICATION] Step 6: Token is valid and not expired")
+    logger.info("[VERIFICATION] Step 5: Token is valid and not expired")
     
-    # ========== STEP 7: Verify Email (Atomic Update) ==========
-    logger.info(f"[VERIFICATION] Step 7: Marking email as verified for: {user['email']}")
+    # ========== STEP 6: Verify Email (Atomic Update) ==========
+    logger.info(f"[VERIFICATION] Step 6: Marking email as verified for: {user['email']}")
     
     result = await db.users.update_one(
         {"user_id": user["user_id"], "verification_token": token},  # Ensure token still matches
@@ -1489,17 +1444,17 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     )
     
     if result.modified_count == 0:
-        logger.warning(f"[VERIFICATION] Step 7: FAILED - Token already consumed for {user['email']}")
+        logger.warning(f"[VERIFICATION] Step 6: FAILED - Token already consumed for {user['email']}")
         raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used.")
     
-    logger.info(f"[VERIFICATION] Step 7: SUCCESS - Email verified for: {user['email']}")
+    logger.info(f"[VERIFICATION] Step 6: SUCCESS - Email verified for: {user['email']}")
     
-    # ========== STEP 8: Get Updated User Data ==========
+    # ========== STEP 7: Get Updated User Data ==========
     updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     plan_type = updated_user.get("plan_type", "free") if updated_user else "free"
     
-    # ========== STEP 9: Send Welcome Email ==========
-    logger.info(f"[VERIFICATION] Step 9: Queueing welcome email for: {user['email']}")
+    # ========== STEP 8: Send Welcome Email ==========
+    logger.info(f"[VERIFICATION] Step 8: Queueing welcome email for: {user['email']}")
     
     try:
         first_name = user.get("name", "").split()[0] if user.get("name") else "there"
@@ -1514,8 +1469,8 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     except Exception as e:
         logger.error(f"[VERIFICATION] Failed to queue welcome email: {str(e)}")
     
-    # ========== STEP 10: Create Session ==========
-    logger.info(f"[VERIFICATION] Step 10: Creating session for: {user['email']}")
+    # ========== STEP 9: Create Session ==========
+    logger.info(f"[VERIFICATION] Step 9: Creating session for: {user['email']}")
     
     session_token = uuid.uuid4().hex
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -1539,7 +1494,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         max_age=7 * 24 * 60 * 60
     )
     
-    # ========== STEP 11: Return Success ==========
+    # ========== STEP 10: Return Success ==========
     response_data = {
         "success": True,
         "message": "Email verified successfully!",
@@ -1551,7 +1506,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         "redirect_url": f"{FRONTEND_URL}/dashboard"
     }
     
-    logger.info(f"[VERIFICATION] Step 11: COMPLETE for {user['email']}. Redirecting to dashboard.")
+    logger.info(f"[VERIFICATION] Step 10: COMPLETE for {user['email']}. Redirecting to dashboard.")
     
     return response_data
 
@@ -1575,11 +1530,11 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
         logger.info(f"[RESEND] User uses Google sign-in: {email}")
         raise HTTPException(status_code=400, detail="This account uses Google sign-in")
     
-    # Generate new verification token
-    verification_token = secrets.token_urlsafe(32)
+    # Generate new UUID verification token
+    verification_token = str(uuid.uuid4())
     verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
     
-    logger.info(f"[RESEND] Generated new token for {email}: {verification_token[:20]}...")
+    logger.info(f"[RESEND] Generated new UUID token for {email}: {verification_token}")
     
     await db.users.update_one(
         {"email": email},
