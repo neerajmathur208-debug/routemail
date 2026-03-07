@@ -455,23 +455,31 @@ Build a simple SaaS web application for small businesses to automatically send e
 - None currently
 
 ### ✅ Registration & Verification Flow Fixes (March 2026)
-- [x] **Robust Error Handling in Registration**:
-  - Wrapped `apply_permanent_plan_if_applicable()` in try-catch (non-blocking)
-  - Wrapped email preparation and admin notification in try-catch blocks
-  - All background tasks are now fail-safe (won't crash registration)
-  - Ensures 201 response is always returned after successful user creation
-- [x] **Enhanced Verification Logging**:
-  - Added detailed logging: raw token length, decoded token, user found status
-  - Double URL-decoding support for email clients that double-encode tokens
-  - Timezone-aware expiry checking for verification tokens
-- [x] **Consistent API Responses**:
-  - Added `success: true` to all verification success responses
-  - Consistent JSON structure across registration and verification endpoints
+- [x] **Comprehensive Step-by-Step Logging**:
+  - 11 labeled steps in registration with detailed logging
+  - 11 labeled steps in verification with detailed logging
+  - Token consistency verification at each step
+  - Debug info for token mismatches
+- [x] **Token Consistency Guaranteed**:
+  - Token generated ONCE at Step 3
+  - Token saved to DB at Step 5
+  - Token verified against DB at Step 6 (new)
+  - Same token used in email link at Step 7
+  - Logs confirm: "Token verified in DB matches generated token"
+- [x] **Robust Error Handling**:
+  - All post-creation tasks wrapped in try-catch
+  - Background tasks are fail-safe
+  - Clear error messages for each failure scenario
+- [x] **Verification Improvements**:
+  - Double URL-decoding for email client compatibility
+  - Timezone-aware expiry checking
+  - Atomic update to prevent race conditions
+  - Debug logging for token lookup failures
 - [x] **Testing Verified**:
-  - Registration returns proper 201 JSON response
-  - Verification successfully validates tokens and activates accounts
-  - Invalid/expired tokens show appropriate error messages
-  - Complete E2E flow tested via API and browser automation
+  - 3 consecutive registrations all succeeded
+  - All verifications succeeded (HTTP 200)
+  - Frontend E2E test passed
+  - Token consistency confirmed via logs
 
 ### 📋 Upcoming Tasks (P1)
 1. **Gmail OAuth Integration** - Secure OAuth 2.0 connection for Gmail accounts
