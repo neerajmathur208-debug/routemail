@@ -1389,18 +1389,42 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     
     # If not found and we decoded, try with original token as fallback
     if not user and token != original_token:
-        logger.info("[VERIFICATION] Step 4: Trying with original (non-decoded) token...")
+        logger.info("[VERIFICATION] Step 4a: Trying with original (non-decoded) token...")
         user = await db.users.find_one({"verification_token": original_token}, {"_id": 0})
         if user:
-            logger.info("[VERIFICATION] Step 4: Found user with original token!")
+            logger.info("[VERIFICATION] Step 4a: Found user with original token!")
             token = original_token  # Use original for rest of flow
     
+    # If still not found, try stripping whitespace and common URL artifacts
+    if not user:
+        # Clean the token of common artifacts
+        cleaned_token = token.strip().rstrip('/').rstrip('?').rstrip('&')
+        if cleaned_token != token:
+            logger.info(f"[VERIFICATION] Step 4b: Trying with cleaned token: {cleaned_token[:20]}...")
+            user = await db.users.find_one({"verification_token": cleaned_token}, {"_id": 0})
+            if user:
+                logger.info("[VERIFICATION] Step 4b: Found user with cleaned token!")
+                token = cleaned_token
+    
+    # If STILL not found, do a partial match search to help debug
     if not user:
         logger.warning(f"[VERIFICATION] Step 4: FAILED - No user found with token: {token[:20]}...")
+        logger.warning(f"[VERIFICATION] Full token for debugging: {token}")
         
         # Debug: Check if there are any unverified users to understand the issue
         unverified_count = await db.users.count_documents({"email_verified": False, "provider": "email"})
         logger.info(f"[VERIFICATION] Debug: Total unverified email users in DB: {unverified_count}")
+        
+        # Check for similar tokens (first 20 chars match) to detect encoding issues
+        if len(token) >= 20:
+            partial_match = await db.users.find_one(
+                {"verification_token": {"$regex": f"^{token[:20]}"}},
+                {"_id": 0, "email": 1, "verification_token": 1}
+            )
+            if partial_match:
+                logger.warning(f"[VERIFICATION] PARTIAL MATCH FOUND! User: {partial_match.get('email')}")
+                logger.warning(f"[VERIFICATION] DB token: {partial_match.get('verification_token')}")
+                logger.warning(f"[VERIFICATION] Received token: {token}")
         
         raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used or expired.")
     
@@ -1534,21 +1558,28 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
 @api_router.post("/auth/resend-verification")
 async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks):
     """Resend verification email"""
+    logger.info(f"[RESEND] Resend verification requested for: {email}")
+    
     user = await db.users.find_one({"email": email}, {"_id": 0})
     
     if not user:
+        logger.info(f"[RESEND] User not found: {email}")
         # Don't reveal if email exists
         return {"message": "If this email is registered, you will receive a verification link."}
     
     if user.get("email_verified", False):
+        logger.info(f"[RESEND] User already verified: {email}")
         raise HTTPException(status_code=400, detail="Email is already verified")
     
     if user.get("provider") == "google":
+        logger.info(f"[RESEND] User uses Google sign-in: {email}")
         raise HTTPException(status_code=400, detail="This account uses Google sign-in")
     
     # Generate new verification token
     verification_token = secrets.token_urlsafe(32)
     verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
+    
+    logger.info(f"[RESEND] Generated new token for {email}: {verification_token[:20]}...")
     
     await db.users.update_one(
         {"email": email},
@@ -1560,9 +1591,13 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
         }
     )
     
+    logger.info(f"[RESEND] Token saved to DB for: {email}")
+    
     # Send verification email
     first_name = user.get("name", "").split()[0] if user.get("name") else "there"
     verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+    logger.info(f"[RESEND] Verification link: {verification_link}")
+    
     html_content = get_verification_email_html(first_name, verification_link)
     
     background_tasks.add_task(

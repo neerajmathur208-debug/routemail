@@ -454,33 +454,40 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### 🔄 In Progress
 - None currently
 
-### ✅ Registration & Verification Flow Fixes (March 2026) - COMPREHENSIVE FIX
-- [x] **Backend Registration Endpoint Improvements**:
-  - 11 labeled steps with detailed logging at each step
-  - Token generated ONCE at Step 3
-  - Token saved to DB at Step 5 with immediate verification (Step 6)
-  - Token verified to match before proceeding
-  - Same token used in email link (Step 7)
-  - All post-creation tasks wrapped in try-catch (non-blocking)
-  - Comprehensive debug logging: `[REGISTRATION] Step X: ...`
-- [x] **Backend Verification Endpoint Improvements**:
-  - 11 labeled steps with detailed logging
-  - Double URL-decoding support for email client compatibility
-  - Fallback to try original token if decoded token doesn't match
-  - Timezone-aware expiry checking
-  - Atomic update to prevent race conditions
-  - Debug logging: `[VERIFICATION] Step X: ...`
-- [x] **Frontend VerifyEmail.jsx Improvements**:
-  - Added `encodeURIComponent(token)` for proper URL encoding
-  - Added console logging for debugging: `[VERIFY] Token from URL: ...`
-  - Proper error handling for all scenarios
-- [x] **Testing Verified**:
-  - Standard tokens: ✅ Pass
+### ✅ Registration & Verification Flow - FULLY REBUILT (March 2026)
+- [x] **Backend Registration Flow (11 Steps with Logging)**:
+  - Step 1: Validate input
+  - Step 2: Check existing user
+  - Step 3: Generate verification token ONCE (`secrets.token_urlsafe(32)`)
+  - Step 4: Prepare user document with token
+  - Step 5: Save user to database
+  - Step 6: VERIFY token was saved correctly (compare DB vs generated)
+  - Step 7: Build verification link with SAME token
+  - Step 8: Queue verification email (background task)
+  - Step 9-10: Optional tasks (permanent plan, admin notification)
+  - Step 11: Return success response
+- [x] **Backend Verification Flow (11 Steps with Logging)**:
+  - Step 1-2: Receive and URL-decode token (supports double-encoding)
+  - Step 3: Validate token format
+  - Step 4: Find user by token (with fallback to original/cleaned token)
+  - Step 4b: Partial match search for debugging token encoding issues
+  - Step 5: Check if already verified
+  - Step 6: Check token expiration (timezone-aware)
+  - Step 7: Atomic update (verify + clear token)
+  - Step 8-11: Create session, send welcome email, return success
+- [x] **Resend Verification with Logging**:
+  - Added `[RESEND]` logging for debugging
+  - Generates new token and updates DB
+- [x] **Frontend Improvements**:
+  - `encodeURIComponent(token)` for proper URL encoding
+  - Console logging: `[VERIFY] Token from URL: ...`
+- [x] **Comprehensive Testing**:
+  - Normal registration: ✅ Pass
+  - Resend verification: ✅ Pass
   - URL-encoded tokens: ✅ Pass
-  - Double-encoded tokens: ✅ Pass
   - Frontend E2E registration: ✅ Pass
   - Frontend E2E verification: ✅ Pass
-  - Token consistency confirmed via logs
+  - Database state verified: `email_verified: True`, `verification_token: CLEARED`
 
 ### 📋 Upcoming Tasks (P1)
 1. **Gmail OAuth Integration** - Secure OAuth 2.0 connection for Gmail accounts
