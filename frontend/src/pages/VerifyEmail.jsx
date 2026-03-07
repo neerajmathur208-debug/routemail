@@ -17,6 +17,10 @@ export default function VerifyEmail() {
   useEffect(() => {
     const token = searchParams.get("token");
     
+    // Debug logging for troubleshooting
+    console.log("[VERIFY] Token from URL:", token);
+    console.log("[VERIFY] Token length:", token?.length || 0);
+    
     if (!token) {
       setStatus("error");
       setMessage("Invalid verification link.");
@@ -31,7 +35,14 @@ export default function VerifyEmail() {
 
     const verifyEmail = async () => {
       try {
-        const response = await api.get(`/auth/verify-email?token=${token}`);
+        // URL encode the token to handle special characters properly
+        const encodedToken = encodeURIComponent(token);
+        console.log("[VERIFY] Encoded token:", encodedToken);
+        console.log("[VERIFY] Making API request...");
+        
+        const response = await api.get(`/auth/verify-email?token=${encodedToken}`);
+        
+        console.log("[VERIFY] API Response:", response.data);
         
         // Prevent state updates if already completed (race condition protection)
         if (verificationCompleted.current) return;
@@ -62,6 +73,8 @@ export default function VerifyEmail() {
           }
         }, 1500);
       } catch (error) {
+        console.log("[VERIFY] API Error:", error.response?.data || error.message);
+        
         // Prevent state updates if verification already succeeded
         if (verificationCompleted.current) return;
         verificationCompleted.current = true;

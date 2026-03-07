@@ -1384,7 +1384,16 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     # ========== STEP 4: Find User by Token ==========
     logger.info("[VERIFICATION] Step 4: Searching for user with this token...")
     
+    # Try finding user with the decoded token first
     user = await db.users.find_one({"verification_token": token}, {"_id": 0})
+    
+    # If not found and we decoded, try with original token as fallback
+    if not user and token != original_token:
+        logger.info("[VERIFICATION] Step 4: Trying with original (non-decoded) token...")
+        user = await db.users.find_one({"verification_token": original_token}, {"_id": 0})
+        if user:
+            logger.info("[VERIFICATION] Step 4: Found user with original token!")
+            token = original_token  # Use original for rest of flow
     
     if not user:
         logger.warning(f"[VERIFICATION] Step 4: FAILED - No user found with token: {token[:20]}...")
