@@ -1260,10 +1260,13 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         admin_html
     )
     
+    logger.info(f"Registration completed successfully for {request.email}")
+    
     # Return success - user is created, email will be sent in background
     return JSONResponse(
         status_code=201,
         content={
+            "success": True,
             "message": "Registration successful! Please check your email to verify your account.",
             "email": request.email,
             "requires_verification": True
@@ -1273,8 +1276,15 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
 @api_router.get("/auth/verify-email")
 async def verify_email(token: str, response: Response, background_tasks: BackgroundTasks):
     """Verify email address with token"""
+    from urllib.parse import unquote
+    
+    # URL decode the token in case it was encoded by email clients
+    token = unquote(token)
+    
     if not token or len(token) < 10:
         raise HTTPException(status_code=400, detail="Invalid verification link.")
+    
+    logger.info(f"Verification attempt with token: {token[:20]}...")
     
     # Find user with this token
     user = await db.users.find_one({"verification_token": token}, {"_id": 0})
