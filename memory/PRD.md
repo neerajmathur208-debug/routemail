@@ -454,6 +454,25 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### 🔄 In Progress
 - None currently
 
+### ✅ Registration & Verification Flow Fixes (March 2026)
+- [x] **Robust Error Handling in Registration**:
+  - Wrapped `apply_permanent_plan_if_applicable()` in try-catch (non-blocking)
+  - Wrapped email preparation and admin notification in try-catch blocks
+  - All background tasks are now fail-safe (won't crash registration)
+  - Ensures 201 response is always returned after successful user creation
+- [x] **Enhanced Verification Logging**:
+  - Added detailed logging: raw token length, decoded token, user found status
+  - Double URL-decoding support for email clients that double-encode tokens
+  - Timezone-aware expiry checking for verification tokens
+- [x] **Consistent API Responses**:
+  - Added `success: true` to all verification success responses
+  - Consistent JSON structure across registration and verification endpoints
+- [x] **Testing Verified**:
+  - Registration returns proper 201 JSON response
+  - Verification successfully validates tokens and activates accounts
+  - Invalid/expired tokens show appropriate error messages
+  - Complete E2E flow tested via API and browser automation
+
 ### 📋 Upcoming Tasks (P1)
 1. **Gmail OAuth Integration** - Secure OAuth 2.0 connection for Gmail accounts
    - Files: backend/server.py, frontend/src/pages/EmailAccounts.jsx

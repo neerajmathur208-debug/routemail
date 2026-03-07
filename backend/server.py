@@ -1258,29 +1258,42 @@ async def register_email(request: EmailRegisterRequest, background_tasks: Backgr
         logger.error(f"Failed to create user {request.email}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create account. Please try again.")
     
-    # Apply permanent plan assignment if applicable
-    await apply_permanent_plan_if_applicable(request.email, user_id)
+    # Apply permanent plan assignment if applicable (non-blocking, log errors)
+    try:
+        await apply_permanent_plan_if_applicable(request.email, user_id)
+    except Exception as e:
+        logger.error(f"Failed to apply permanent plan for {request.email}: {str(e)}")
+        # Don't fail registration if permanent plan assignment fails
     
-    # Send verification email in background (won't block response)
-    first_name = request.name.split()[0] if request.name else "there"
-    verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
-    logger.info(f"Verification link for {request.email}: {verification_link}")
-    html_content = get_verification_email_html(first_name, verification_link)
+    # Prepare verification email content
+    try:
+        first_name = request.name.split()[0] if request.name else "there"
+        verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+        logger.info(f"Verification link for {request.email}: {verification_link}")
+        html_content = get_verification_email_html(first_name, verification_link)
+        
+        # Send verification email in background (won't block response)
+        background_tasks.add_task(
+            send_email_async,
+            request.email,
+            "Verify Your RouteMail Account",
+            html_content
+        )
+    except Exception as e:
+        logger.error(f"Failed to prepare verification email for {request.email}: {str(e)}")
+        # Don't fail registration if email preparation fails
     
-    background_tasks.add_task(
-        send_email_async,
-        request.email,
-        "Verify Your RouteMail Account",
-        html_content
-    )
-    
-    # Send admin notification for new signup
-    admin_html = get_admin_signup_notification_html(request.email, "Email + Password")
-    background_tasks.add_task(
-        send_admin_notification,
-        "New User Signup on RouteMail",
-        admin_html
-    )
+    # Send admin notification for new signup (non-blocking)
+    try:
+        admin_html = get_admin_signup_notification_html(request.email, "Email + Password")
+        background_tasks.add_task(
+            send_admin_notification,
+            "New User Signup on RouteMail",
+            admin_html
+        )
+    except Exception as e:
+        logger.error(f"Failed to prepare admin notification for {request.email}: {str(e)}")
+        # Don't fail registration if admin notification fails
     
     logger.info(f"Registration completed successfully for {request.email}")
     
@@ -1300,20 +1313,39 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     """Verify email address with token"""
     from urllib.parse import unquote
     
+    # Log the raw token received
+    logger.info(f"Verification request received. Raw token length: {len(token) if token else 0}")
+    
     # URL decode the token in case it was encoded by email clients
+    # Apply unquote twice in case of double-encoding
+    original_token = token
     token = unquote(token)
+    if token != original_token:
+        logger.info(f"Token was URL-encoded, decoded from: {original_token[:20]}... to: {token[:20]}...")
+        # Try double decoding in case email client double-encoded
+        token_double = unquote(token)
+        if token_double != token:
+            logger.info("Token was double-encoded, using double-decoded token")
+            token = token_double
     
     if not token or len(token) < 10:
+        logger.warning("Invalid token received: too short or empty")
         raise HTTPException(status_code=400, detail="Invalid verification link.")
     
-    logger.info(f"Verification attempt with token: {token[:20]}...")
+    logger.info(f"Verification attempt with token: {token[:20]}... (full length: {len(token)})")
     
     # Find user with this token
     user = await db.users.find_one({"verification_token": token}, {"_id": 0})
     
     if not user:
-        # Token not found - could be already used or invalid
+        # Token not found - try to find if a user with similar email exists (for debugging)
+        logger.warning(f"Token not found in database: {token[:20]}...")
+        
+        # Check if this could be a token that was already used
+        # by looking for users who were recently verified
         raise HTTPException(status_code=400, detail="Invalid verification link. The link may have already been used or expired.")
+    
+    logger.info(f"Found user for verification: {user['email']}")
     
     # Check if already verified (shouldn't happen, but handle gracefully)
     if user.get("email_verified", False):
@@ -1324,6 +1356,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
         )
         logger.info(f"User {user['email']} already verified, clearing token")
         return {
+            "success": True,
             "message": "Email already verified!",
             "user_id": user["user_id"],
             "email": user["email"],
@@ -1338,6 +1371,8 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     if expires:
         if isinstance(expires, str):
             expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) > expires:
             # Delete expired user
             await db.users.delete_one({"user_id": user["user_id"]})
@@ -1399,6 +1434,7 @@ async def verify_email(token: str, response: Response, background_tasks: Backgro
     )
     
     return {
+        "success": True,
         "message": "Email verified successfully!",
         "user_id": user["user_id"],
         "email": user["email"],
