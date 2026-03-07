@@ -221,8 +221,8 @@ class TestCreateCheckoutEndpoint:
         """Verify create checkout returns checkout URL"""
         checkout_data = {
             "price_id": "price_1T3JubD2HZgi5NSCVPybSMdk",  # Starter USD
-            "success_url": "https://batch-send-preview.preview.emergentagent.com/dashboard?subscription=success",
-            "cancel_url": "https://batch-send-preview.preview.emergentagent.com/subscription?canceled=true"
+            "success_url": "https://smtp-manager-stage.preview.emergentagent.com/dashboard?subscription=success",
+            "cancel_url": "https://smtp-manager-stage.preview.emergentagent.com/subscription?canceled=true"
         }
         
         response = test_user_session.post(

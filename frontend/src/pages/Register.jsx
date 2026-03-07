@@ -177,6 +177,7 @@ export default function Register() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
+          data-testid="verification-sent-screen"
         >
           <div className="mb-6">
             <Link to="/">
@@ -188,19 +189,45 @@ export default function Register() {
             </Link>
           </div>
           
-          <CheckCircle2 size={56} className="mx-auto text-emerald-500 mb-4" />
+          {/* Success Icon with animation */}
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+          >
+            <CheckCircle2 size={64} className="mx-auto text-emerald-500 mb-4" />
+          </motion.div>
           
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Check Your Email</h2>
+          {/* Main Success Message */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-6" data-testid="verification-success-alert">
+            <h2 className="text-xl font-bold text-emerald-800 mb-2">Verification Link Sent!</h2>
+            <p className="text-emerald-700">
+              Please check your email to verify your account.
+            </p>
+          </div>
           
           <p className="text-slate-600 mb-2">
             We've sent a verification link to:
           </p>
-          <p className="font-semibold text-slate-800 mb-4">{registeredEmail}</p>
+          <p className="font-semibold text-slate-800 mb-4 break-all">{registeredEmail}</p>
           
-          <div className="bg-blue-50 rounded-lg p-4 mb-6 text-left">
-            <p className="text-sm text-blue-800">
-              <strong>Important:</strong> The link expires in 2 hours. Check your spam folder if you don't see it.
-            </p>
+          {/* Important Note - Spam Folder */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left" data-testid="spam-folder-note">
+            <div className="flex items-start gap-3">
+              <div className="text-amber-500 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-amber-800 font-medium mb-1">Can't find the email?</p>
+                <p className="text-sm text-amber-700">
+                  If you don't see the email in your inbox, please check your <strong>spam</strong> or <strong>junk</strong> folder. The link expires in 2 hours.
+                </p>
+              </div>
+            </div>
           </div>
           
           <div className="space-y-3">
@@ -208,6 +235,7 @@ export default function Register() {
               variant="outline"
               onClick={handleResendVerification}
               className="w-full"
+              data-testid="resend-verification-btn"
             >
               Resend Verification Email
             </Button>
@@ -218,6 +246,7 @@ export default function Register() {
                 setFormData({ name: "", email: "", password: "", confirm_password: "" });
               }}
               className="w-full text-slate-500"
+              data-testid="use-different-email-btn"
             >
               Use Different Email
             </Button>

@@ -301,6 +301,17 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # ==================== EMAIL HELPERS (Resend) ====================
 
+# Logo URL for system emails (publicly accessible)
+ROUTEMAIL_LOGO_URL = "https://routemail.co/routemail-logo.png"
+
+def get_email_logo_html() -> str:
+    """Generate the logo header HTML for system emails"""
+    return f"""
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="{ROUTEMAIL_LOGO_URL}" alt="RouteMail" style="width: 160px; display: block; margin: 0 auto 20px auto; max-width: 100%; height: auto;">
+        </div>
+    """
+
 async def send_email_async(to_email: str, subject: str, html_content: str):
     """Send email using Resend API (non-blocking)"""
     try:
@@ -318,7 +329,8 @@ async def send_email_async(to_email: str, subject: str, html_content: str):
         return None
 
 def get_verification_email_html(first_name: str, verification_link: str) -> str:
-    """Generate verification email HTML"""
+    """Generate verification email HTML with RouteMail branding"""
+    logo_html = get_email_logo_html()
     return f"""
     <!DOCTYPE html>
     <html>
@@ -326,8 +338,9 @@ def get_verification_email_html(first_name: str, verification_link: str) -> str:
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            {logo_html}
             <div style="text-align: center; margin-bottom: 32px;">
                 <h1 style="color: #18181b; font-size: 24px; margin: 0;">Verify Your RouteMail Account</h1>
             </div>
@@ -348,7 +361,9 @@ def get_verification_email_html(first_name: str, verification_link: str) -> str:
     """
 
 def get_welcome_email_html(first_name: str, plan_type: str) -> tuple:
-    """Generate welcome email subject and HTML based on plan type"""
+    """Generate welcome email subject and HTML based on plan type with RouteMail branding"""
+    logo_html = get_email_logo_html()
+    
     if plan_type == "growth":
         subject = "Welcome to RouteMail Growth 🚀"
         features = """
@@ -386,8 +401,9 @@ def get_welcome_email_html(first_name: str, plan_type: str) -> tuple:
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            {logo_html}
             <div style="text-align: center; margin-bottom: 32px;">
                 <h1 style="color: #18181b; font-size: 24px; margin: 0;">{subject.replace(' 🚀', '').replace(' 🎯', '')}</h1>
             </div>
@@ -407,7 +423,8 @@ def get_welcome_email_html(first_name: str, plan_type: str) -> tuple:
     return subject, html
 
 def get_password_reset_email_html(reset_link: str) -> str:
-    """Generate password reset email HTML"""
+    """Generate password reset email HTML with RouteMail branding"""
+    logo_html = get_email_logo_html()
     return f"""
     <!DOCTYPE html>
     <html>
@@ -415,8 +432,9 @@ def get_password_reset_email_html(reset_link: str) -> str:
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            {logo_html}
             <div style="text-align: center; margin-bottom: 32px;">
                 <h1 style="color: #18181b; font-size: 24px; margin: 0;">Reset Your RouteMail Password</h1>
             </div>
@@ -453,14 +471,16 @@ async def send_admin_notification(subject: str, html_content: str):
         # Don't raise - admin notifications should not interrupt user flow
 
 def get_admin_signup_notification_html(user_email: str, signup_method: str, ip_address: str = "Unknown") -> str:
-    """Generate admin notification for new user signup"""
+    """Generate admin notification for new user signup with RouteMail branding"""
+    logo_html = get_email_logo_html()
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"""
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"></head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            {logo_html}
             <div style="text-align: center; margin-bottom: 24px;">
                 <h1 style="color: #18181b; font-size: 24px; margin: 0;">🎉 New User Signup</h1>
             </div>
@@ -504,14 +524,16 @@ def get_admin_subscription_notification_html(
     customer_id: str,
     subscription_id: str
 ) -> str:
-    """Generate admin notification for new paid subscription"""
+    """Generate admin notification for new paid subscription with RouteMail branding"""
+    logo_html = get_email_logo_html()
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"""
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"></head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+            {logo_html}
             <div style="text-align: center; margin-bottom: 24px;">
                 <h1 style="color: #18181b; font-size: 24px; margin: 0;">💰 New Paid Subscription</h1>
             </div>
