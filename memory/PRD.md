@@ -6,7 +6,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 ## Core Requirements
 1. **Email Account Management**: Connect multiple email accounts (SMTP/IMAP or OAuth)
 2. **List Management**: Upload and manage CSV email lists with multiple lists per user
-3. **Campaign Management**: Create campaigns with rich text editor, dynamic variables ({column_name}), save/load campaigns with statuses (Draft, Scheduled, Running, Paused, Completed)
+3. **Campaign Management**: Create campaigns with rich text editor, dynamic variables ({column_name}), save/load campaigns with statuses (Draft, Scheduled, Running, Paused, Paused_daily_limit, Completed, Failed). Pause/Resume functionality for running and scheduled campaigns.
 4. **Scheduler**: Schedule campaigns to send at a specific date/time or send immediately
 5. **Rotational Sending**: Send emails rotationally across accounts with custom daily limits
 6. **Sending Logs**: Detailed logs showing sent/failed status and error messages
@@ -489,6 +489,38 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
+
+### ✅ Pause/Resume Campaign Functionality (March 2026)
+- [x] **Backend Endpoints Enhanced**:
+  - `POST /api/campaigns/{campaign_id}/pause` - Pauses running or scheduled campaigns
+  - `POST /api/campaigns/{campaign_id}/resume` - Resumes paused campaigns
+  - Stores `previous_status` and `paused_at` timestamp
+  - Logging: `[CAMPAIGN_PAUSED]` and `[CAMPAIGN_RESUMED]` for audit
+- [x] **Campaign Status Support**:
+  - `draft` - Not started
+  - `scheduled` - Waiting for scheduled time
+  - `running` - Actively sending emails
+  - `paused` - Manually paused by user
+  - `paused_daily_limit` - Paused due to daily limit reached
+  - `completed` - All emails sent
+  - `failed` - Campaign failed
+- [x] **Dashboard Campaign List**:
+  - Pause button visible for `running` and `scheduled` campaigns
+  - Resume button visible for `paused` and `paused_daily_limit` campaigns
+  - Status badges with appropriate colors for all statuses
+- [x] **Campaign View Page**:
+  - Pause Campaign button for running/scheduled campaigns
+  - Resume Campaign button for paused campaigns
+  - Status badge shows current state
+- [x] **Sending Engine Behavior**:
+  - `process_campaign_queue` checks `status != "running"` before each email
+  - Paused campaigns exit processing loop immediately
+  - Scheduled campaign checker only processes `status == "scheduled"`
+- [x] **Data Integrity**:
+  - Already sent emails preserved
+  - Progress counts maintained
+  - Logs remain accurate
+  - No duplicate sends on resume
 
 ---
 

@@ -2635,16 +2635,47 @@ async def unschedule_campaign(campaign_id: str, user: User = Depends(get_current
 
 @api_router.post("/campaigns/{campaign_id}/pause")
 async def pause_campaign(campaign_id: str, user: User = Depends(get_current_user)):
-    """Pause a running campaign"""
+    """Pause a running or scheduled campaign"""
+    # Find the campaign first
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    current_status = campaign.get("status")
+    
+    # Only allow pausing running or scheduled campaigns
+    if current_status not in ["running", "scheduled"]:
+        raise HTTPException(status_code=400, detail=f"Cannot pause campaign with status '{current_status}'. Only running or scheduled campaigns can be paused.")
+    
+    # Store the previous status so we know what to resume to
+    previous_status = current_status
+    
     result = await db.campaigns.update_one(
-        {"campaign_id": campaign_id, "user_id": user.user_id, "status": "running"},
-        {"$set": {"status": "paused", "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"$set": {
+            "status": "paused",
+            "paused_at": datetime.now(timezone.utc).isoformat(),
+            "previous_status": previous_status,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
     )
     
     if result.modified_count == 0:
-        raise HTTPException(status_code=400, detail="Campaign not found or not running")
+        raise HTTPException(status_code=400, detail="Failed to pause campaign")
     
-    return {"message": "Campaign paused", "status": "paused"}
+    # Log the action
+    logger.info(f"[CAMPAIGN_PAUSED] User: {user.email} | Campaign: {campaign_id} | Previous status: {previous_status}")
+    
+    return {
+        "success": True,
+        "message": "Campaign paused successfully",
+        "status": "paused",
+        "previous_status": previous_status
+    }
 
 @api_router.post("/campaigns/{campaign_id}/resume")
 async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
@@ -2657,14 +2688,34 @@ async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, u
     if not campaign:
         raise HTTPException(status_code=400, detail="Campaign not found or not paused")
     
+    # Get the previous status to determine how to resume
+    previous_status = campaign.get("previous_status", "running")
+    
+    # Update status to running (we always resume as running, even if it was scheduled before)
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},
-        {"$set": {"status": "running", "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "status": "running",
+            "resumed_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        },
+        "$unset": {
+            "paused_at": "",
+            "previous_status": ""
+        }}
     )
     
+    # Log the action
+    logger.info(f"[CAMPAIGN_RESUMED] User: {user.email} | Campaign: {campaign_id} | Previous status: {previous_status}")
+    
+    # Start processing the campaign queue
     background_tasks.add_task(process_campaign_queue, campaign_id, user.user_id)
     
-    return {"message": "Campaign resumed", "status": "running"}
+    return {
+        "success": True,
+        "message": "Campaign resumed successfully",
+        "status": "running"
+    }
 
 @api_router.delete("/campaigns/{campaign_id}")
 async def delete_campaign(campaign_id: str, user: User = Depends(get_current_user)):

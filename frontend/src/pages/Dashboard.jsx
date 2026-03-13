@@ -853,9 +853,12 @@ export default function Dashboard({ user, setUser }) {
                                   campaign.status === "completed" ? "bg-emerald-100 text-emerald-700" :
                                   campaign.status === "running" ? "bg-blue-100 text-blue-700" :
                                   campaign.status === "paused" ? "bg-amber-100 text-amber-700" :
+                                  campaign.status === "paused_daily_limit" ? "bg-orange-100 text-orange-700" :
+                                  campaign.status === "scheduled" ? "bg-purple-100 text-purple-700" :
+                                  campaign.status === "failed" ? "bg-red-100 text-red-700" :
                                   "bg-slate-100 text-slate-600"
                                 }`}>
-                                  {campaign.status}
+                                  {campaign.status === "paused_daily_limit" ? "Daily Limit Reached" : campaign.status}
                                 </span>
                               </div>
                               <div className="flex items-center gap-6 text-sm">
@@ -889,18 +892,43 @@ export default function Dashboard({ user, setUser }) {
                                   <Edit size={16} className="text-slate-400" />
                                 </Button>
                               )}
-                              {campaign.status === "paused" && (
+                              {campaign.status === "running" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
+                                  data-testid={`pause-campaign-${campaign.campaign_id}`}
+                                >
+                                  <Pause size={14} className="mr-1" />
+                                  Pause
+                                </Button>
+                              )}
+                              {campaign.status === "scheduled" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
+                                  data-testid={`pause-scheduled-${campaign.campaign_id}`}
+                                >
+                                  <Pause size={14} className="mr-1" />
+                                  Pause
+                                </Button>
+                              )}
+                              {(campaign.status === "paused" || campaign.status === "paused_daily_limit") && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                   onClick={() => handleResumeCampaign(campaign.campaign_id)}
+                                  data-testid={`resume-campaign-${campaign.campaign_id}`}
                                 >
                                   <Play size={14} className="mr-1" />
                                   Resume
                                 </Button>
                               )}
-                              {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused") && (
+                              {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused" || campaign.status === "paused_daily_limit" || campaign.status === "scheduled") && (
                                 <>
                                   <Button
                                     variant="ghost"

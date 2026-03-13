@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Clock,
   Globe,
+  Pause,
+  Play,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -25,63 +27,92 @@ export default function CampaignView({ user, setUser }) {
   const [loading, setLoading] = useState(true);
   const [listName, setListName] = useState("");
   const [accountNames, setAccountNames] = useState([]);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchCampaign = async () => {
+    try {
+      const response = await api.get(`/campaigns/${campaignId}`);
+      setCampaign(response.data);
+      
+      // Fetch list name if list_id exists
+      if (response.data.list_id) {
+        try {
+          const listRes = await api.get(`/lists/${response.data.list_id}`);
+          setListName(listRes.data.name || "Unknown List");
+        } catch (e) {
+          setListName("List Deleted");
+        }
+      }
+      
+      // Fetch account names
+      if (response.data.account_ids?.length > 0) {
+        try {
+          const accountsRes = await api.get("/accounts");
+          const accounts = accountsRes.data.accounts || accountsRes.data || [];
+          const names = response.data.account_ids.map(id => {
+            const acc = accounts.find(a => a.account_id === id);
+            return acc ? acc.email : "Unknown";
+          });
+          setAccountNames(names);
+        } catch (e) {
+          setAccountNames(["Unable to load accounts"]);
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to load campaign");
+      navigate("/dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchCampaign = async () => {
-      try {
-        const response = await api.get(`/campaigns/${campaignId}`);
-        setCampaign(response.data);
-        
-        // Fetch list name if list_id exists
-        if (response.data.list_id) {
-          try {
-            const listRes = await api.get(`/lists/${response.data.list_id}`);
-            setListName(listRes.data.name || "Unknown List");
-          } catch (e) {
-            setListName("List Deleted");
-          }
-        }
-        
-        // Fetch account names
-        if (response.data.account_ids?.length > 0) {
-          try {
-            const accountsRes = await api.get("/accounts");
-            const accounts = accountsRes.data.accounts || accountsRes.data || [];
-            const names = response.data.account_ids.map(id => {
-              const acc = accounts.find(a => a.account_id === id);
-              return acc ? acc.email : "Unknown";
-            });
-            setAccountNames(names);
-          } catch (e) {
-            setAccountNames(["Unable to load accounts"]);
-          }
-        }
-      } catch (error) {
-        toast.error("Failed to load campaign");
-        navigate("/dashboard");
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchCampaign();
   }, [campaignId, navigate]);
+
+  const handlePauseCampaign = async () => {
+    setActionLoading(true);
+    try {
+      await api.post(`/campaigns/${campaignId}/pause`);
+      toast.success("Campaign paused successfully");
+      fetchCampaign();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to pause campaign");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResumeCampaign = async () => {
+    setActionLoading(true);
+    try {
+      await api.post(`/campaigns/${campaignId}/resume`);
+      toast.success("Campaign resumed successfully");
+      fetchCampaign();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to resume campaign");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const getStatusBadge = (status) => {
     const statusConfig = {
       draft: { color: "bg-slate-100 text-slate-700", icon: Clock },
-      scheduled: { color: "bg-blue-100 text-blue-700", icon: Calendar },
-      running: { color: "bg-amber-100 text-amber-700", icon: Send },
+      scheduled: { color: "bg-purple-100 text-purple-700", icon: Calendar },
+      running: { color: "bg-blue-100 text-blue-700", icon: Send },
       completed: { color: "bg-emerald-100 text-emerald-700", icon: CheckCircle2 },
-      paused: { color: "bg-orange-100 text-orange-700", icon: AlertCircle },
+      paused: { color: "bg-amber-100 text-amber-700", icon: Pause },
+      paused_daily_limit: { color: "bg-orange-100 text-orange-700", icon: AlertCircle },
       failed: { color: "bg-red-100 text-red-700", icon: AlertCircle },
     };
     const config = statusConfig[status] || statusConfig.draft;
     const Icon = config.icon;
+    const displayStatus = status === "paused_daily_limit" ? "Daily Limit Reached" : status.charAt(0).toUpperCase() + status.slice(1);
     return (
       <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${config.color}`}>
         <Icon size={14} />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {displayStatus}
       </span>
     );
   };
@@ -128,7 +159,7 @@ export default function CampaignView({ user, setUser }) {
                 </h1>
                 <div className="flex items-center gap-3">
                   {getStatusBadge(campaign.status)}
-                  {campaign.scheduled_at && (
+                  {campaign.scheduled_at && campaign.status === "scheduled" && (
                     <span className="text-sm text-slate-500 flex items-center gap-1">
                       <Calendar size={14} />
                       Scheduled: {new Date(campaign.scheduled_at).toLocaleString()}
@@ -136,13 +167,41 @@ export default function CampaignView({ user, setUser }) {
                   )}
                 </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={() => navigate(`/campaign/${campaignId}/logs`)}
-                data-testid="view-logs-btn"
-              >
-                View Logs
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* Pause button for running/scheduled campaigns */}
+                {(campaign.status === "running" || campaign.status === "scheduled") && (
+                  <Button
+                    variant="outline"
+                    onClick={handlePauseCampaign}
+                    disabled={actionLoading}
+                    className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                    data-testid="pause-campaign-btn"
+                  >
+                    <Pause size={16} className="mr-2" />
+                    Pause Campaign
+                  </Button>
+                )}
+                {/* Resume button for paused campaigns */}
+                {(campaign.status === "paused" || campaign.status === "paused_daily_limit") && (
+                  <Button
+                    variant="outline"
+                    onClick={handleResumeCampaign}
+                    disabled={actionLoading}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                    data-testid="resume-campaign-btn"
+                  >
+                    <Play size={16} className="mr-2" />
+                    Resume Campaign
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/campaign/${campaignId}/logs`)}
+                  data-testid="view-logs-btn"
+                >
+                  View Logs
+                </Button>
+              </div>
             </div>
           </motion.div>
 
