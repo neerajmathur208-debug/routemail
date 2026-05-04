@@ -15,10 +15,17 @@ import {
   Loader2,
   ArrowLeft,
   Save,
+  Flame,
+  Play,
+  Pause,
+  Settings,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -70,6 +77,19 @@ export default function EmailAccounts({ user, setUser }) {
   const [editingDelay, setEditingDelay] = useState({});
   const [savingLimit, setSavingLimit] = useState({});
   const [savingDelay, setSavingDelay] = useState({});
+  
+  // Warmup states
+  const [warmupModalOpen, setWarmupModalOpen] = useState(false);
+  const [warmupAccount, setWarmupAccount] = useState(null);
+  const [warmupLoading, setWarmupLoading] = useState({});
+  const [warmupSettings, setWarmupSettings] = useState({
+    starting_emails_per_day: 5,
+    max_emails_per_day: 50,
+    daily_increment: 5,
+    reply_rate: 40
+  });
+  const [warmupStatsModal, setWarmupStatsModal] = useState(false);
+  const [warmupStats, setWarmupStats] = useState(null);
 
   const [formData, setFormData] = useState({
     preset: "custom",
@@ -237,6 +257,81 @@ export default function EmailAccounts({ user, setUser }) {
       fetchAccounts();
     } catch (error) {
       toast.error("Failed to remove account");
+    }
+  };
+
+  // Warmup Functions
+  const handleEnableWarmup = async (account) => {
+    setWarmupLoading(prev => ({ ...prev, [account.account_id]: true }));
+    try {
+      await api.post(`/accounts/${account.account_id}/warmup/enable`, warmupSettings);
+      toast.success("Warmup enabled successfully");
+      fetchAccounts();
+      setWarmupModalOpen(false);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to enable warmup");
+    } finally {
+      setWarmupLoading(prev => ({ ...prev, [account.account_id]: false }));
+    }
+  };
+
+  const handleDisableWarmup = async (accountId) => {
+    setWarmupLoading(prev => ({ ...prev, [accountId]: true }));
+    try {
+      await api.post(`/accounts/${accountId}/warmup/disable`);
+      toast.success("Warmup disabled");
+      fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to disable warmup");
+    } finally {
+      setWarmupLoading(prev => ({ ...prev, [accountId]: false }));
+    }
+  };
+
+  const handlePauseWarmup = async (accountId) => {
+    setWarmupLoading(prev => ({ ...prev, [accountId]: true }));
+    try {
+      await api.post(`/accounts/${accountId}/warmup/pause`);
+      toast.success("Warmup paused");
+      fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to pause warmup");
+    } finally {
+      setWarmupLoading(prev => ({ ...prev, [accountId]: false }));
+    }
+  };
+
+  const handleResumeWarmup = async (accountId) => {
+    setWarmupLoading(prev => ({ ...prev, [accountId]: true }));
+    try {
+      await api.post(`/accounts/${accountId}/warmup/resume`);
+      toast.success("Warmup resumed");
+      fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to resume warmup");
+    } finally {
+      setWarmupLoading(prev => ({ ...prev, [accountId]: false }));
+    }
+  };
+
+  const openWarmupSettings = (account) => {
+    setWarmupAccount(account);
+    setWarmupSettings(account.warmup_settings || {
+      starting_emails_per_day: 5,
+      max_emails_per_day: 50,
+      daily_increment: 5,
+      reply_rate: 40
+    });
+    setWarmupModalOpen(true);
+  };
+
+  const fetchWarmupStats = async (accountId) => {
+    try {
+      const response = await api.get(`/accounts/${accountId}/warmup/stats`);
+      setWarmupStats(response.data);
+      setWarmupStatsModal(true);
+    } catch (error) {
+      toast.error("Failed to load warmup stats");
     }
   };
 
@@ -459,6 +554,126 @@ export default function EmailAccounts({ user, setUser }) {
                         </p>
                       </div>
                     </div>
+
+                    {/* Warmup Section */}
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Flame size={18} className={account.warmup_enabled ? "text-orange-500" : "text-slate-400"} />
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">Email Warmup</p>
+                            <p className="text-xs text-slate-500">
+                              {account.warmup_enabled 
+                                ? `Status: ${account.warmup_status === 'active' ? 'Active' : 'Paused'} • Day ${account.warmup_day || 1}`
+                                : 'Gradually warm up this account'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {account.warmup_enabled ? (
+                            <>
+                              {/* Stats Button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => fetchWarmupStats(account.account_id)}
+                                className="text-slate-500"
+                                data-testid={`warmup-stats-${account.account_id}`}
+                              >
+                                <BarChart3 size={14} className="mr-1" />
+                                Stats
+                              </Button>
+                              
+                              {/* Pause/Resume */}
+                              {account.warmup_status === 'active' ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handlePauseWarmup(account.account_id)}
+                                  disabled={warmupLoading[account.account_id]}
+                                  className="text-amber-600"
+                                  data-testid={`pause-warmup-${account.account_id}`}
+                                >
+                                  {warmupLoading[account.account_id] ? (
+                                    <Loader2 size={14} className="animate-spin mr-1" />
+                                  ) : (
+                                    <Pause size={14} className="mr-1" />
+                                  )}
+                                  Pause
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResumeWarmup(account.account_id)}
+                                  disabled={warmupLoading[account.account_id]}
+                                  className="text-green-600"
+                                  data-testid={`resume-warmup-${account.account_id}`}
+                                >
+                                  {warmupLoading[account.account_id] ? (
+                                    <Loader2 size={14} className="animate-spin mr-1" />
+                                  ) : (
+                                    <Play size={14} className="mr-1" />
+                                  )}
+                                  Resume
+                                </Button>
+                              )}
+                              
+                              {/* Settings */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openWarmupSettings(account)}
+                                className="text-slate-500"
+                                data-testid={`warmup-settings-${account.account_id}`}
+                              >
+                                <Settings size={14} />
+                              </Button>
+                              
+                              {/* Disable */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDisableWarmup(account.account_id)}
+                                disabled={warmupLoading[account.account_id]}
+                                className="text-red-500"
+                                data-testid={`disable-warmup-${account.account_id}`}
+                              >
+                                Disable
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openWarmupSettings(account)}
+                              className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                              data-testid={`enable-warmup-${account.account_id}`}
+                            >
+                              <Flame size={14} className="mr-1" />
+                              Enable Warmup
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Warmup Progress - Show when enabled */}
+                      {account.warmup_enabled && account.warmup_status === 'active' && (
+                        <div className="mt-3 p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-orange-700">
+                              <TrendingUp size={14} className="inline mr-1" />
+                              Warming up: Day {account.warmup_day || 1}
+                            </span>
+                            <span className="text-orange-600 font-medium">
+                              {account.warmup_settings?.starting_emails_per_day || 5} → {account.warmup_settings?.max_emails_per_day || 50} emails/day
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -647,6 +862,199 @@ export default function EmailAccounts({ user, setUser }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Warmup Settings Modal */}
+      <Dialog open={warmupModalOpen} onOpenChange={setWarmupModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flame className="text-orange-500" />
+              Email Warmup Settings
+            </DialogTitle>
+            <DialogDescription>
+              Configure warmup settings for {warmupAccount?.email}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <p className="text-sm text-orange-800">
+                <strong>Note:</strong> Warmup emails will include "(RTM)" in the subject line for easy identification. 
+                Emails are sent between your connected accounts.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Starting Emails/Day</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={warmupSettings.starting_emails_per_day}
+                  onChange={(e) => setWarmupSettings({
+                    ...warmupSettings,
+                    starting_emails_per_day: parseInt(e.target.value) || 5
+                  })}
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-slate-500 mt-1">1-20 emails</p>
+              </div>
+              <div>
+                <Label>Max Emails/Day</Label>
+                <Input
+                  type="number"
+                  min="10"
+                  max="100"
+                  value={warmupSettings.max_emails_per_day}
+                  onChange={(e) => setWarmupSettings({
+                    ...warmupSettings,
+                    max_emails_per_day: parseInt(e.target.value) || 50
+                  })}
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-slate-500 mt-1">10-100 emails</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Daily Increment</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={warmupSettings.daily_increment}
+                  onChange={(e) => setWarmupSettings({
+                    ...warmupSettings,
+                    daily_increment: parseInt(e.target.value) || 5
+                  })}
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-slate-500 mt-1">+1 to +10/day</p>
+              </div>
+              <div>
+                <Label>Reply Rate (%)</Label>
+                <Input
+                  type="number"
+                  min="30"
+                  max="50"
+                  value={warmupSettings.reply_rate}
+                  onChange={(e) => setWarmupSettings({
+                    ...warmupSettings,
+                    reply_rate: parseInt(e.target.value) || 40
+                  })}
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-slate-500 mt-1">30-50%</p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100">
+              <p className="text-sm text-slate-600">
+                <strong>Warmup Schedule:</strong> Day 1: {warmupSettings.starting_emails_per_day} emails → 
+                Day {Math.ceil((warmupSettings.max_emails_per_day - warmupSettings.starting_emails_per_day) / warmupSettings.daily_increment) + 1}: {warmupSettings.max_emails_per_day} emails
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWarmupModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => warmupAccount && handleEnableWarmup(warmupAccount)}
+              disabled={warmupLoading[warmupAccount?.account_id]}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              {warmupLoading[warmupAccount?.account_id] ? (
+                <Loader2 size={16} className="animate-spin mr-2" />
+              ) : (
+                <Flame size={16} className="mr-2" />
+              )}
+              {warmupAccount?.warmup_enabled ? "Update Settings" : "Enable Warmup"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Warmup Stats Modal */}
+      <Dialog open={warmupStatsModal} onOpenChange={setWarmupStatsModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="text-blue-500" />
+              Warmup Statistics
+            </DialogTitle>
+          </DialogHeader>
+          
+          {warmupStats && (
+            <div className="space-y-4 py-4">
+              {/* Today's Stats */}
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h4 className="font-medium text-slate-700 mb-3">Today's Activity</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-blue-600">{warmupStats.today?.emails_sent || 0}</p>
+                    <p className="text-xs text-slate-500">Emails Sent</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-green-600">{warmupStats.today?.replies_sent || 0}</p>
+                    <p className="text-xs text-slate-500">Replies</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-purple-600">{warmupStats.today?.opens_tracked || 0}</p>
+                    <p className="text-xs text-slate-500">Opens</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Progress */}
+              <div className="bg-orange-50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-orange-700">Warmup Day {warmupStats.warmup_day || 1}</span>
+                  <span className="text-sm font-medium text-orange-800">
+                    Target: {warmupStats.current_daily_target || 5} emails/day
+                  </span>
+                </div>
+                <Progress 
+                  value={((warmupStats.today?.emails_sent || 0) / (warmupStats.current_daily_target || 5)) * 100}
+                  className="h-2 bg-orange-200"
+                />
+              </div>
+
+              {/* Weekly Summary */}
+              <div>
+                <h4 className="font-medium text-slate-700 mb-3">Last 7 Days</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold text-blue-600">{warmupStats.weekly?.total_sent || 0}</p>
+                    <p className="text-xs text-slate-500">Total Sent</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold text-green-600">{warmupStats.weekly?.total_replies || 0}</p>
+                    <p className="text-xs text-slate-500">Total Replies</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Settings Summary */}
+              <div className="pt-3 border-t border-slate-100">
+                <p className="text-sm text-slate-600">
+                  <strong>Settings:</strong> {warmupStats.settings?.starting_emails_per_day || 5} → {warmupStats.settings?.max_emails_per_day || 50} emails/day 
+                  (+{warmupStats.settings?.daily_increment || 5}/day), {warmupStats.settings?.reply_rate || 40}% reply rate
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWarmupStatsModal(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

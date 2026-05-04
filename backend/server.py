@@ -123,6 +123,292 @@ if 'preview.emergentagent.com' in FRONTEND_URL:
 
 scheduler_running = False
 scheduler_task = None
+warmup_task = None
+warmup_running = False
+
+# Warmup email subjects with (RTM) marker
+WARMUP_SUBJECTS = [
+    "Quick question (RTM)",
+    "Following up (RTM)",
+    "Checking in on this (RTM)",
+    "Project update (RTM)",
+    "Re: Our discussion (RTM)",
+    "Just wanted to share (RTM)",
+    "Quick update for you (RTM)",
+    "Thoughts on this? (RTM)",
+    "Brief question (RTM)",
+    "FYI - Update (RTM)",
+    "Re: Next steps (RTM)",
+    "Quick note (RTM)",
+    "Circling back (RTM)",
+    "Follow-up from earlier (RTM)",
+    "Quick sync request (RTM)",
+    "Update on progress (RTM)",
+    "Just checking in (RTM)",
+    "Brief update (RTM)",
+    "Re: Action items (RTM)",
+    "Quick feedback request (RTM)",
+]
+
+# Warmup email body templates (human-like content)
+WARMUP_BODIES = [
+    "Hi there,\n\nJust wanted to touch base on this. Let me know your thoughts when you get a chance.\n\nBest regards",
+    "Hey,\n\nHope you're doing well. Wanted to follow up on our previous conversation. Any updates?\n\nThanks",
+    "Hi,\n\nQuick question - have you had a chance to look at this? No rush, just checking in.\n\nCheers",
+    "Hello,\n\nJust a brief note to see how things are going. Let me know if you need anything from my end.\n\nBest",
+    "Hi there,\n\nWanted to share a quick update. Things are progressing well on our end. Will keep you posted.\n\nThanks",
+    "Hey,\n\nCircling back on this topic. Would love to hear your feedback when you have a moment.\n\nRegards",
+    "Hi,\n\nJust following up to make sure this didn't get lost in your inbox. Let me know when you're free to chat.\n\nBest",
+    "Hello,\n\nHope all is well! Just wanted to check in and see if there's anything we need to discuss.\n\nThanks",
+    "Hi there,\n\nQuick sync - are we still on track for the timeline we discussed? Let me know.\n\nCheers",
+    "Hey,\n\nJust a friendly reminder about this. No pressure, but wanted to make sure it's on your radar.\n\nBest regards",
+]
+
+# Warmup reply templates
+WARMUP_REPLIES = [
+    "Thanks for reaching out! I'll take a look and get back to you soon.",
+    "Got it, thanks for the update. Will review and follow up.",
+    "Appreciate you checking in. Everything looks good on my end.",
+    "Thanks! Yes, I've been working on this. Will send an update shortly.",
+    "Good to hear from you. Let me check on this and I'll respond in detail.",
+    "Thanks for following up. I'm still working through this - will update you soon.",
+    "Received, thank you! I'll review and get back to you.",
+    "Thanks for the reminder. I'll prioritize this and respond soon.",
+]
+
+async def run_warmup_worker():
+    """Background worker for email warmup"""
+    global warmup_running
+    warmup_running = True
+    logger.info("[WARMUP] Warmup worker started")
+    
+    while warmup_running:
+        try:
+            # Find accounts with warmup enabled
+            warmup_accounts = await db.email_accounts.find({
+                "warmup_enabled": True,
+                "warmup_status": "active",
+                "status": "connected"
+            }, {"_id": 0}).to_list(1000)
+            
+            for account in warmup_accounts:
+                try:
+                    await process_warmup_for_account(account)
+                except Exception as e:
+                    logger.error(f"[WARMUP] Error processing warmup for {account.get('email')}: {e}")
+            
+            # Wait 5 minutes before next check
+            await asyncio.sleep(300)
+            
+        except Exception as e:
+            logger.error(f"[WARMUP] Error in warmup worker: {e}")
+            await asyncio.sleep(60)
+
+async def process_warmup_for_account(account: dict):
+    """Process warmup emails for a single account"""
+    import random
+    
+    account_id = account.get("account_id")
+    user_id = account.get("user_id")
+    email = account.get("email")
+    
+    # Get warmup settings
+    warmup_settings = account.get("warmup_settings", {})
+    starting_emails = warmup_settings.get("starting_emails_per_day", 5)
+    max_emails = warmup_settings.get("max_emails_per_day", 50)
+    daily_increment = warmup_settings.get("daily_increment", 5)
+    reply_rate = warmup_settings.get("reply_rate", 40) / 100  # Convert to decimal
+    
+    # Get current warmup stats
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    warmup_stats = await db.warmup_stats.find_one({
+        "account_id": account_id,
+        "date": today
+    }, {"_id": 0})
+    
+    if not warmup_stats:
+        # Initialize today's stats
+        warmup_stats = {
+            "account_id": account_id,
+            "user_id": user_id,
+            "date": today,
+            "emails_sent": 0,
+            "replies_sent": 0,
+            "opens_tracked": 0,
+            "warmup_day": account.get("warmup_day", 1),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.warmup_stats.insert_one(warmup_stats)
+    
+    # Calculate today's target based on warmup day
+    warmup_day = warmup_stats.get("warmup_day", 1)
+    todays_target = min(starting_emails + (warmup_day - 1) * daily_increment, max_emails)
+    
+    emails_sent_today = warmup_stats.get("emails_sent", 0)
+    
+    # Check if we've hit today's target
+    if emails_sent_today >= todays_target:
+        return
+    
+    # Find other accounts from the same user for warmup pool
+    other_accounts = await db.email_accounts.find({
+        "user_id": user_id,
+        "account_id": {"$ne": account_id},
+        "warmup_enabled": True,
+        "status": "connected"
+    }, {"_id": 0}).to_list(100)
+    
+    if not other_accounts:
+        # No other accounts to warmup with - skip
+        logger.info(f"[WARMUP] No warmup pool for {email} - need at least 2 accounts")
+        return
+    
+    # Random delay before sending (30 seconds to 5 minutes)
+    delay = random.randint(30, 300)
+    await asyncio.sleep(delay)
+    
+    # Refresh campaign status check - make sure no active campaign is running
+    active_campaign = await db.campaigns.find_one({
+        "user_id": user_id,
+        "status": "running",
+        "account_ids": account_id
+    })
+    
+    if active_campaign:
+        # Don't send warmup during active campaigns
+        return
+    
+    # Select random recipient from warmup pool
+    recipient_account = random.choice(other_accounts)
+    recipient_email = recipient_account.get("email")
+    
+    # Select random subject and body
+    subject = random.choice(WARMUP_SUBJECTS)
+    body = random.choice(WARMUP_BODIES)
+    
+    # Add some randomization to body
+    greetings = ["Hi", "Hey", "Hello", "Hi there"]
+    body = body.replace("Hi there", random.choice(greetings))
+    
+    try:
+        # Send warmup email
+        success = await send_warmup_email(account, recipient_email, subject, body)
+        
+        if success:
+            # Update stats
+            await db.warmup_stats.update_one(
+                {"account_id": account_id, "date": today},
+                {"$inc": {"emails_sent": 1, "opens_tracked": 1}}
+            )
+            
+            # Log the warmup email
+            warmup_log = {
+                "log_id": f"wlog_{uuid.uuid4().hex[:12]}",
+                "account_id": account_id,
+                "user_id": user_id,
+                "sender_email": email,
+                "recipient_email": recipient_email,
+                "subject": subject,
+                "type": "sent",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.warmup_logs.insert_one(warmup_log)
+            
+            logger.info(f"[WARMUP] Sent warmup email from {email} to {recipient_email}")
+            
+            # Decide if we should simulate a reply
+            if random.random() < reply_rate:
+                # Schedule a reply (with delay)
+                reply_delay = random.randint(60, 600)  # 1-10 minutes
+                asyncio.create_task(send_warmup_reply(recipient_account, email, subject, reply_delay))
+                
+    except Exception as e:
+        logger.error(f"[WARMUP] Failed to send warmup email from {email}: {e}")
+
+async def send_warmup_email(account: dict, recipient: str, subject: str, body: str) -> bool:
+    """Send a warmup email using SMTP"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    try:
+        # Decrypt SMTP password
+        encrypted_password = account.get("smtp_password_encrypted")
+        if not encrypted_password:
+            return False
+        
+        smtp_password = fernet.decrypt(encrypted_password.encode()).decode()
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = f"{account.get('display_name', '')} <{account.get('email')}>"
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send via SMTP
+        smtp_host = account.get("smtp_host")
+        smtp_port = account.get("smtp_port", 587)
+        smtp_username = account.get("smtp_username") or account.get("email")
+        encryption = account.get("smtp_encryption", "tls")
+        
+        if encryption == "ssl":
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            if encryption == "tls":
+                server.starttls()
+        
+        server.login(smtp_username, smtp_password)
+        server.sendmail(account.get("email"), recipient, msg.as_string())
+        server.quit()
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"[WARMUP] SMTP error: {e}")
+        return False
+
+async def send_warmup_reply(account: dict, original_sender: str, original_subject: str, delay: int):
+    """Send a warmup reply email after delay"""
+    import random
+    
+    await asyncio.sleep(delay)
+    
+    reply_subject = f"Re: {original_subject}"
+    reply_body = random.choice(WARMUP_REPLIES)
+    
+    try:
+        success = await send_warmup_email(account, original_sender, reply_subject, reply_body)
+        
+        if success:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            
+            # Update stats for the replying account
+            await db.warmup_stats.update_one(
+                {"account_id": account.get("account_id"), "date": today},
+                {"$inc": {"replies_sent": 1}},
+                upsert=True
+            )
+            
+            # Log the reply
+            warmup_log = {
+                "log_id": f"wlog_{uuid.uuid4().hex[:12]}",
+                "account_id": account.get("account_id"),
+                "user_id": account.get("user_id"),
+                "sender_email": account.get("email"),
+                "recipient_email": original_sender,
+                "subject": reply_subject,
+                "type": "reply",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.warmup_logs.insert_one(warmup_log)
+            
+            logger.info(f"[WARMUP] Sent reply from {account.get('email')} to {original_sender}")
+            
+    except Exception as e:
+        logger.error(f"[WARMUP] Failed to send reply: {e}")
 
 async def check_scheduled_campaigns():
     """Check for scheduled campaigns that need to be started"""
@@ -268,23 +554,38 @@ async def start_scheduled_campaign(campaign: dict):
 @app.on_event("startup")
 async def startup_event():
     """Start the background scheduler on app startup"""
-    global scheduler_running, scheduler_task
+    global scheduler_running, scheduler_task, warmup_running, warmup_task
     scheduler_running = True
     scheduler_task = asyncio.create_task(check_scheduled_campaigns())
     logger.info("Background scheduler for scheduled campaigns started")
+    
+    # Start warmup worker
+    warmup_running = True
+    warmup_task = asyncio.create_task(run_warmup_worker())
+    logger.info("Background warmup worker started")
 
 @app.on_event("shutdown") 
 async def shutdown_event():
     """Stop the background scheduler on app shutdown"""
-    global scheduler_running, scheduler_task
+    global scheduler_running, scheduler_task, warmup_running, warmup_task
     scheduler_running = False
+    warmup_running = False
+    
     if scheduler_task:
         scheduler_task.cancel()
         try:
             await scheduler_task
         except asyncio.CancelledError:
             pass
-    logger.info("Background scheduler for scheduled campaigns stopped")
+    
+    if warmup_task:
+        warmup_task.cancel()
+        try:
+            await warmup_task
+        except asyncio.CancelledError:
+            pass
+    
+    logger.info("Background scheduler and warmup worker stopped")
 
 # ==================== ENCRYPTION HELPERS ====================
 
@@ -1847,6 +2148,271 @@ async def update_account_delay(account_id: str, request: UpdateAccountDelayReque
         raise HTTPException(status_code=404, detail="Account not found")
     
     return {"message": "Sending delay updated", "send_delay": send_delay}
+
+# ==================== WARMUP ENDPOINTS ====================
+
+class WarmupSettingsRequest(BaseModel):
+    starting_emails_per_day: int = 5
+    max_emails_per_day: int = 50
+    daily_increment: int = 5
+    reply_rate: int = 40  # Percentage (30-50%)
+
+@api_router.post("/accounts/{account_id}/warmup/enable")
+async def enable_warmup(account_id: str, settings: WarmupSettingsRequest, user: User = Depends(get_current_user)):
+    """Enable warmup for an email account"""
+    # Validate settings
+    starting = max(1, min(20, settings.starting_emails_per_day))
+    max_emails = max(10, min(100, settings.max_emails_per_day))
+    increment = max(1, min(10, settings.daily_increment))
+    reply_rate = max(30, min(50, settings.reply_rate))
+    
+    # Check account exists
+    account = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Update account with warmup settings
+    await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": {
+            "warmup_enabled": True,
+            "warmup_status": "active",
+            "warmup_day": 1,
+            "warmup_started_at": datetime.now(timezone.utc).isoformat(),
+            "warmup_settings": {
+                "starting_emails_per_day": starting,
+                "max_emails_per_day": max_emails,
+                "daily_increment": increment,
+                "reply_rate": reply_rate
+            }
+        }}
+    )
+    
+    logger.info(f"[WARMUP] Enabled warmup for account {account.get('email')} by user {user.email}")
+    
+    return {
+        "success": True,
+        "message": "Warmup enabled successfully",
+        "warmup_status": "active",
+        "settings": {
+            "starting_emails_per_day": starting,
+            "max_emails_per_day": max_emails,
+            "daily_increment": increment,
+            "reply_rate": reply_rate
+        }
+    }
+
+@api_router.post("/accounts/{account_id}/warmup/disable")
+async def disable_warmup(account_id: str, user: User = Depends(get_current_user)):
+    """Disable warmup for an email account"""
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": {
+            "warmup_enabled": False,
+            "warmup_status": "disabled"
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    logger.info(f"[WARMUP] Disabled warmup for account {account_id} by user {user.email}")
+    
+    return {"success": True, "message": "Warmup disabled", "warmup_status": "disabled"}
+
+@api_router.post("/accounts/{account_id}/warmup/pause")
+async def pause_warmup(account_id: str, user: User = Depends(get_current_user)):
+    """Pause warmup for an email account"""
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id, "warmup_enabled": True},
+        {"$set": {"warmup_status": "paused"}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found or warmup not enabled")
+    
+    return {"success": True, "message": "Warmup paused", "warmup_status": "paused"}
+
+@api_router.post("/accounts/{account_id}/warmup/resume")
+async def resume_warmup(account_id: str, user: User = Depends(get_current_user)):
+    """Resume warmup for an email account"""
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id, "warmup_enabled": True},
+        {"$set": {"warmup_status": "active"}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found or warmup not enabled")
+    
+    return {"success": True, "message": "Warmup resumed", "warmup_status": "active"}
+
+@api_router.put("/accounts/{account_id}/warmup/settings")
+async def update_warmup_settings(account_id: str, settings: WarmupSettingsRequest, user: User = Depends(get_current_user)):
+    """Update warmup settings for an email account"""
+    # Validate settings
+    starting = max(1, min(20, settings.starting_emails_per_day))
+    max_emails = max(10, min(100, settings.max_emails_per_day))
+    increment = max(1, min(10, settings.daily_increment))
+    reply_rate = max(30, min(50, settings.reply_rate))
+    
+    result = await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": {
+            "warmup_settings": {
+                "starting_emails_per_day": starting,
+                "max_emails_per_day": max_emails,
+                "daily_increment": increment,
+                "reply_rate": reply_rate
+            }
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {
+        "success": True,
+        "message": "Warmup settings updated",
+        "settings": {
+            "starting_emails_per_day": starting,
+            "max_emails_per_day": max_emails,
+            "daily_increment": increment,
+            "reply_rate": reply_rate
+        }
+    }
+
+@api_router.get("/accounts/{account_id}/warmup/stats")
+async def get_warmup_stats(account_id: str, user: User = Depends(get_current_user)):
+    """Get warmup statistics for an email account"""
+    # Verify account ownership
+    account = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Get today's stats
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_stats = await db.warmup_stats.find_one(
+        {"account_id": account_id, "date": today},
+        {"_id": 0}
+    )
+    
+    # Get last 7 days stats
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    weekly_stats = await db.warmup_stats.find(
+        {"account_id": account_id, "date": {"$gte": seven_days_ago}},
+        {"_id": 0}
+    ).sort("date", -1).to_list(7)
+    
+    # Calculate totals
+    total_sent = sum(s.get("emails_sent", 0) for s in weekly_stats)
+    total_replies = sum(s.get("replies_sent", 0) for s in weekly_stats)
+    
+    # Get warmup settings
+    warmup_settings = account.get("warmup_settings", {
+        "starting_emails_per_day": 5,
+        "max_emails_per_day": 50,
+        "daily_increment": 5,
+        "reply_rate": 40
+    })
+    
+    # Calculate current daily target
+    warmup_day = account.get("warmup_day", 1)
+    starting = warmup_settings.get("starting_emails_per_day", 5)
+    increment = warmup_settings.get("daily_increment", 5)
+    max_daily = warmup_settings.get("max_emails_per_day", 50)
+    current_target = min(starting + (warmup_day - 1) * increment, max_daily)
+    
+    return {
+        "warmup_enabled": account.get("warmup_enabled", False),
+        "warmup_status": account.get("warmup_status", "disabled"),
+        "warmup_day": warmup_day,
+        "current_daily_target": current_target,
+        "settings": warmup_settings,
+        "today": {
+            "emails_sent": today_stats.get("emails_sent", 0) if today_stats else 0,
+            "replies_sent": today_stats.get("replies_sent", 0) if today_stats else 0,
+            "opens_tracked": today_stats.get("opens_tracked", 0) if today_stats else 0
+        },
+        "weekly": {
+            "total_sent": total_sent,
+            "total_replies": total_replies,
+            "days": weekly_stats
+        }
+    }
+
+@api_router.get("/accounts/{account_id}/warmup/logs")
+async def get_warmup_logs(account_id: str, limit: int = 50, user: User = Depends(get_current_user)):
+    """Get warmup logs for an email account"""
+    # Verify account ownership
+    account = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    logs = await db.warmup_logs.find(
+        {"account_id": account_id},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    return {"logs": logs}
+
+@api_router.get("/warmup/dashboard")
+async def get_warmup_dashboard(user: User = Depends(get_current_user)):
+    """Get warmup dashboard data for all user accounts"""
+    accounts = await db.email_accounts.find(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    ).to_list(100)
+    
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    dashboard_data = []
+    for account in accounts:
+        account_id = account.get("account_id")
+        
+        # Get today's stats
+        today_stats = await db.warmup_stats.find_one(
+            {"account_id": account_id, "date": today},
+            {"_id": 0}
+        )
+        
+        warmup_settings = account.get("warmup_settings", {
+            "starting_emails_per_day": 5,
+            "max_emails_per_day": 50,
+            "daily_increment": 5,
+            "reply_rate": 40
+        })
+        
+        warmup_day = account.get("warmup_day", 1)
+        starting = warmup_settings.get("starting_emails_per_day", 5)
+        increment = warmup_settings.get("daily_increment", 5)
+        max_daily = warmup_settings.get("max_emails_per_day", 50)
+        current_target = min(starting + (warmup_day - 1) * increment, max_daily)
+        
+        dashboard_data.append({
+            "account_id": account_id,
+            "email": account.get("email"),
+            "warmup_enabled": account.get("warmup_enabled", False),
+            "warmup_status": account.get("warmup_status", "disabled"),
+            "warmup_day": warmup_day,
+            "current_daily_target": current_target,
+            "emails_sent_today": today_stats.get("emails_sent", 0) if today_stats else 0,
+            "replies_today": today_stats.get("replies_sent", 0) if today_stats else 0,
+            "settings": warmup_settings
+        })
+    
+    return {"accounts": dashboard_data}
 
 @api_router.post("/accounts/test-smtp")
 async def test_smtp_endpoint(request: TestSMTPRequest, user: User = Depends(get_current_user)):

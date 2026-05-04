@@ -490,6 +490,41 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### 📋 Future Tasks (P2)
 1. **Duplicate Campaign** - Add duplicate button for existing campaigns
 
+### ✅ Email Warmup Functionality (May 2026)
+- [x] **Backend Warmup System**:
+  - Background worker (`run_warmup_worker`) runs every 5 minutes
+  - Sends warmup emails between connected accounts
+  - ALL warmup subjects include "(RTM)" marker for identification
+  - Gradual ramp-up: starting emails → max emails over days
+  - Simulates natural email interactions (opens, replies)
+  - Random delays between emails (30s-5min)
+  - Does NOT interfere with campaign sending
+- [x] **Warmup API Endpoints**:
+  - `POST /api/accounts/{id}/warmup/enable` - Enable warmup with settings
+  - `POST /api/accounts/{id}/warmup/disable` - Disable warmup
+  - `POST /api/accounts/{id}/warmup/pause` - Pause warmup
+  - `POST /api/accounts/{id}/warmup/resume` - Resume warmup
+  - `PUT /api/accounts/{id}/warmup/settings` - Update settings
+  - `GET /api/accounts/{id}/warmup/stats` - Get statistics
+  - `GET /api/accounts/{id}/warmup/logs` - Get logs
+  - `GET /api/warmup/dashboard` - Get dashboard data
+- [x] **Warmup Settings Per Account**:
+  - Starting emails/day (default: 5, range: 1-20)
+  - Max emails/day (default: 50, range: 10-100)
+  - Daily increment (default: 5, range: 1-10)
+  - Reply rate (default: 40%, range: 30-50%)
+- [x] **Frontend UI**:
+  - Warmup toggle and controls on Email Accounts page
+  - Enable/Disable/Pause/Resume buttons
+  - Settings modal for configuration
+  - Stats modal showing daily and weekly activity
+  - Progress indicator showing warmup day and target
+- [x] **Safety Features**:
+  - Skips warmup during active campaigns
+  - Requires at least 2 connected accounts
+  - Human-like delays and content variation
+  - Isolated from campaign analytics
+
 ### ✅ Pause/Resume Campaign Functionality (March 2026)
 - [x] **Backend Endpoints Enhanced**:
   - `POST /api/campaigns/{campaign_id}/pause` - Pauses running or scheduled campaigns
