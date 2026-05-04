@@ -106,6 +106,16 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ## Implementation Status
 
+### ✅ Usability pass (Feb 2026)
+- [x] **Edit list records** — per-row edit dialog in ListDetails; PUT `/api/lists/{list_id}/record` validates email + checks collisions, preserves custom columns
+- [x] **Download email list as CSV** — GET `/api/lists/{list_id}/export` streams CSV with `email` first + all custom columns; icon on list cards + detail page
+- [x] **Bulk import SMTP accounts** — `POST /api/accounts/smtp/bulk-import` (CSV only, ≤1MB, ≤200 rows), per-row results, duplicates skipped, delay defaults to 30s, daily_limit defaults to 50; `GET /api/accounts/smtp/sample-csv` for the sample download
+- [x] **View / Edit SMTP account** — `GET /api/accounts/{id}` (password blob excluded server-side), `PUT /api/accounts/{id}` (password is optional — only sent if user rotates it; SMTP re-test runs only when credentials/host/port/username/encryption actually change)
+- [x] **Scrollable body editor** — RichTextEditor now has `min-h-[300px] max-h-[400px] overflow-y-auto` (HTML + plain-text modes)
+- [x] **Timezone bug fixed** — frontend sends NAIVE local datetime + `timezone` name; new server helper `parse_scheduled_at_in_timezone` localises via pytz → UTC; existing offset/Z strings still honoured. Displayed back to user in stored timezone.
+- [x] **Independent scroll for Email Accounts list** — wrapper `data-testid="email-accounts-list"` with `max-height: calc(100vh - 260px)` + `overflow-y: auto`
+- [x] Tested: 28/28 new backend + 47/47 regression (iteration_26). Password-blob never exposed in account GET.
+
 ### ✅ Do Not Email (Suppression) System (Feb 2026)
 - [x] New collections: `dne_lists`, `dne_emails` (indexed `user_id+email` + unique `list_id+email`)
 - [x] Schema extended: `campaigns.suppression_list_ids`, `drip_campaigns.suppression_list_ids`, new queue status `suppressed`, new drip contact/log status `suppressed`

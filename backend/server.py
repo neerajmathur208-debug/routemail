@@ -3078,8 +3078,16 @@ async def update_smtp_account(
         enc = existing.get("smtp_password_encrypted")
         password_to_test = decrypt_data(enc) if enc else None
     
-    # Run a connection test only if we have credentials to test with
-    if new_host and new_port and password_to_test:
+    # Only re-test SMTP if credentials or connection settings actually changed,
+    # otherwise a legacy/bogus encrypted blob could cause spurious 400s on pure metadata edits.
+    creds_changed = (
+        request.smtp_password is not None
+        or (request.smtp_host is not None and request.smtp_host != existing.get("smtp_host"))
+        or (request.smtp_port is not None and request.smtp_port != existing.get("smtp_port"))
+        or (request.smtp_username is not None and request.smtp_username != existing.get("smtp_username"))
+        or (request.smtp_encryption is not None and request.smtp_encryption != existing.get("smtp_encryption"))
+    )
+    if creds_changed and new_host and new_port and password_to_test:
         test_result = await test_smtp_connection(new_host, new_port, new_username, password_to_test, new_encryption)
         if not test_result.get("success"):
             raise HTTPException(status_code=400, detail=f"SMTP connection failed: {test_result.get('error')}")
@@ -3103,9 +3111,10 @@ async def update_smtp_account(
         update_data["send_delay"] = max(10, min(300, request.send_delay))
     if request.smtp_password:
         update_data["smtp_password_encrypted"] = encrypt_data(request.smtp_password)
-    # If we just ran a test successfully, mark connected
-    update_data["status"] = "connected"
-    update_data["last_error"] = None
+    # Only mark 'connected' if we actually re-tested successfully above
+    if creds_changed:
+        update_data["status"] = "connected"
+        update_data["last_error"] = None
     
     await db.email_accounts.update_one(
         {"account_id": account_id, "user_id": user.user_id},
@@ -3166,6 +3175,14 @@ async def bulk_import_smtp_accounts(
     if missing:
         raise HTTPException(status_code=400, detail=f"CSV is missing required columns: {', '.join(sorted(missing))}")
     
+    MAX_IMPORT_ROWS = 200
+    all_rows = list(reader)
+    if len(all_rows) > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many rows in one import (max {MAX_IMPORT_ROWS}). Please split the file."
+        )
+    
     # Build list of existing emails for this user (to skip duplicates without SMTP test)
     existing_accounts = await db.email_accounts.find(
         {"user_id": user.user_id},
@@ -3181,7 +3198,7 @@ async def bulk_import_smtp_accounts(
     failed = 0
     
     row_num = 1  # header is row 1 in user-facing terms
-    for raw in reader:
+    for raw in all_rows:
         row_num += 1
         normalized = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         email = normalized.get("email", "")
