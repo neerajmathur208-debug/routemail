@@ -14,6 +14,8 @@ Build a simple SaaS web application for small businesses to automatically send e
 8. **Subscription System**: Stripe-integrated yearly subscriptions with plan limits enforcement
 9. **Email Verification**: Mandatory email verification before login (2hr token expiry)
 10. **Forgot Password**: Secure password reset with rate limiting
+11. **Email Warmup**: Automated warmup system that gradually increases sending volume per account with "(RTM)" subject tag
+12. **Drip Campaigns (Sequence-Based)**: Multi-step drip sequences with timezone-aware schedule windows, per-day sending control, randomization, and stop-on-reply / stop-on-bounce rules
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, Shadcn UI, Recharts, Framer Motion
@@ -35,6 +37,9 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **email_list_contacts**: list_id, contact_data, email, status
 - **campaigns**: user_id, name, subject, body, status, email_list_id, total_emails, sent_count, scheduled_at
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
+- **drip_campaigns**: drip_id, user_id, name, from_name, account_ids[], steps[] (each {step_number, subject, body, delay_days, delay_hours}), schedule{timezone, sending_days, start_time, end_time, randomize_time}, stop_on_reply, stop_on_bounce, status (draft/running/paused/completed), total_sent, total_contacts, created_at, updated_at, started_at
+- **drip_contacts**: contact_id, drip_id, user_id, email, data (row), current_step, status (active/completed/replied/bounced), next_send_at, enrolled_at
+- **drip_logs**: log_id, drip_id, contact_id, contact_email, step, subject, account_email, status, error, sent_at
 
 ## Pricing Plans (Stripe Integrated)
 | Plan | Price (USD/INR) | Accounts | Contacts/Month | Emails/Year |
@@ -67,6 +72,7 @@ Build a simple SaaS web application for small businesses to automatically send e
 ### Core Features
 - `/api/accounts` - Get email accounts with limit info
 - `/api/accounts/smtp` - Add SMTP account (enforces plan limits)
+- `/api/accounts/{id}/warmup/*` - Warmup enable/disable/pause/resume/settings/stats
 - `/api/lists` - Create email list (enforces contact limits)
 - `/api/campaigns` - CRUD for campaigns
 - `/api/campaigns/{id}/start` - Start campaign immediately
@@ -74,6 +80,18 @@ Build a simple SaaS web application for small businesses to automatically send e
 - `/api/campaigns/{id}/pause` - Pause running campaign
 - `/api/campaigns/{id}/resume` - Resume paused campaign
 - `/api/campaigns/{id}/logs` - Sending logs
+
+### Drip Campaigns (Feb 2026 — NEW)
+- `GET /api/drip-campaigns` - List user's drip campaigns
+- `POST /api/drip-campaigns` - Create new drip (draft)
+- `GET /api/drip-campaigns/{drip_id}` - Get campaign with live stats
+- `PUT /api/drip-campaigns/{drip_id}` - Update drip (draft/paused only)
+- `DELETE /api/drip-campaigns/{drip_id}` - Delete drip + its contacts + logs
+- `POST /api/drip-campaigns/{drip_id}/contacts` - Enroll contacts from a list
+- `GET /api/drip-campaigns/{drip_id}/contacts` - Paginated enrolled contacts
+- `GET /api/drip-campaigns/{drip_id}/logs` - Send logs
+- `GET /api/drip-campaigns/{drip_id}/logs/export` - CSV export
+- `POST /api/drip-campaigns/{drip_id}/start|pause|resume` - State transitions
 
 ### Admin
 - `/api/admin/stats` & `/api/admin/users` - Admin endpoints (super_admin only)
@@ -85,6 +103,21 @@ Build a simple SaaS web application for small businesses to automatically send e
 ---
 
 ## Implementation Status
+
+### ✅ Drip Campaigns — Sequence-Based Campaigns (Feb 2026)
+- [x] Backend Pydantic models: `DripStep`, `DripScheduleSettings`, `CreateDripCampaignRequest`, `UpdateDripCampaignRequest`, `AddDripContactsRequest`
+- [x] Full CRUD + control API (`/api/drip-campaigns` …/contacts, /logs, /logs/export, /start, /pause, /resume)
+- [x] Ownership guards, 400 state-guards (edit/delete rejected while running; start requires steps+accounts+contacts)
+- [x] Frontend `/drip-campaigns` list page with create dialog and card grid
+- [x] Frontend `/drip-campaigns/:dripId` detail page with tabs: Sequence, Schedule, Contacts, Logs, Settings
+- [x] Timezone-aware schedule (timezone, sending days, start/end window, randomize)
+- [x] Stop-on-reply / stop-on-bounce toggles
+- [x] Per-step delay (days + hours), inline editor with `{column_name}` merge hints
+- [x] Enroll contacts from an existing email list with duplicate skipping
+- [x] CSV export of send logs
+- [x] Sidebar link "Drip Campaigns" (Workflow icon)
+- [x] `pytz` added to requirements.txt
+- [x] Tested: 23/23 backend tests + all targeted frontend flows (iteration_24)
 
 ### ✅ Completed Features
 - [x] User authentication with Google OAuth (Emergent-managed)
