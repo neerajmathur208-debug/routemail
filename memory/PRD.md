@@ -106,6 +106,14 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ## Implementation Status
 
+### ✅ Drip RTE + Auto-resume after daily limit (Feb 2026)
+- [x] **Drip step body uses shared RichTextEditor** — same component (`/app/frontend/src/components/RichTextEditor.jsx`) as standard campaigns. Bold/italic/underline, alignment, lists, links, images, variable insertion, plain-text toggle. HTML round-trips through PUT `/api/drip-campaigns/{id}` and renders correctly via `send_drip_email` (which already attaches both text + HTML MIME parts).
+- [x] **Auto-resume daily-limit-paused campaigns** — `check_scheduled_campaigns` scheduler loop (every 30s) now also enumerates `status='paused_daily_limit'` campaigns and flips them back to `running` (+ records `auto_resumed_at`) once at least one of their accounts has rolled over to a new day OR has fresh quota (e.g. user raised the limit). It then re-spawns `process_campaign_queue` to resume from the next `pending` queue item — no duplicates.
+- [x] User-paused campaigns (`status='paused'`) are NOT touched by the auto-resume loop.
+- [x] Drip campaigns already auto-retry per-cycle (60s loop) — verified contact `current_step` stays unchanged when accounts hit limit, advances normally after rollover.
+- [x] UI labels updated to communicate auto-resume behaviour ("Daily limit reached — will resume automatically").
+- [x] Tested: 5/5 new backend tests + 47/47 regression (iteration_27).
+
 ### ✅ Usability pass (Feb 2026)
 - [x] **Edit list records** — per-row edit dialog in ListDetails; PUT `/api/lists/{list_id}/record` validates email + checks collisions, preserves custom columns
 - [x] **Download email list as CSV** — GET `/api/lists/{list_id}/export` streams CSV with `email` first + all custom columns; icon on list cards + detail page
