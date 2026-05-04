@@ -39,7 +39,9 @@ Build a simple SaaS web application for small businesses to automatically send e
 - **email_queue**: campaign_id, recipient_email, status, error_message, sent_at
 - **drip_campaigns**: drip_id, user_id, name, from_name, account_ids[], steps[] (each {step_number, subject, body, delay_days, delay_hours}), schedule{timezone, sending_days, start_time, end_time, randomize_time}, stop_on_reply, stop_on_bounce, status (draft/running/paused/completed), total_sent, total_contacts, created_at, updated_at, started_at
 - **drip_contacts**: contact_id, drip_id, user_id, email, data (row), current_step, status (active/completed/replied/bounced), next_send_at, enrolled_at
-- **drip_logs**: log_id, drip_id, contact_id, contact_email, step, subject, account_email, status, error, sent_at
+- **drip_logs**: log_id, drip_id, contact_id, contact_email, step, subject, account_email, status (sent/failed/suppressed), error, sent_at
+- **dne_lists**: list_id, user_id, name, is_global, email_count, created_at
+- **dne_emails**: user_id, list_id, email (lowercase), source (manual/unsubscribe), added_at. Indexes: `(user_id, email)` + unique `(list_id, email)`.
 
 ## Pricing Plans (Stripe Integrated)
 | Plan | Price (USD/INR) | Accounts | Contacts/Month | Emails/Year |
@@ -103,6 +105,20 @@ Build a simple SaaS web application for small businesses to automatically send e
 ---
 
 ## Implementation Status
+
+### ✅ Do Not Email (Suppression) System (Feb 2026)
+- [x] New collections: `dne_lists`, `dne_emails` (indexed `user_id+email` + unique `list_id+email`)
+- [x] Schema extended: `campaigns.suppression_list_ids`, `drip_campaigns.suppression_list_ids`, new queue status `suppressed`, new drip contact/log status `suppressed`
+- [x] Backend CRUD: `/api/dne-lists` list/create/delete, `/api/dne-lists/{id}` get/delete, `/api/dne-lists/{id}/emails` add/remove, `/api/dne-lists/{id}/upload` (CSV+XLSX, 2MB cap, dedupe+normalize+validate)
+- [x] Global DNE list auto-created per user (lazy), cannot be deleted
+- [x] Real-time suppression in standard campaign sender (`process_campaign_queue`) — flags queue item as `suppressed`, never sends
+- [x] Real-time suppression in drip worker (`process_drip_contact`) — checked before every step; contact flipped to `status=suppressed`, log entry written
+- [x] Unsubscribe link (`GET /api/unsubscribe/...`) and `POST /api/suppression` both auto-mirror into user's Global DNE list
+- [x] Referential cleanup: deleting a DNE list auto-unlinks it via `$pull` from referencing campaigns + drip_campaigns
+- [x] Frontend: sidebar "Do Not Email" entry (ShieldOff icon), `/do-not-email` + `/do-not-email/:listId` pages with CSV/XLSX upload, bulk paste, search, pagination, delete
+- [x] Campaign form + Drip Settings tab: multi-select DNE list checkboxes with helper text; Global always-applied banner
+- [x] Logs: new "Suppressed" filter + badge in CampaignLogs; rose-colored "Suppressed" stat in drip detail
+- [x] Tested: 24/24 DNE backend tests + 23/23 drip regression (iteration_25), no failures
 
 ### ✅ Drip Campaigns — Sequence-Based Campaigns (Feb 2026)
 - [x] Backend Pydantic models: `DripStep`, `DripScheduleSettings`, `CreateDripCampaignRequest`, `UpdateDripCampaignRequest`, `AddDripContactsRequest`
