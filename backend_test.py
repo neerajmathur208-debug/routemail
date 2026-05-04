@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 class MultiSenderEmailAPITester:
-    def __init__(self, base_url="https://smtp-manager-stage.preview.emergentagent.com"):
+    def __init__(self, base_url="https://routemail-drip.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_base = f"{base_url}/api"
         self.session_token = None

@@ -410,6 +410,329 @@ async def send_warmup_reply(account: dict, original_sender: str, original_subjec
     except Exception as e:
         logger.error(f"[WARMUP] Failed to send reply: {e}")
 
+# ==================== DRIP CAMPAIGN WORKER ====================
+
+drip_task = None
+drip_running = False
+
+async def run_drip_worker():
+    """Background worker for drip campaign processing"""
+    global drip_running
+    drip_running = True
+    logger.info("[DRIP] Drip campaign worker started")
+    
+    while drip_running:
+        try:
+            await process_drip_campaigns()
+            # Check every minute
+            await asyncio.sleep(60)
+        except Exception as e:
+            logger.error(f"[DRIP] Error in drip worker: {e}")
+            await asyncio.sleep(30)
+
+async def process_drip_campaigns():
+    """Process all active drip campaigns"""
+    import random
+    import pytz
+    
+    # Find all running drip campaigns
+    drip_campaigns = await db.drip_campaigns.find({
+        "status": "running"
+    }, {"_id": 0}).to_list(1000)
+    
+    for campaign in drip_campaigns:
+        try:
+            await process_drip_campaign(campaign)
+        except Exception as e:
+            logger.error(f"[DRIP] Error processing campaign {campaign.get('drip_id')}: {e}")
+
+async def process_drip_campaign(campaign: dict):
+    """Process a single drip campaign - check and send due emails"""
+    import random
+    import pytz
+    
+    drip_id = campaign.get("drip_id")
+    user_id = campaign.get("user_id")
+    
+    # Get campaign schedule settings
+    schedule = campaign.get("schedule", {})
+    timezone_str = schedule.get("timezone", "UTC")
+    sending_days = schedule.get("sending_days", [0, 1, 2, 3, 4])  # Mon-Fri default
+    start_time = schedule.get("start_time", "09:00")
+    end_time = schedule.get("end_time", "18:00")
+    randomize_time = schedule.get("randomize_time", False)
+    
+    # Parse timezone
+    try:
+        tz = pytz.timezone(timezone_str)
+    except:
+        tz = pytz.UTC
+    
+    # Get current time in campaign timezone
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc.astimezone(tz)
+    
+    # Check if current day is a sending day (0=Monday, 6=Sunday)
+    current_day = now_local.weekday()
+    if current_day not in sending_days:
+        return
+    
+    # Parse start and end times
+    try:
+        start_hour, start_min = map(int, start_time.split(":"))
+        end_hour, end_min = map(int, end_time.split(":"))
+    except:
+        start_hour, start_min = 9, 0
+        end_hour, end_min = 18, 0
+    
+    # Check if current time is within sending window
+    current_minutes = now_local.hour * 60 + now_local.minute
+    start_minutes = start_hour * 60 + start_min
+    end_minutes = end_hour * 60 + end_min
+    
+    if current_minutes < start_minutes or current_minutes > end_minutes:
+        return
+    
+    # Get steps
+    steps = campaign.get("steps", [])
+    if not steps:
+        return
+    
+    # Get account IDs for rotation
+    account_ids = campaign.get("account_ids", [])
+    if not account_ids:
+        return
+    
+    # Find contacts that need processing
+    contacts = await db.drip_contacts.find({
+        "drip_id": drip_id,
+        "status": "active",
+        "next_send_at": {"$lte": now_utc.isoformat()}
+    }, {"_id": 0}).to_list(100)
+    
+    # Load accounts for sending
+    accounts = await db.email_accounts.find({
+        "account_id": {"$in": account_ids},
+        "status": "connected"
+    }, {"_id": 0}).to_list(100)
+    
+    if not accounts:
+        return
+    
+    for contact in contacts:
+        try:
+            await process_drip_contact(campaign, contact, steps, accounts, randomize_time, tz, start_minutes, end_minutes)
+        except Exception as e:
+            logger.error(f"[DRIP] Error processing contact {contact.get('email')}: {e}")
+
+async def process_drip_contact(campaign: dict, contact: dict, steps: list, accounts: list, randomize_time: bool, tz, start_minutes: int, end_minutes: int):
+    """Process a single contact in a drip campaign"""
+    import random
+    
+    drip_id = campaign.get("drip_id")
+    contact_id = contact.get("contact_id")
+    current_step = contact.get("current_step", 0)
+    
+    if current_step >= len(steps):
+        # Contact completed all steps
+        await db.drip_contacts.update_one(
+            {"contact_id": contact_id},
+            {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return
+    
+    step = steps[current_step]
+    
+    # Check stop conditions
+    stop_on_reply = campaign.get("stop_on_reply", True)
+    stop_on_bounce = campaign.get("stop_on_bounce", True)
+    
+    if stop_on_reply and contact.get("replied"):
+        await db.drip_contacts.update_one(
+            {"contact_id": contact_id},
+            {"$set": {"status": "replied"}}
+        )
+        return
+    
+    if stop_on_bounce and contact.get("bounced"):
+        await db.drip_contacts.update_one(
+            {"contact_id": contact_id},
+            {"$set": {"status": "bounced"}}
+        )
+        return
+    
+    # Select account (rotate)
+    account_index = hash(contact_id) % len(accounts)
+    account = accounts[account_index]
+    
+    # Check account daily limit
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if account.get("last_reset_date") != today:
+        await db.email_accounts.update_one(
+            {"account_id": account.get("account_id")},
+            {"$set": {"daily_send_count": 0, "last_reset_date": today}}
+        )
+        account["daily_send_count"] = 0
+    
+    daily_limit = account.get("daily_limit", 50)
+    if account.get("daily_send_count", 0) >= daily_limit:
+        # Try next account
+        for i in range(len(accounts)):
+            alt_account = accounts[(account_index + i + 1) % len(accounts)]
+            if alt_account.get("daily_send_count", 0) < alt_account.get("daily_limit", 50):
+                account = alt_account
+                break
+        else:
+            # All accounts at limit
+            return
+    
+    # Prepare email content
+    subject = step.get("subject", "")
+    body = step.get("body", "")
+    
+    # Replace placeholders with contact data
+    contact_data = contact.get("data", {})
+    for key, value in contact_data.items():
+        placeholder = "{" + key + "}"
+        subject = subject.replace(placeholder, str(value) if value else "")
+        body = body.replace(placeholder, str(value) if value else "")
+    
+    recipient_email = contact.get("email")
+    
+    # Send email
+    try:
+        success = await send_drip_email(account, recipient_email, subject, body)
+        
+        if success:
+            # Update account send count
+            await db.email_accounts.update_one(
+                {"account_id": account.get("account_id")},
+                {"$inc": {"daily_send_count": 1}}
+            )
+            
+            # Calculate next send time
+            next_step = current_step + 1
+            if next_step < len(steps):
+                next_step_data = steps[next_step]
+                delay_hours = next_step_data.get("delay_hours", 0)
+                delay_days = next_step_data.get("delay_days", 0)
+                total_delay_hours = delay_hours + (delay_days * 24)
+                
+                next_send_at = datetime.now(timezone.utc) + timedelta(hours=total_delay_hours)
+                
+                # Apply randomization if enabled
+                if randomize_time:
+                    # Add random minutes within the window
+                    window_minutes = end_minutes - start_minutes
+                    if window_minutes > 0:
+                        random_offset = random.randint(0, min(60, window_minutes))
+                        next_send_at += timedelta(minutes=random_offset)
+            else:
+                next_send_at = None
+            
+            # Update contact
+            await db.drip_contacts.update_one(
+                {"contact_id": contact_id},
+                {"$set": {
+                    "current_step": next_step,
+                    "last_sent_at": datetime.now(timezone.utc).isoformat(),
+                    "last_sent_step": current_step,
+                    "next_send_at": next_send_at.isoformat() if next_send_at else None
+                }}
+            )
+            
+            # Log the send
+            await db.drip_logs.insert_one({
+                "log_id": f"dlog_{uuid.uuid4().hex[:12]}",
+                "drip_id": drip_id,
+                "contact_id": contact_id,
+                "contact_email": recipient_email,
+                "step": current_step,
+                "subject": subject,
+                "account_email": account.get("email"),
+                "status": "sent",
+                "sent_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            # Update campaign stats
+            await db.drip_campaigns.update_one(
+                {"drip_id": drip_id},
+                {"$inc": {"total_sent": 1}}
+            )
+            
+            logger.info(f"[DRIP] Sent step {current_step + 1} to {recipient_email} for campaign {drip_id}")
+            
+            # Apply per-email delay
+            send_delay = account.get("send_delay", 5)
+            await asyncio.sleep(send_delay)
+            
+    except Exception as e:
+        logger.error(f"[DRIP] Failed to send email to {recipient_email}: {e}")
+        
+        # Log the failure
+        await db.drip_logs.insert_one({
+            "log_id": f"dlog_{uuid.uuid4().hex[:12]}",
+            "drip_id": drip_id,
+            "contact_id": contact_id,
+            "contact_email": recipient_email,
+            "step": current_step,
+            "subject": subject,
+            "account_email": account.get("email"),
+            "status": "failed",
+            "error": str(e),
+            "sent_at": datetime.now(timezone.utc).isoformat()
+        })
+
+async def send_drip_email(account: dict, recipient: str, subject: str, body: str) -> bool:
+    """Send a drip campaign email using SMTP"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    try:
+        # Decrypt SMTP password
+        encrypted_password = account.get("smtp_password_encrypted")
+        if not encrypted_password:
+            return False
+        
+        smtp_password = fernet.decrypt(encrypted_password.encode()).decode()
+        
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg['From'] = f"{account.get('display_name', '')} <{account.get('email')}>"
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        
+        # Add both plain text and HTML versions
+        text_part = MIMEText(body.replace("<br>", "\n").replace("</p>", "\n"), 'plain')
+        html_part = MIMEText(body, 'html')
+        
+        msg.attach(text_part)
+        msg.attach(html_part)
+        
+        # Send via SMTP
+        smtp_host = account.get("smtp_host")
+        smtp_port = account.get("smtp_port", 587)
+        smtp_username = account.get("smtp_username") or account.get("email")
+        encryption = account.get("smtp_encryption", "tls")
+        
+        if encryption == "ssl":
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            if encryption == "tls":
+                server.starttls()
+        
+        server.login(smtp_username, smtp_password)
+        server.sendmail(account.get("email"), recipient, msg.as_string())
+        server.quit()
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"[DRIP] SMTP error: {e}")
+        return False
+
 async def check_scheduled_campaigns():
     """Check for scheduled campaigns that need to be started"""
     global scheduler_running
@@ -554,7 +877,7 @@ async def start_scheduled_campaign(campaign: dict):
 @app.on_event("startup")
 async def startup_event():
     """Start the background scheduler on app startup"""
-    global scheduler_running, scheduler_task, warmup_running, warmup_task
+    global scheduler_running, scheduler_task, warmup_running, warmup_task, drip_running, drip_task
     scheduler_running = True
     scheduler_task = asyncio.create_task(check_scheduled_campaigns())
     logger.info("Background scheduler for scheduled campaigns started")
@@ -563,13 +886,19 @@ async def startup_event():
     warmup_running = True
     warmup_task = asyncio.create_task(run_warmup_worker())
     logger.info("Background warmup worker started")
+    
+    # Start drip campaign worker
+    drip_running = True
+    drip_task = asyncio.create_task(run_drip_worker())
+    logger.info("Background drip campaign worker started")
 
 @app.on_event("shutdown") 
 async def shutdown_event():
     """Stop the background scheduler on app shutdown"""
-    global scheduler_running, scheduler_task, warmup_running, warmup_task
+    global scheduler_running, scheduler_task, warmup_running, warmup_task, drip_running, drip_task
     scheduler_running = False
     warmup_running = False
+    drip_running = False
     
     if scheduler_task:
         scheduler_task.cancel()
@@ -585,7 +914,14 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
     
-    logger.info("Background scheduler and warmup worker stopped")
+    if drip_task:
+        drip_task.cancel()
+        try:
+            await drip_task
+        except asyncio.CancelledError:
+            pass
+    
+    logger.info("Background scheduler, warmup worker, and drip worker stopped")
 
 # ==================== ENCRYPTION HELPERS ====================
 
