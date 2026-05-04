@@ -670,7 +670,7 @@ export default function RichTextEditor({
               onClick={handleImageClick}
               onBlur={saveCursorPosition}
               onKeyUp={saveCursorPosition}
-              className="min-h-[300px] p-4 outline-none prose prose-sm max-w-none"
+              className="min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none prose prose-sm max-w-none"
               style={{ 
                 fontFamily: "'Public Sans', sans-serif",
                 lineHeight: 1.6
@@ -718,7 +718,7 @@ export default function RichTextEditor({
           value={plainTextValue}
           onChange={(e) => onPlainTextChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full min-h-[300px] p-4 border border-slate-200 rounded-md font-mono text-sm resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full min-h-[300px] max-h-[400px] overflow-y-auto p-4 border border-slate-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           data-testid="plain-text-editor"
         />
       )}

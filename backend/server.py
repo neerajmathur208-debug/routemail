@@ -1065,6 +1065,44 @@ async def add_email_to_global_dne(user_id: str, email: str) -> None:
         {"$inc": {"email_count": 1}}
     )
 
+def parse_scheduled_at_in_timezone(scheduled_at_str: str, tz_name: Optional[str]) -> datetime:
+    """Parse a scheduled_at string, honouring the user-selected timezone.
+    
+    Rules:
+    - If the string carries Z or +HH:MM offset, trust it (treat as absolute UTC/offset).
+    - Else if it's a naive local string (e.g. '2026-05-04T09:00' or '2026-05-04T09:00:00')
+      and a timezone name is provided, localise it in that timezone and return a
+      timezone-aware UTC datetime.
+    - Else (naive + no timezone), fall back to treating it as UTC.
+    
+    Raises ValueError on invalid input.
+    """
+    import pytz
+    raw = (scheduled_at_str or "").strip()
+    if not raw:
+        raise ValueError("Empty scheduled_at")
+    
+    # Has an explicit tz offset? parse directly
+    if raw.endswith("Z") or ("+" in raw[10:]) or ("-" in raw[10:]):
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    
+    # Naive → treat as local time in the given tz
+    naive = datetime.fromisoformat(raw)
+    if naive.tzinfo is not None:
+        return naive
+    
+    tz = None
+    if tz_name:
+        try:
+            tz = pytz.timezone(tz_name)
+        except Exception:
+            tz = None
+    if tz is None:
+        return naive.replace(tzinfo=timezone.utc)
+    
+    localised = tz.localize(naive)
+    return localised.astimezone(timezone.utc)
+
 # ==================== EMAIL HELPERS (Resend) ====================
 
 # Logo URL for system emails (publicly accessible)
@@ -1643,6 +1681,7 @@ class Campaign(BaseModel):
     current_account_index: int = 0
     is_locked: bool = False  # Prevents editing when running
     scheduled_at: Optional[datetime] = None  # For scheduled campaigns
+    timezone: Optional[str] = None  # User-selected timezone for the schedule
     suppression_list_ids: List[str] = []  # DNE list IDs applied to this campaign
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -1707,6 +1746,18 @@ class UpdateAccountLimitRequest(BaseModel):
 class UpdateAccountDelayRequest(BaseModel):
     send_delay: int
 
+class UpdateSMTPAccountRequest(BaseModel):
+    """Patch an existing SMTP account. Password is optional — only updated if provided."""
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None  # only set if user wants to rotate credentials
+    smtp_encryption: Optional[str] = None
+    daily_limit: Optional[int] = None
+    send_delay: Optional[int] = None
+
 class TestSMTPRequest(BaseModel):
     smtp_host: str
     smtp_port: int
@@ -1722,6 +1773,11 @@ class CreateListRequest(BaseModel):
 
 class UpdateListRequest(BaseModel):
     name: str
+
+class UpdateListRecordRequest(BaseModel):
+    """Payload for editing a single contact/record inside an email list."""
+    original_email: str  # the current email value (used to locate the row)
+    data: Dict[str, Any]  # full new row, e.g. {"email":"...","name":"...","company":"..."}
 
 class CreateCampaignRequest(BaseModel):
     name: str
@@ -2971,6 +3027,257 @@ async def test_smtp_connection(host: str, port: int, username: str, password: st
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@api_router.get("/accounts/{account_id}")
+async def get_email_account(account_id: str, user: User = Depends(get_current_user)):
+    """Return detailed settings for a single SMTP account (password is never returned)."""
+    acc = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0, "smtp_password_encrypted": 0}
+    )
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return acc
+
+@api_router.put("/accounts/{account_id}")
+async def update_smtp_account(
+    account_id: str,
+    request: UpdateSMTPAccountRequest,
+    user: User = Depends(get_current_user),
+):
+    """Update SMTP account settings. Password is optional — only changed if provided.
+    Tests the connection before persisting (when credentials/host change)."""
+    existing = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    # Email change → prevent clashing with another account owned by same user
+    if request.email and request.email != existing.get("email"):
+        conflict = await db.email_accounts.find_one(
+            {"user_id": user.user_id, "email": request.email, "account_id": {"$ne": account_id}},
+            {"_id": 0, "account_id": 1}
+        )
+        if conflict:
+            raise HTTPException(status_code=400, detail="Another account with this email already exists")
+    
+    # Resolve the credentials we'll use for the connection test
+    new_host = request.smtp_host if request.smtp_host is not None else existing.get("smtp_host")
+    new_port = request.smtp_port if request.smtp_port is not None else existing.get("smtp_port")
+    new_username = (request.smtp_username if request.smtp_username is not None
+                    else existing.get("smtp_username") or existing.get("email"))
+    new_encryption = (request.smtp_encryption if request.smtp_encryption is not None
+                      else existing.get("smtp_encryption", "tls"))
+    
+    password_to_test = None
+    if request.smtp_password:
+        password_to_test = request.smtp_password
+    else:
+        # decrypt existing
+        enc = existing.get("smtp_password_encrypted")
+        password_to_test = decrypt_data(enc) if enc else None
+    
+    # Run a connection test only if we have credentials to test with
+    if new_host and new_port and password_to_test:
+        test_result = await test_smtp_connection(new_host, new_port, new_username, password_to_test, new_encryption)
+        if not test_result.get("success"):
+            raise HTTPException(status_code=400, detail=f"SMTP connection failed: {test_result.get('error')}")
+    
+    update_data = {}
+    if request.email is not None:
+        update_data["email"] = request.email
+    if request.display_name is not None:
+        update_data["display_name"] = request.display_name
+    if request.smtp_host is not None:
+        update_data["smtp_host"] = request.smtp_host
+    if request.smtp_port is not None:
+        update_data["smtp_port"] = request.smtp_port
+    if request.smtp_username is not None:
+        update_data["smtp_username"] = request.smtp_username
+    if request.smtp_encryption is not None:
+        update_data["smtp_encryption"] = request.smtp_encryption
+    if request.daily_limit is not None:
+        update_data["daily_limit"] = max(10, min(200, request.daily_limit))
+    if request.send_delay is not None:
+        update_data["send_delay"] = max(10, min(300, request.send_delay))
+    if request.smtp_password:
+        update_data["smtp_password_encrypted"] = encrypt_data(request.smtp_password)
+    # If we just ran a test successfully, mark connected
+    update_data["status"] = "connected"
+    update_data["last_error"] = None
+    
+    await db.email_accounts.update_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"$set": update_data}
+    )
+    return {"message": "Account updated", "account_id": account_id}
+
+@api_router.get("/accounts/smtp/sample-csv")
+async def download_sample_accounts_csv(user: User = Depends(get_current_user)):
+    """Return a sample CSV for bulk SMTP account import."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "email", "password", "smtp_host", "smtp_port",
+        "imap_host", "imap_port", "use_ssl", "daily_limit", "delay_seconds"
+    ])
+    writer.writerow([
+        "example@gmail.com", "your_app_password", "smtp.gmail.com", "587",
+        "imap.gmail.com", "993", "true", "50", "30"
+    ])
+    writer.writerow([
+        "example@outlook.com", "your_password", "smtp.office365.com", "587",
+        "outlook.office365.com", "993", "true", "40", "30"
+    ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="email_accounts_sample.csv"'}
+    )
+
+@api_router.post("/accounts/smtp/bulk-import")
+async def bulk_import_smtp_accounts(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Bulk import SMTP accounts from a CSV file.
+    Returns per-row success/error summary. Never halts on a single bad row.
+    """
+    # Subscription check
+    sub_status = await check_subscription_active(user.user_id)
+    if not sub_status.get("active"):
+        raise HTTPException(status_code=403, detail=f"Subscription required: {sub_status.get('reason', 'Inactive subscription')}")
+    
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are supported for account import")
+    
+    content = await file.read()
+    if len(content) > 1 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 1MB limit")
+    
+    text = content.decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+    required = {"email", "password", "smtp_host", "smtp_port"}
+    missing = required - set(headers)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"CSV is missing required columns: {', '.join(sorted(missing))}")
+    
+    # Build list of existing emails for this user (to skip duplicates without SMTP test)
+    existing_accounts = await db.email_accounts.find(
+        {"user_id": user.user_id},
+        {"_id": 0, "email": 1}
+    ).to_list(1000)
+    existing_emails = {(a.get("email") or "").lower() for a in existing_accounts}
+    
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    
+    results = []  # {row, email, status: 'imported'|'skipped'|'failed', error?}
+    imported = 0
+    skipped = 0
+    failed = 0
+    
+    row_num = 1  # header is row 1 in user-facing terms
+    for raw in reader:
+        row_num += 1
+        normalized = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+        email = normalized.get("email", "")
+        password = normalized.get("password", "")
+        smtp_host = normalized.get("smtp_host", "")
+        smtp_port_raw = normalized.get("smtp_port", "")
+        
+        if not email or not password or not smtp_host or not smtp_port_raw:
+            failed += 1
+            results.append({"row": row_num, "email": email, "status": "failed",
+                            "error": "Missing required fields (email/password/smtp_host/smtp_port)"})
+            continue
+        if not email_pattern.match(email):
+            failed += 1
+            results.append({"row": row_num, "email": email, "status": "failed",
+                            "error": "Invalid email format"})
+            continue
+        
+        # Check account limit each time we add
+        limit_check = await check_account_limit(user.user_id)
+        if not limit_check.get("can_add"):
+            failed += 1
+            results.append({"row": row_num, "email": email, "status": "failed",
+                            "error": f"Account limit reached ({limit_check.get('limit')})"})
+            continue
+        
+        if email.lower() in existing_emails:
+            skipped += 1
+            results.append({"row": row_num, "email": email, "status": "skipped",
+                            "error": "Already connected"})
+            continue
+        
+        try:
+            smtp_port = int(smtp_port_raw)
+        except ValueError:
+            failed += 1
+            results.append({"row": row_num, "email": email, "status": "failed",
+                            "error": "smtp_port must be a number"})
+            continue
+        
+        use_ssl_raw = normalized.get("use_ssl", "true").lower()
+        encryption = "ssl" if use_ssl_raw in ("ssl", "true", "1", "yes") and smtp_port in (465,) else "tls"
+        # If use_ssl is true but the port is typical STARTTLS, keep tls
+        
+        try:
+            daily_limit = int(normalized.get("daily_limit") or 50)
+        except ValueError:
+            daily_limit = 50
+        daily_limit = max(10, min(200, daily_limit))
+        
+        try:
+            send_delay = int(normalized.get("delay_seconds") or 30)
+        except ValueError:
+            send_delay = 30
+        send_delay = max(10, min(300, send_delay))
+        
+        # Test connection
+        test_result = await test_smtp_connection(smtp_host, smtp_port, email, password, encryption)
+        if not test_result.get("success"):
+            failed += 1
+            results.append({"row": row_num, "email": email, "status": "failed",
+                            "error": f"SMTP test failed: {test_result.get('error')}"})
+            continue
+        
+        account = EmailAccount(
+            user_id=user.user_id,
+            account_type="smtp",
+            email=email,
+            display_name=email.split("@")[0],
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_username=email,
+            smtp_password_encrypted=encrypt_data(password),
+            smtp_encryption=encryption,
+            daily_limit=daily_limit,
+            send_delay=send_delay,
+            status="connected",
+            last_reset_at=datetime.now(timezone.utc),
+        )
+        acc_dict = account.model_dump()
+        acc_dict["created_at"] = acc_dict["created_at"].isoformat()
+        acc_dict["last_reset_at"] = acc_dict["last_reset_at"].isoformat()
+        await db.email_accounts.insert_one(acc_dict)
+        existing_emails.add(email.lower())
+        
+        imported += 1
+        results.append({"row": row_num, "email": email, "status": "imported"})
+    
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "failed": failed,
+        "total_processed": imported + skipped + failed,
+        "results": results,
+    }
+
 @api_router.delete("/accounts/{account_id}")
 async def delete_email_account(account_id: str, user: User = Depends(get_current_user)):
     """Delete an email account"""
@@ -3159,6 +3466,85 @@ async def update_email_list(list_id: str, request: UpdateListRequest, user: User
     
     return {"message": "List updated"}
 
+@api_router.put("/lists/{list_id}/record")
+async def update_list_record(list_id: str, request: UpdateListRecordRequest, user: User = Depends(get_current_user)):
+    """Update a single contact row inside an email list (matched by original_email)."""
+    email_list = await db.email_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not email_list:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    new_email = (request.data.get("email") or "").strip()
+    if not new_email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    if not email_pattern.match(new_email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    
+    original_norm = (request.original_email or "").strip().lower()
+    new_norm = new_email.lower()
+    
+    emails = email_list.get("emails", [])
+    found_idx = None
+    for i, row in enumerate(emails):
+        if (row.get("email") or "").strip().lower() == original_norm:
+            found_idx = i
+            break
+    if found_idx is None:
+        raise HTTPException(status_code=404, detail="Contact not found in list")
+    
+    # Prevent collision with another existing contact if email changed
+    if original_norm != new_norm:
+        for i, row in enumerate(emails):
+            if i == found_idx:
+                continue
+            if (row.get("email") or "").strip().lower() == new_norm:
+                raise HTTPException(status_code=400, detail="Another contact with this email already exists in this list")
+    
+    # Merge: preserve unknown keys from the existing row, overlay with provided data
+    merged = {**emails[found_idx], **request.data, "email": new_email}
+    emails[found_idx] = merged
+    
+    # Recalculate counts (all valid since we validated above)
+    valid_count = sum(1 for r in emails if email_pattern.match((r.get("email") or "").strip()))
+    
+    await db.email_lists.update_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"$set": {"emails": emails, "valid_emails": valid_count}}
+    )
+    return {"message": "Contact updated", "record": merged}
+
+@api_router.get("/lists/{list_id}/export")
+async def export_email_list(list_id: str, user: User = Depends(get_current_user)):
+    """Download the email list as a CSV (current values)."""
+    email_list = await db.email_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not email_list:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    headers = email_list.get("column_headers") or ["email"]
+    if "email" not in headers:
+        headers = ["email"] + headers
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    for row in email_list.get("emails", []):
+        writer.writerow([row.get(h, "") for h in headers])
+    output.seek(0)
+    
+    safe_name = re.sub(r'[^A-Za-z0-9_-]+', '_', email_list.get("name") or "list") or "list"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.csv"'}
+    )
+
 @api_router.delete("/lists/{list_id}")
 async def delete_email_list(list_id: str, user: User = Depends(get_current_user)):
     """Delete an email list"""
@@ -3336,7 +3722,7 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
     scheduled_at = None
     if request.scheduled_at:
         try:
-            scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+            scheduled_at = parse_scheduled_at_in_timezone(request.scheduled_at, request.timezone)
             status = "scheduled"
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
@@ -3353,6 +3739,7 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         total_emails=total_emails,
         status=status,
         scheduled_at=scheduled_at,
+        timezone=request.timezone,
         suppression_list_ids=request.suppression_list_ids,
     )
     
@@ -3411,11 +3798,13 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
                 update_data["status"] = "draft"
         else:
             try:
-                scheduled_dt = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+                scheduled_dt = parse_scheduled_at_in_timezone(request.scheduled_at, request.timezone)
                 update_data["scheduled_at"] = scheduled_dt.isoformat()
                 update_data["status"] = "scheduled"
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
+    if request.timezone is not None:
+        update_data["timezone"] = request.timezone
     
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},

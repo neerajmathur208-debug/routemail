@@ -21,6 +21,10 @@ import {
   Settings,
   TrendingUp,
   BarChart3,
+  Upload,
+  Download,
+  Edit3,
+  FileText,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -53,7 +57,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { Progress } from "../components/ui/progress";
 import Sidebar from "../components/Sidebar";
-import { api } from "../App";
+import { api, API } from "../App";
 import { toast } from "sonner";
 
 const SMTP_PRESETS = {
@@ -103,6 +107,19 @@ export default function EmailAccounts({ user, setUser }) {
     daily_limit: 50,
     send_delay: 30,
   });
+
+  // View / Edit account state
+  const [viewAccount, setViewAccount] = useState(null);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // Bulk import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   const fetchAccounts = async () => {
     try {
@@ -260,6 +277,78 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
+  // View / Edit
+  const handleOpenView = (account) => {
+    setViewAccount(account);
+  };
+
+  const handleOpenEdit = (account) => {
+    setEditingAccount(account);
+    setEditForm({
+      email: account.email || "",
+      display_name: account.display_name || "",
+      smtp_host: account.smtp_host || "",
+      smtp_port: account.smtp_port || 587,
+      smtp_username: account.smtp_username || account.email || "",
+      smtp_encryption: account.smtp_encryption || "tls",
+      daily_limit: account.daily_limit || 50,
+      send_delay: account.send_delay || 30,
+      smtp_password: "", // blank means "don't change"
+    });
+    setShowEditPassword(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingAccount) return;
+    if (!editForm.email || !editForm.smtp_host || !editForm.smtp_port) {
+      toast.error("Email, SMTP host and port are required");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const payload = { ...editForm };
+      if (!payload.smtp_password) delete payload.smtp_password; // only send if user entered one
+      await api.put(`/accounts/${editingAccount.account_id}`, payload);
+      toast.success("Account updated");
+      setEditingAccount(null);
+      fetchAccounts();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update account");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Bulk import
+  const handleDownloadSample = () => {
+    window.open(`${API}/accounts/smtp/sample-csv`, "_blank");
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importFile) {
+      toast.error("Please choose a CSV file first");
+      return;
+    }
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      const res = await api.post("/accounts/smtp/bulk-import", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setImportResult(res.data);
+      toast.success(
+        `Imported ${res.data.imported}${res.data.skipped ? `, ${res.data.skipped} skipped` : ""}${res.data.failed ? `, ${res.data.failed} failed` : ""}`
+      );
+      fetchAccounts();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // Warmup Functions
   const handleEnableWarmup = async (account) => {
     setWarmupLoading(prev => ({ ...prev, [account.account_id]: true }));
@@ -386,14 +475,32 @@ export default function EmailAccounts({ user, setUser }) {
                 Connect your SMTP email accounts for sending
               </p>
             </div>
-            <Button
-              onClick={() => { resetForm(); setAddDialogOpen(true); }}
-              className="bg-electric-blue hover:bg-blue-700"
-              data-testid="add-account-btn"
-            >
-              <Plus size={18} className="mr-2" />
-              Add Account
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDownloadSample}
+                data-testid="download-sample-csv-btn"
+              >
+                <Download size={16} className="mr-2" />
+                Sample CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => { setImportDialogOpen(true); setImportFile(null); setImportResult(null); }}
+                data-testid="import-accounts-btn"
+              >
+                <Upload size={16} className="mr-2" />
+                Import CSV
+              </Button>
+              <Button
+                onClick={() => { resetForm(); setAddDialogOpen(true); }}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="add-account-btn"
+              >
+                <Plus size={18} className="mr-2" />
+                Add Account
+              </Button>
+            </div>
           </div>
 
           {/* Info Box */}
@@ -407,15 +514,19 @@ export default function EmailAccounts({ user, setUser }) {
             </div>
           </div>
 
-          {/* Accounts List */}
+          {/* Accounts List — independent scroll */}
           {accounts.length > 0 ? (
-            <div className="space-y-4">
+            <div
+              className="email-accounts-list-container space-y-4 pr-2"
+              style={{ maxHeight: "calc(100vh - 260px)", overflowY: "auto" }}
+              data-testid="email-accounts-list"
+            >
               {accounts.map((account, index) => (
                 <motion.div
                   key={account.account_id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
+                  transition={{ delay: Math.min(index, 6) * 0.05 }}
                   className="bg-white border border-slate-200 rounded-md p-6"
                 >
                   <div className="flex items-start justify-between">
@@ -435,8 +546,8 @@ export default function EmailAccounts({ user, setUser }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mr-2">
                         {account.status === "connected" ? (
                           <>
                             <CheckCircle2 size={16} className="text-green-600" />
@@ -449,6 +560,24 @@ export default function EmailAccounts({ user, setUser }) {
                           </>
                         )}
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenView(account)}
+                        data-testid={`view-account-${account.account_id}`}
+                        title="View details"
+                      >
+                        <Eye size={18} className="text-slate-400 hover:text-blue-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenEdit(account)}
+                        data-testid={`edit-account-${account.account_id}`}
+                        title="Edit server settings"
+                      >
+                        <Edit3 size={18} className="text-slate-400 hover:text-violet-600" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1055,6 +1184,299 @@ export default function EmailAccounts({ user, setUser }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* View Account Dialog */}
+      <Dialog open={!!viewAccount} onOpenChange={(o) => !o && setViewAccount(null)}>
+        <DialogContent data-testid="view-account-dialog">
+          <DialogHeader>
+            <DialogTitle>Account details</DialogTitle>
+            <DialogDescription>
+              Current server configuration for this email account.
+            </DialogDescription>
+          </DialogHeader>
+          {viewAccount && (
+            <div className="space-y-3 text-sm">
+              <DetailRow label="Display name" value={viewAccount.display_name} />
+              <DetailRow label="Email" value={viewAccount.email} mono />
+              <DetailRow label="SMTP host" value={viewAccount.smtp_host} mono />
+              <DetailRow label="SMTP port" value={viewAccount.smtp_port} mono />
+              <DetailRow label="SMTP username" value={viewAccount.smtp_username || viewAccount.email} mono />
+              <DetailRow label="Encryption" value={(viewAccount.smtp_encryption || "tls").toUpperCase()} />
+              <DetailRow label="Password" value="••••••••••• (hidden)" mono />
+              <DetailRow label="Daily sending limit" value={`${viewAccount.daily_limit || 50} emails/day`} />
+              <DetailRow label="Delay between emails" value={`${viewAccount.send_delay || 30}s`} />
+              <DetailRow
+                label="Status"
+                value={viewAccount.status === "connected" ? "Connected" : "Error"}
+              />
+              {viewAccount.last_error && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                  {viewAccount.last_error}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewAccount(null)}>Close</Button>
+            {viewAccount && (
+              <Button
+                onClick={() => { handleOpenEdit(viewAccount); setViewAccount(null); }}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="view-to-edit-btn"
+              >
+                <Edit3 size={14} className="mr-2" /> Edit settings
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Account Dialog */}
+      <Dialog open={!!editingAccount} onOpenChange={(o) => !o && setEditingAccount(null)}>
+        <DialogContent className="max-w-xl" data-testid="edit-account-dialog">
+          <DialogHeader>
+            <DialogTitle>Edit server settings</DialogTitle>
+            <DialogDescription>
+              Update SMTP details. Your saved password is never displayed — only set a new value if
+              you want to rotate it.
+            </DialogDescription>
+          </DialogHeader>
+          {editingAccount && (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Email address</Label>
+                  <Input
+                    value={editForm.email || ""}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    data-testid="edit-email"
+                  />
+                </div>
+                <div>
+                  <Label>Display name</Label>
+                  <Input
+                    value={editForm.display_name || ""}
+                    onChange={(e) => setEditForm({ ...editForm, display_name: e.target.value })}
+                    data-testid="edit-display-name"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>SMTP host</Label>
+                  <Input
+                    value={editForm.smtp_host || ""}
+                    onChange={(e) => setEditForm({ ...editForm, smtp_host: e.target.value })}
+                    data-testid="edit-smtp-host"
+                  />
+                </div>
+                <div>
+                  <Label>SMTP port</Label>
+                  <Input
+                    type="number"
+                    value={editForm.smtp_port || ""}
+                    onChange={(e) => setEditForm({ ...editForm, smtp_port: parseInt(e.target.value || "0") })}
+                    data-testid="edit-smtp-port"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>SMTP username</Label>
+                  <Input
+                    value={editForm.smtp_username || ""}
+                    onChange={(e) => setEditForm({ ...editForm, smtp_username: e.target.value })}
+                    data-testid="edit-smtp-username"
+                  />
+                </div>
+                <div>
+                  <Label>Encryption</Label>
+                  <Select
+                    value={editForm.smtp_encryption || "tls"}
+                    onValueChange={(v) => setEditForm({ ...editForm, smtp_encryption: v })}
+                  >
+                    <SelectTrigger data-testid="edit-encryption">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tls">STARTTLS</SelectItem>
+                      <SelectItem value="ssl">SSL</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label>New password / App password</Label>
+                <div className="relative">
+                  <Input
+                    type={showEditPassword ? "text" : "password"}
+                    placeholder="Leave blank to keep existing password"
+                    value={editForm.smtp_password || ""}
+                    onChange={(e) => setEditForm({ ...editForm, smtp_password: e.target.value })}
+                    className="pr-10"
+                    data-testid="edit-smtp-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    aria-label="Toggle password visibility"
+                  >
+                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  We never show your saved password. Type a new value only if you need to rotate it.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Daily sending limit</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={200}
+                    value={editForm.daily_limit || 50}
+                    onChange={(e) => setEditForm({ ...editForm, daily_limit: parseInt(e.target.value || "0") })}
+                    data-testid="edit-daily-limit"
+                  />
+                </div>
+                <div>
+                  <Label>Delay between emails (s)</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={300}
+                    value={editForm.send_delay || 30}
+                    onChange={(e) => setEditForm({ ...editForm, send_delay: parseInt(e.target.value || "0") })}
+                    data-testid="edit-send-delay"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingAccount(null)}>Cancel</Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={savingEdit}
+              className="bg-electric-blue hover:bg-blue-700"
+              data-testid="edit-account-save-btn"
+            >
+              {savingEdit ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(o) => { setImportDialogOpen(o); if (!o) { setImportFile(null); setImportResult(null); } }}>
+        <DialogContent className="max-w-xl" data-testid="import-accounts-dialog">
+          <DialogHeader>
+            <DialogTitle>Import email accounts via CSV</DialogTitle>
+            <DialogDescription>
+              Each valid row is tested via SMTP before being added. Duplicates (by email) are skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
+              Required columns: <span className="font-mono">email, password, smtp_host, smtp_port</span>.
+              Optional: <span className="font-mono">imap_host, imap_port, use_ssl, daily_limit, delay_seconds</span>.
+              Delay defaults to <strong>30s</strong> when empty.
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadSample}
+                data-testid="dialog-download-sample-btn"
+              >
+                <Download size={14} className="mr-1.5" /> Download sample CSV
+              </Button>
+            </div>
+            <div>
+              <Label>CSV file</Label>
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); }}
+                data-testid="import-file-input"
+                className="mt-1.5"
+              />
+            </div>
+
+            {importResult && (
+              <div className="space-y-2" data-testid="import-result-panel">
+                <div className="flex gap-2 text-xs">
+                  <span className="px-2 py-1 rounded bg-green-100 text-green-700">
+                    Imported {importResult.imported}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-slate-100 text-slate-700">
+                    Skipped {importResult.skipped}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-red-100 text-red-700">
+                    Failed {importResult.failed}
+                  </span>
+                </div>
+                <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-md">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-slate-500">
+                        <th className="px-2 py-1">Row</th>
+                        <th className="px-2 py-1">Email</th>
+                        <th className="px-2 py-1">Status</th>
+                        <th className="px-2 py-1">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(importResult.results || []).map((r, i) => (
+                        <tr key={i} className="border-t border-slate-100">
+                          <td className="px-2 py-1 text-slate-500">{r.row}</td>
+                          <td className="px-2 py-1 font-mono">{r.email}</td>
+                          <td className="px-2 py-1">
+                            <span className={
+                              r.status === "imported" ? "text-green-700" :
+                              r.status === "skipped" ? "text-slate-500" : "text-red-600"
+                            }>
+                              {r.status}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1 text-red-600">{r.error || ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>Close</Button>
+            <Button
+              onClick={handleImportSubmit}
+              disabled={importing || !importFile}
+              className="bg-electric-blue hover:bg-blue-700"
+              data-testid="import-submit-btn"
+            >
+              {importing ? (<><Loader2 size={14} className="animate-spin mr-2" /> Importing…</>) : "Import accounts"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2 last:border-0">
+      <span className="text-slate-500">{label}</span>
+      <span className={`text-slate-900 ${mono ? "font-mono text-xs" : ""}`}>{value || "—"}</span>
     </div>
   );
 }

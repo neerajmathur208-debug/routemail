@@ -150,12 +150,24 @@ export default function Campaign({ user, setUser }) {
           });
           setView("edit");
           
-          // If campaign has scheduled_at, set schedule mode
+          // If campaign has scheduled_at, set schedule mode using campaign's stored timezone
           if (campaign.scheduled_at) {
             setSendOption("schedule");
-            const dt = new Date(campaign.scheduled_at);
-            setScheduleDate(dt.toISOString().split('T')[0]);
-            setScheduleTime(dt.toTimeString().slice(0, 5));
+            const campaignTz = campaign.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+            setSelectedTimezone(campaignTz);
+            // Render stored UTC back into the campaign's selected timezone (sv-SE locale → ISO-like)
+            try {
+              const localStr = new Date(campaign.scheduled_at).toLocaleString("sv-SE", {
+                timeZone: campaignTz,
+              }); // e.g. "2027-01-15 09:00:00"
+              const [d, t] = localStr.split(" ");
+              setScheduleDate(d);
+              setScheduleTime((t || "00:00:00").slice(0, 5));
+            } catch {
+              const dt = new Date(campaign.scheduled_at);
+              setScheduleDate(dt.toISOString().split("T")[0]);
+              setScheduleTime(dt.toTimeString().slice(0, 5));
+            }
           }
           
           // Load selected list for variables
@@ -259,18 +271,19 @@ export default function Campaign({ user, setUser }) {
       return;
     }
 
-    // Build scheduled_at from date/time if scheduling
+    // Build scheduled_at: send as a NAIVE local datetime string in the user's selected timezone.
+    // Backend will localize using `timezone` and convert to UTC (no browser-tz leakage).
     let scheduled_at = null;
     if (sendOption === "schedule" && scheduleDate && scheduleTime) {
-      // Create date in selected timezone and convert to UTC
-      const dateTimeStr = `${scheduleDate}T${scheduleTime}`;
-      const scheduledDateTime = new Date(dateTimeStr);
-      
-      if (scheduledDateTime <= new Date()) {
+      // Lightweight future-time check (in the selected timezone). We don't need
+      // absolute precision here — the backend will re-validate.
+      const nowLocalISO = new Date().toLocaleString("sv-SE", { timeZone: selectedTimezone }).replace(" ", "T");
+      const chosenISO = `${scheduleDate}T${scheduleTime}:00`;
+      if (chosenISO <= nowLocalISO) {
         toast.error("Scheduled time must be in the future");
         return;
       }
-      scheduled_at = scheduledDateTime.toISOString();
+      scheduled_at = chosenISO; // naive local time in selectedTimezone
     }
 
     const payload = {
@@ -330,18 +343,22 @@ export default function Campaign({ user, setUser }) {
       toast.error("Please select date and time for scheduling");
       return;
     }
-    
-    const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
-    if (scheduledDateTime <= new Date()) {
+
+    // Validate in selected timezone (not browser tz)
+    const nowLocalISO = new Date()
+      .toLocaleString("sv-SE", { timeZone: selectedTimezone })
+      .replace(" ", "T");
+    const chosenISO = `${scheduleDate}T${scheduleTime}:00`;
+    if (chosenISO <= nowLocalISO) {
       toast.error("Scheduled time must be in the future");
       return;
     }
 
     try {
-      // Update campaign with scheduled_at and timezone
+      // Send naive local datetime + timezone; backend converts to UTC using pytz
       await api.put(`/campaigns/${campaignId}`, {
         ...formData,
-        scheduled_at: scheduledDateTime.toISOString(),
+        scheduled_at: chosenISO,
         timezone: selectedTimezone,
       });
       

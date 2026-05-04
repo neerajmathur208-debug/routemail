@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 26: end-to-end backend + frontend verification of 7 RouteMail improvements (list-record edit, list CSV export, SMTP bulk-import + sample CSV, account view/edit with password safety, scrollable rich editor, timezone-aware campaign scheduling, internal-scroll Email Accounts list). Backend pytest: 28/28 PASSED for new features, 47/47 PASSED for the regression suite (test_dne_lists.py + test_drip_campaigns.py). Frontend Playwright spot-checks confirm RichTextEditor max-h:400px overflow-y:auto, /accounts page exposes download-sample-csv-btn + import-accounts-btn, and the import dialog renders import-file-input as expected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/accounts/{id}", "issue": "When called WITHOUT a new smtp_password, the endpoint still triggers a live SMTP connection test using the decrypted existing blob. If the saved password cannot decrypt cleanly (e.g. legacy seeded data) the endpoint returns 400 SMTP-test-failed. The persisted blob is correctly left untouched (verified). Consider: only re-test SMTP when host/port/credentials actually change, and let pure metadata patches (display_name, daily_limit, send_delay) skip the test."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "TestUnauth::test_401_get_account / test_401_export_list / test_401_sample_csv / test_401_bulk_import / test_401_update_record",
+    "TestCampaignTimezone: NY 2027-01-15 09:00 → 14:00 UTC; Kolkata 2027-06-15 14:00 → 08:30 UTC; explicit Z offset honoured verbatim; PUT also localises; GET returns timezone field",
+    "TestListRecordAndExport: invalid email → 400; collision with existing row → 400; success preserves untouched columns; persists in GET; 404 on unknown list_id; CSV export has email-first headers + Content-Disposition attachment; 404 on missing list",
+    "TestSmtpSampleAndBulkImport: sample CSV headers exact match [email,password,smtp_host,smtp_port,imap_host,imap_port,use_ssl,daily_limit,delay_seconds] + ≥1 sample row; missing required columns → 400; non-.csv → 400; >1MB → 400; per-row results array with imported/skipped/failed counts; duplicates skipped; missing daily_limit/delay defaults applied",
+    "TestAccountViewEdit: GET /api/accounts/{id} omits smtp_password_encrypted; 404 unknown id; PUT without smtp_password leaves DB blob unchanged; PUT with new password+bad host fails 400 and does NOT rotate blob (atomic); email collision with another own account → 400; 404 on cross-user/unknown id",
+    "Regression: test_dne_lists.py + test_drip_campaigns.py = 47/47 passing",
+    "Frontend: RichTextEditor contenteditable computed style maxHeight=400px / overflowY=auto / minHeight=300px",
+    "Frontend: /accounts shows download-sample-csv-btn + import-accounts-btn; import dialog opens with import-file-input",
+    "Frontend: source contains data-testid='email-accounts-list' wrapper with maxHeight: calc(100vh - 260px) + overflowY:auto (rendered conditionally on accounts.length>0)",
+    "Frontend: source contains data-testid='download-list-{list_id}', 'list-download-btn', 'list-edit-row-{email}', 'list-edit-row-dialog', 'view-account-{id}', 'edit-account-{id}', 'view-account-dialog', 'edit-account-dialog'"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_26_features.py",
+    "/app/test_reports/pytest/iteration_26_results.xml"
+  ],
+  "action_items": [
+    "Optional: in PUT /api/accounts/{id}, skip the SMTP connection test for pure metadata updates (display_name, daily_limit, send_delay) — currently still re-tests using decrypted existing blob, which can 400 on legacy/bogus blobs even though the user didn't touch credentials.",
+    "Optional: enforce a hard row-cap on /api/accounts/smtp/bulk-import (the 1MB byte cap allows ~10k+ rows of SMTP test calls, each blocking up to 10s — could DoS the worker)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 6246 lines — strongly recommend splitting routers (campaigns, accounts, lists, dne, drips) into separate modules; each iteration is making the file larger and harder to review.",
+    "parse_scheduled_at_in_timezone treats any '-' after position 10 as a tz offset, but a string like '2027-06-15T14:00:00-05' (incomplete offset) would still hit fromisoformat which would raise. Fine for our current frontend payload shape, but consider explicit regex match for ±HH:MM.",
+    "/api/accounts/smtp/bulk-import runs test_smtp_connection synchronously per row (10s timeout each). 1MB worth of valid rows = potentially minutes of blocking. Move to async gather with a per-row cap, or hard-limit row count.",
+    "GET /api/accounts/{id} correctly excludes smtp_password_encrypted via Mongo projection — good. But the /api/accounts (list) endpoint should be re-checked to ensure it also excludes the blob (out-of-scope for this iteration)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_26_features.py"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 new + 47/47 regression)",
+    "frontend": "100% of code-level selector checks; live UI spot-checks pass for editor scroll + Email Accounts header buttons. End-to-end editor/edit-row dialogs not exercised because the test user has 0 lists and 0 accounts post-cleanup; selectors are present in source and unit-level dialog open path verified."
+  },
+  "test_credentials": "drip.tester@example.com / DripTest123! (pre-seeded, /app/memory/test_credentials.md).",
+  "seed_data_creation": "Test creates: TEST_iter26_camp_list_*, TEST_iter26_records_*, TEST_iter26_tz_* campaigns, acc_TEST_iter26_view/other/dup_* email_accounts, TEST_iter26_*@example.com emails. All cleaned up by session-scoped autouse fixture.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_iteration_26_features.py as the regression for the 7 iteration-26 features. SMTP test path is exercised against a deliberately bogus host (smtp.invalid-bogus.example) — expects 'failed' status. Account view/edit tests directly seed Mongo email_accounts rows because real test_smtp_connection would always reject mocked hosts. Frontend selectors verified in source: download-list-{list_id}, list-download-btn, list-edit-row-{email}, list-edit-row-dialog, list-edit-row-save-btn, download-sample-csv-btn, import-accounts-btn, import-file-input, email-accounts-list, view-account-{id}, edit-account-{id}, view-account-dialog, edit-account-dialog, edit-account-save-btn. RichTextEditor contenteditable confirms computed maxHeight:400px / overflowY:auto.",
+  "rca of the issue": "N/A — no defects found."
+}

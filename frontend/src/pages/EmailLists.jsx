@@ -14,6 +14,7 @@ import {
   Check,
   X,
   AlertCircle,
+  Download,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -43,7 +44,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import Sidebar from "../components/Sidebar";
-import { api } from "../App";
+import { api, API } from "../App";
 import { toast } from "sonner";
 
 export default function EmailLists({ user, setUser }) {
@@ -315,6 +316,15 @@ export default function EmailLists({ user, setUser }) {
                               data-testid={`view-list-${list.list_id}`}
                             >
                               <Eye size={16} className="text-slate-400" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => window.open(`${API}/lists/${list.list_id}/export`, "_blank")}
+                              data-testid={`download-list-${list.list_id}`}
+                              title="Download CSV"
+                            >
+                              <Download size={16} className="text-slate-400 hover:text-blue-600" />
                             </Button>
                             <Button
                               variant="ghost"
