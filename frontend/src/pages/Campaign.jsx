@@ -104,14 +104,17 @@ export default function Campaign({ user, setUser }) {
     account_ids: [],
     scheduled_at: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    suppression_list_ids: [],
   });
+  const [dneLists, setDneLists] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [listsRes, accountsRes, campaignsRes] = await Promise.all([
+      const [listsRes, accountsRes, campaignsRes, dneRes] = await Promise.all([
         api.get("/lists"),
         api.get("/accounts"),
         api.get("/campaigns"),
+        api.get("/dne-lists"),
       ]);
 
       setLists(listsRes.data);
@@ -119,6 +122,7 @@ export default function Campaign({ user, setUser }) {
       const accountsData = accountsRes.data?.accounts || accountsRes.data || [];
       setAccounts(Array.isArray(accountsData) ? accountsData : []);
       setCampaigns(campaignsRes.data);
+      setDneLists(dneRes.data || []);
 
       // Find running campaign
       const running = campaignsRes.data.find(
@@ -142,6 +146,7 @@ export default function Campaign({ user, setUser }) {
             list_id: campaign.list_id || "",
             account_ids: campaign.account_ids || [],
             scheduled_at: campaign.scheduled_at || "",
+            suppression_list_ids: campaign.suppression_list_ids || [],
           });
           setView("edit");
           
@@ -238,6 +243,14 @@ export default function Campaign({ user, setUser }) {
       ? formData.account_ids.filter(id => id !== accountId)
       : [...formData.account_ids, accountId];
     setFormData({ ...formData, account_ids: newIds });
+  };
+
+  const handleDneToggle = (listId) => {
+    const cur = formData.suppression_list_ids || [];
+    const next = cur.includes(listId)
+      ? cur.filter((id) => id !== listId)
+      : [...cur, listId];
+    setFormData({ ...formData, suppression_list_ids: next });
   };
 
   const handleSaveCampaign = async () => {
@@ -462,6 +475,7 @@ export default function Campaign({ user, setUser }) {
       list_id: "",
       account_ids: [],
       scheduled_at: "",
+      suppression_list_ids: [],
     });
     setSelectedList(null);
     setSendOption("now");
@@ -675,6 +689,70 @@ export default function Campaign({ user, setUser }) {
                   ))}
                   {accounts.length === 0 && (
                     <p className="text-slate-500 text-sm">No accounts connected yet</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Do Not Email Lists */}
+              <div>
+                <Label>Do Not Email Lists (optional)</Label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Emails in selected Do Not Email lists will be automatically excluded from
+                  sending. The Global list is always applied.
+                </p>
+                <div className="space-y-2 mt-1.5">
+                  {dneLists.filter((l) => !l.is_global).length === 0 && (
+                    <p className="text-sm text-slate-500">
+                      No custom Do Not Email lists yet.{" "}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/do-not-email")}
+                        className="text-blue-600 underline"
+                      >
+                        Manage suppression lists
+                      </button>
+                    </p>
+                  )}
+                  {dneLists.filter((l) => !l.is_global).map((dne) => (
+                    <div
+                      key={dne.list_id}
+                      className="flex items-center gap-3 p-3 border border-slate-200 rounded-md"
+                    >
+                      <Checkbox
+                        id={`dne-${dne.list_id}`}
+                        checked={(formData.suppression_list_ids || []).includes(dne.list_id)}
+                        onCheckedChange={() => handleDneToggle(dne.list_id)}
+                        data-testid={`dne-checkbox-${dne.list_id}`}
+                      />
+                      <label
+                        htmlFor={`dne-${dne.list_id}`}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <p className="font-medium text-slate-900">{dne.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {dne.email_count || 0} suppressed email
+                          {dne.email_count === 1 ? "" : "s"}
+                        </p>
+                      </label>
+                    </div>
+                  ))}
+                  {dneLists.some((l) => l.is_global) && (
+                    <div className="flex items-center gap-3 p-3 border border-rose-200 bg-rose-50/40 rounded-md">
+                      <div className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center flex-shrink-0">
+                        <svg viewBox="0 0 12 12" className="w-3 h-3 text-white fill-current">
+                          <path d="M4.5 8.5L2 6l1-1 1.5 1.5L9 2l1 1z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-slate-900">Global Do Not Email</p>
+                        <p className="text-xs text-slate-500">
+                          Always applied ({dneLists.find((l) => l.is_global)?.email_count || 0} emails)
+                        </p>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                        Auto-applied
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>

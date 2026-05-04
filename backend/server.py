@@ -561,6 +561,31 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
         )
         return
     
+    # Real-time DNE / suppression check — runs before every step
+    recipient_email_pre = contact.get("email", "")
+    suppression_list_ids = campaign.get("suppression_list_ids", [])
+    if await is_email_suppressed(campaign.get("user_id"), recipient_email_pre, suppression_list_ids):
+        await db.drip_contacts.update_one(
+            {"contact_id": contact_id},
+            {"$set": {
+                "status": "suppressed",
+                "suppressed_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        await db.drip_logs.insert_one({
+            "log_id": f"dlog_{uuid.uuid4().hex[:12]}",
+            "drip_id": drip_id,
+            "contact_id": contact_id,
+            "contact_email": recipient_email_pre,
+            "step": current_step,
+            "subject": (steps[current_step] or {}).get("subject", ""),
+            "account_email": None,
+            "status": "suppressed",
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+        })
+        logger.info(f"[DRIP] Skipped suppressed contact {recipient_email_pre} for campaign {drip_id}")
+        return
+    
     # Select account (rotate)
     account_index = hash(contact_id) % len(accounts)
     account = accounts[account_index]
@@ -891,6 +916,25 @@ async def startup_event():
     drip_running = True
     drip_task = asyncio.create_task(run_drip_worker())
     logger.info("Background drip campaign worker started")
+    
+    # Ensure DNE / suppression indexes exist for fast lookups
+    try:
+        await db.dne_emails.create_index(
+            [("user_id", 1), ("email", 1)],
+            name="user_email_idx"
+        )
+        await db.dne_emails.create_index(
+            [("list_id", 1), ("email", 1)],
+            name="list_email_idx",
+            unique=True
+        )
+        await db.suppression_list.create_index(
+            [("user_id", 1), ("email", 1)],
+            name="user_email_idx"
+        )
+        logger.info("DNE / suppression indexes ensured")
+    except Exception as e:
+        logger.warning(f"Could not create DNE indexes: {e}")
 
 @app.on_event("shutdown") 
 async def shutdown_event():
@@ -935,6 +979,91 @@ def decrypt_data(encrypted_data: str) -> str:
         return fernet.decrypt(encrypted_data.encode()).decode()
     except Exception:
         return ""
+
+# ==================== DO NOT EMAIL (DNE) HELPERS ====================
+
+async def ensure_global_dne_list(user_id: str) -> str:
+    """Ensure the user has a global DNE list; return its list_id."""
+    existing = await db.dne_lists.find_one(
+        {"user_id": user_id, "is_global": True},
+        {"_id": 0, "list_id": 1}
+    )
+    if existing:
+        return existing["list_id"]
+    
+    new_list = {
+        "list_id": f"dne_{uuid.uuid4().hex[:12]}",
+        "user_id": user_id,
+        "name": "Global Do Not Email",
+        "is_global": True,
+        "email_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dne_lists.insert_one(new_list)
+    return new_list["list_id"]
+
+async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Optional[List[str]] = None) -> bool:
+    """Check whether `email` should be blocked from sending.
+    
+    Checks (in one query each, indexed):
+    - Legacy unsubscribe collection (always applied)
+    - User's Global DNE list (always applied)
+    - Any explicitly-selected DNE lists on the campaign
+    """
+    if not email:
+        return False
+    email_norm = email.strip().lower()
+    if not email_norm:
+        return False
+    
+    # 1) Legacy unsubscribes (covers public /api/unsubscribe/ clicks)
+    legacy = await db.suppression_list.find_one(
+        {"user_id": user_id, "email": email_norm},
+        {"email": 1}
+    )
+    if legacy:
+        return True
+    
+    # 2) Build list of DNE list_ids to check: global + selected
+    list_ids = list(suppression_list_ids or [])
+    global_id = await ensure_global_dne_list(user_id)
+    if global_id not in list_ids:
+        list_ids.append(global_id)
+    
+    if not list_ids:
+        return False
+    
+    hit = await db.dne_emails.find_one(
+        {"user_id": user_id, "email": email_norm, "list_id": {"$in": list_ids}},
+        {"email": 1}
+    )
+    return hit is not None
+
+async def add_email_to_global_dne(user_id: str, email: str) -> None:
+    """Add a single email to the user's Global DNE list (idempotent)."""
+    if not email:
+        return
+    email_norm = email.strip().lower()
+    if not email_norm:
+        return
+    global_id = await ensure_global_dne_list(user_id)
+    existing = await db.dne_emails.find_one(
+        {"user_id": user_id, "list_id": global_id, "email": email_norm},
+        {"email": 1}
+    )
+    if existing:
+        return
+    await db.dne_emails.insert_one({
+        "user_id": user_id,
+        "list_id": global_id,
+        "email": email_norm,
+        "source": "unsubscribe",
+        "added_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.dne_lists.update_one(
+        {"list_id": global_id},
+        {"$inc": {"email_count": 1}}
+    )
 
 # ==================== EMAIL HELPERS (Resend) ====================
 
@@ -1514,6 +1643,7 @@ class Campaign(BaseModel):
     current_account_index: int = 0
     is_locked: bool = False  # Prevents editing when running
     scheduled_at: Optional[datetime] = None  # For scheduled campaigns
+    suppression_list_ids: List[str] = []  # DNE list IDs applied to this campaign
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
@@ -1603,6 +1733,7 @@ class CreateCampaignRequest(BaseModel):
     account_ids: List[str] = []
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
     timezone: Optional[str] = None  # User's selected timezone
+    suppression_list_ids: List[str] = []  # DNE list IDs to exclude
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -1614,6 +1745,7 @@ class UpdateCampaignRequest(BaseModel):
     account_ids: Optional[List[str]] = None
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
     timezone: Optional[str] = None  # User's selected timezone
+    suppression_list_ids: Optional[List[str]] = None
 
 class AddToSuppressionRequest(BaseModel):
     email: str
@@ -1644,6 +1776,7 @@ class CreateDripCampaignRequest(BaseModel):
     schedule: DripScheduleSettings = DripScheduleSettings()
     stop_on_reply: bool = True
     stop_on_bounce: bool = True
+    suppression_list_ids: List[str] = []
 
 class UpdateDripCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -1653,9 +1786,29 @@ class UpdateDripCampaignRequest(BaseModel):
     schedule: Optional[DripScheduleSettings] = None
     stop_on_reply: Optional[bool] = None
     stop_on_bounce: Optional[bool] = None
+    suppression_list_ids: Optional[List[str]] = None
 
 class AddDripContactsRequest(BaseModel):
     list_id: str
+
+# ==================== DO NOT EMAIL (DNE / SUPPRESSION) MODELS ====================
+
+class DNEList(BaseModel):
+    list_id: str = Field(default_factory=lambda: f"dne_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    name: str
+    is_global: bool = False
+    email_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CreateDNEListRequest(BaseModel):
+    name: str
+
+class AddDNEEmailsRequest(BaseModel):
+    emails: List[str]
+
+class RemoveDNEEmailRequest(BaseModel):
+    email: str
 
 # ==================== AUTH HELPERS ====================
 
@@ -3056,10 +3209,12 @@ async def get_campaign(campaign_id: str, user: User = Depends(get_current_user))
     pending = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "pending"})
     sent = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "sent"})
     failed = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "failed"})
+    suppressed = await db.email_queue.count_documents({"campaign_id": campaign_id, "status": "suppressed"})
     
     campaign["pending_count"] = pending
     campaign["sent_count"] = sent
     campaign["failed_count"] = failed
+    campaign["suppressed_count"] = suppressed
     
     return campaign
 
@@ -3197,7 +3352,8 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         account_ids=request.account_ids,
         total_emails=total_emails,
         status=status,
-        scheduled_at=scheduled_at
+        scheduled_at=scheduled_at,
+        suppression_list_ids=request.suppression_list_ids,
     )
     
     camp_dict = campaign.model_dump()
@@ -3246,6 +3402,8 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
             update_data["total_emails"] = email_list.get("valid_emails", 0)
     if request.account_ids is not None:
         update_data["account_ids"] = request.account_ids
+    if request.suppression_list_ids is not None:
+        update_data["suppression_list_ids"] = request.suppression_list_ids
     if request.scheduled_at is not None:
         if request.scheduled_at == "":
             update_data["scheduled_at"] = None
@@ -3710,6 +3868,7 @@ async def create_drip_campaign(request: CreateDripCampaignRequest, user: User = 
         "schedule": request.schedule.model_dump(),
         "stop_on_reply": request.stop_on_reply,
         "stop_on_bounce": request.stop_on_bounce,
+        "suppression_list_ids": request.suppression_list_ids,
         "status": "draft",  # draft, running, paused, completed
         "total_sent": 0,
         "total_contacts": 0,
@@ -3736,9 +3895,11 @@ async def get_drip_campaign(drip_id: str, user: User = Depends(get_current_user)
     completed_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "completed"})
     replied_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "replied"})
     bounced_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "bounced"})
+    suppressed_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "suppressed"})
     total_contacts = await db.drip_contacts.count_documents({"drip_id": drip_id})
     sent_logs = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "sent"})
     failed_logs = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "failed"})
+    suppressed_logs = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "suppressed"})
     
     campaign["stats"] = {
         "total_contacts": total_contacts,
@@ -3746,8 +3907,10 @@ async def get_drip_campaign(drip_id: str, user: User = Depends(get_current_user)
         "completed": completed_count,
         "replied": replied_count,
         "bounced": bounced_count,
+        "suppressed": suppressed_count,
         "emails_sent": sent_logs,
         "emails_failed": failed_logs,
+        "emails_suppressed": suppressed_logs,
     }
     return campaign
 
@@ -3784,6 +3947,8 @@ async def update_drip_campaign(drip_id: str, request: UpdateDripCampaignRequest,
         update_data["stop_on_reply"] = request.stop_on_reply
     if request.stop_on_bounce is not None:
         update_data["stop_on_bounce"] = request.stop_on_bounce
+    if request.suppression_list_ids is not None:
+        update_data["suppression_list_ids"] = request.suppression_list_ids
     
     await db.drip_campaigns.update_one({"drip_id": drip_id}, {"$set": update_data})
     return {"message": "Drip campaign updated", "drip_id": drip_id}
@@ -4020,6 +4185,249 @@ async def resume_drip_campaign(drip_id: str, user: User = Depends(get_current_us
     )
     return {"message": "Drip campaign resumed", "drip_id": drip_id}
 
+# ==================== DO NOT EMAIL (DNE) ENDPOINTS ====================
+
+@api_router.get("/dne-lists")
+async def list_dne_lists(user: User = Depends(get_current_user)):
+    """List all Do Not Email lists for the current user (global first)."""
+    await ensure_global_dne_list(user.user_id)  # lazy-create on first access
+    lists = await db.dne_lists.find(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    ).to_list(500)
+    globals_ = [item for item in lists if item.get("is_global")]
+    others = sorted(
+        [item for item in lists if not item.get("is_global")],
+        key=lambda x: x.get("created_at", ""),
+        reverse=True,
+    )
+    return globals_ + others
+
+@api_router.post("/dne-lists")
+async def create_dne_list(request: CreateDNEListRequest, user: User = Depends(get_current_user)):
+    """Create a new (non-global) DNE list."""
+    name = (request.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    
+    new_list = DNEList(user_id=user.user_id, name=name, is_global=False).model_dump()
+    new_list["created_at"] = new_list["created_at"].isoformat()
+    await db.dne_lists.insert_one(new_list)
+    new_list.pop("_id", None)
+    return new_list
+
+@api_router.get("/dne-lists/{list_id}")
+async def get_dne_list(
+    list_id: str,
+    user: User = Depends(get_current_user),
+    skip: int = Query(0),
+    limit: int = Query(100),
+    search: Optional[str] = Query(None),
+):
+    """Fetch DNE list metadata + a page of emails."""
+    dne = await db.dne_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not dne:
+        raise HTTPException(status_code=404, detail="DNE list not found")
+    
+    query = {"list_id": list_id, "user_id": user.user_id}
+    if search:
+        query["email"] = {"$regex": re.escape(search.strip().lower())}
+    
+    emails = await db.dne_emails.find(
+        query, {"_id": 0}
+    ).sort("added_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.dne_emails.count_documents(query)
+    
+    dne["emails"] = emails
+    dne["total_filtered"] = total
+    dne["skip"] = skip
+    dne["limit"] = limit
+    return dne
+
+@api_router.post("/dne-lists/{list_id}/emails")
+async def add_dne_emails(list_id: str, request: AddDNEEmailsRequest, user: User = Depends(get_current_user)):
+    """Add one or more emails (normalised + deduped) to a DNE list."""
+    dne = await db.dne_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not dne:
+        raise HTTPException(status_code=404, detail="DNE list not found")
+    
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    seen = set()
+    cleaned = []
+    invalid = 0
+    for raw in request.emails:
+        e = (raw or "").strip().lower()
+        if not e or e in seen:
+            continue
+        seen.add(e)
+        if not email_pattern.match(e):
+            invalid += 1
+            continue
+        cleaned.append(e)
+    
+    if not cleaned:
+        return {"added": 0, "skipped_duplicates": 0, "invalid": invalid, "total": dne.get("email_count", 0)}
+    
+    existing = await db.dne_emails.find(
+        {"list_id": list_id, "email": {"$in": cleaned}},
+        {"_id": 0, "email": 1}
+    ).to_list(len(cleaned))
+    already = {x["email"] for x in existing}
+    
+    new_docs = [{
+        "user_id": user.user_id,
+        "list_id": list_id,
+        "email": e,
+        "source": "manual",
+        "added_at": datetime.now(timezone.utc).isoformat(),
+    } for e in cleaned if e not in already]
+    
+    if new_docs:
+        try:
+            await db.dne_emails.insert_many(new_docs, ordered=False)
+        except Exception as ex:
+            logger.warning(f"DNE insert race (ignored): {ex}")
+    
+    count = await db.dne_emails.count_documents({"list_id": list_id})
+    await db.dne_lists.update_one(
+        {"list_id": list_id},
+        {"$set": {"email_count": count}}
+    )
+    
+    return {
+        "added": len(new_docs),
+        "skipped_duplicates": len(already),
+        "invalid": invalid,
+        "total": count,
+    }
+
+@api_router.post("/dne-lists/{list_id}/upload")
+async def upload_dne_emails(
+    list_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Upload a CSV / Excel file and add all valid emails to the DNE list."""
+    import pandas as pd
+    
+    dne = await db.dne_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not dne:
+        raise HTTPException(status_code=404, detail="DNE list not found")
+    
+    filename = (file.filename or "").lower()
+    allowed = ['.csv', '.xlsx', '.xls']
+    file_ext = next((x for x in allowed if filename.endswith(x)), None)
+    if not file_ext:
+        raise HTTPException(status_code=400, detail="Only CSV / Excel files are allowed")
+    
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 2MB limit")
+    
+    emails_from_file: List[str] = []
+    try:
+        if file_ext == '.csv':
+            text = content.decode('utf-8', errors='ignore')
+            reader = csv.reader(io.StringIO(text))
+            rows = list(reader)
+            if not rows:
+                raise HTTPException(status_code=400, detail="File is empty")
+            header = [h.strip().lower() for h in rows[0]]
+            email_idx = None
+            start_row = 0
+            if "email" in header:
+                email_idx = header.index("email")
+                start_row = 1
+            elif len(header) == 1:
+                # Single-column file — treat first row as data too
+                email_idx = 0
+                start_row = 0
+            else:
+                # Multi-column file without 'email' header — require header
+                raise HTTPException(status_code=400, detail="CSV must contain an 'email' column")
+            for r in rows[start_row:]:
+                if email_idx < len(r):
+                    emails_from_file.append(r[email_idx])
+        else:
+            try:
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl' if file_ext == '.xlsx' else 'xlrd')
+            except Exception:
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            if "email" in df.columns:
+                emails_from_file = df["email"].fillna('').astype(str).tolist()
+            elif len(df.columns) == 1:
+                emails_from_file = df[df.columns[0]].fillna('').astype(str).tolist()
+            else:
+                raise HTTPException(status_code=400, detail="File must contain an 'email' column")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"DNE upload parse error: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+    
+    result = await add_dne_emails(list_id, AddDNEEmailsRequest(emails=emails_from_file), user)
+    return result
+
+@api_router.delete("/dne-lists/{list_id}/emails")
+async def remove_dne_email(list_id: str, request: RemoveDNEEmailRequest, user: User = Depends(get_current_user)):
+    """Remove a single email from a DNE list."""
+    dne = await db.dne_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not dne:
+        raise HTTPException(status_code=404, detail="DNE list not found")
+    
+    email_norm = (request.email or "").strip().lower()
+    res = await db.dne_emails.delete_one(
+        {"list_id": list_id, "user_id": user.user_id, "email": email_norm}
+    )
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Email not found in this list")
+    
+    count = await db.dne_emails.count_documents({"list_id": list_id})
+    await db.dne_lists.update_one(
+        {"list_id": list_id},
+        {"$set": {"email_count": count}}
+    )
+    return {"message": "Email removed", "email_count": count}
+
+@api_router.delete("/dne-lists/{list_id}")
+async def delete_dne_list(list_id: str, user: User = Depends(get_current_user)):
+    """Delete a DNE list (Global list cannot be deleted)."""
+    dne = await db.dne_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not dne:
+        raise HTTPException(status_code=404, detail="DNE list not found")
+    if dne.get("is_global"):
+        raise HTTPException(status_code=400, detail="The Global Do Not Email list cannot be deleted")
+    
+    await db.dne_emails.delete_many({"list_id": list_id, "user_id": user.user_id})
+    await db.dne_lists.delete_one({"list_id": list_id, "user_id": user.user_id})
+    
+    # Unlink from any campaigns / drips that referenced it
+    await db.campaigns.update_many(
+        {"user_id": user.user_id, "suppression_list_ids": list_id},
+        {"$pull": {"suppression_list_ids": list_id}}
+    )
+    await db.drip_campaigns.update_many(
+        {"user_id": user.user_id, "suppression_list_ids": list_id},
+        {"$pull": {"suppression_list_ids": list_id}}
+    )
+    return {"message": "DNE list deleted"}
+
 # ==================== SUPPRESSION LIST ====================
 
 @api_router.get("/suppression")
@@ -4043,6 +4451,9 @@ async def add_to_suppression(request: AddToSuppressionRequest, user: User = Depe
             "added_at": datetime.now(timezone.utc).isoformat()
         })
     
+    # Mirror into Global DNE list so it's visible in the UI
+    await add_email_to_global_dne(user.user_id, request.email)
+    
     return {"message": "Added to suppression list"}
 
 @api_router.get("/unsubscribe/{user_id}/{email}")
@@ -4057,6 +4468,9 @@ async def unsubscribe(user_id: str, email: str):
             "email": email.lower(),
             "added_at": datetime.now(timezone.utc).isoformat()
         })
+    
+    # Mirror into Global DNE list so the user sees it in the UI and it's applied everywhere
+    await add_email_to_global_dne(user_id, email)
     
     return {"message": "You have been unsubscribed successfully"}
 
@@ -4213,6 +4627,27 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             )
             logger.info(f"Campaign {campaign_id} completed")
             break
+        
+        # Real-time DNE / suppression check — before account selection & send
+        suppression_list_ids = campaign.get("suppression_list_ids", [])
+        if await is_email_suppressed(user_id, queue_item.get("recipient_email", ""), suppression_list_ids):
+            await db.email_queue.update_one(
+                {"queue_id": queue_item["queue_id"]},
+                {"$set": {
+                    "status": "suppressed",
+                    "sent_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": "Recipient is on a Do Not Email list",
+                }}
+            )
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {
+                    "$inc": {"suppressed_count": 1},
+                    "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+                }
+            )
+            logger.info(f"Campaign {campaign_id}: suppressed {queue_item['recipient_email']}")
+            continue
         
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         account_ids = campaign.get("account_ids", [])

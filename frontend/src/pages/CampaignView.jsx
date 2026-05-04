@@ -263,6 +263,15 @@ export default function CampaignView({ user, setUser }) {
                     </span>
                     <span className="font-semibold text-red-600">{campaign.failed_count || 0}</span>
                   </div>
+                  {(campaign.suppressed_count || 0) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600 flex items-center gap-1">
+                        <AlertCircle size={14} className="text-rose-500" />
+                        Suppressed
+                      </span>
+                      <span className="font-semibold text-rose-600">{campaign.suppressed_count}</span>
+                    </div>
+                  )}
                   {campaign.total_emails > 0 && (
                     <div className="pt-3 border-t">
                       <div className="flex justify-between items-center mb-2">

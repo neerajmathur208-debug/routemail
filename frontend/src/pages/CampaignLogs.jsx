@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Mail,
   AlertCircle,
+  ShieldOff,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -105,6 +106,12 @@ export default function CampaignLogs({ user, setUser }) {
         return (
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
             <XCircle size={12} /> Failed
+          </span>
+        );
+      case "suppressed":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700">
+            <ShieldOff size={12} /> Suppressed
           </span>
         );
       default:
@@ -233,6 +240,7 @@ export default function CampaignLogs({ user, setUser }) {
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="suppressed">Suppressed</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                 </SelectContent>
               </Select>

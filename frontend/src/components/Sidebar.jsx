@@ -7,6 +7,7 @@ import {
   Upload,
   Send,
   Workflow,
+  ShieldOff,
   LogOut,
   Menu,
   X,
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
   { path: "/drip-campaigns", label: "Drip Campaigns", icon: Workflow },
+  { path: "/do-not-email", label: "Do Not Email", icon: ShieldOff },
   { path: "/subscription", label: "Subscription", icon: CreditCard },
 ];
 

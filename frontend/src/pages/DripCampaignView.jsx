@@ -109,7 +109,10 @@ export default function DripCampaignView({ user, setUser }) {
     },
     stop_on_reply: true,
     stop_on_bounce: true,
+    suppression_list_ids: [],
   });
+
+  const [dneLists, setDneLists] = useState([]);
 
   // Contacts/logs
   const [contacts, setContacts] = useState([]);
@@ -120,12 +123,13 @@ export default function DripCampaignView({ user, setUser }) {
 
   const loadAll = useCallback(async () => {
     try {
-      const [campRes, accRes, listsRes, contactsRes, logsRes] = await Promise.all([
+      const [campRes, accRes, listsRes, contactsRes, logsRes, dneRes] = await Promise.all([
         api.get(`/drip-campaigns/${dripId}`),
         api.get("/accounts"),
         api.get("/lists"),
         api.get(`/drip-campaigns/${dripId}/contacts?limit=100`),
         api.get(`/drip-campaigns/${dripId}/logs?limit=100`),
+        api.get("/dne-lists"),
       ]);
       const camp = campRes.data;
       setCampaign(camp);
@@ -143,12 +147,14 @@ export default function DripCampaignView({ user, setUser }) {
         },
         stop_on_reply: camp.stop_on_reply !== false,
         stop_on_bounce: camp.stop_on_bounce !== false,
+        suppression_list_ids: camp.suppression_list_ids || [],
       });
       const accountsData = accRes.data?.accounts || accRes.data || [];
       setAccounts(Array.isArray(accountsData) ? accountsData : []);
       setLists(listsRes.data || []);
       setContacts(contactsRes.data?.contacts || []);
       setLogs(logsRes.data?.logs || []);
+      setDneLists(dneRes.data || []);
     } catch (e) {
       console.error(e);
       toast.error("Failed to load drip campaign");
@@ -369,11 +375,12 @@ export default function DripCampaignView({ user, setUser }) {
         </motion.div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
           <StatBlock label="Contacts" value={stats.total_contacts || 0} />
           <StatBlock label="Active" value={stats.active || 0} color="text-emerald-600" />
           <StatBlock label="Completed" value={stats.completed || 0} color="text-blue-600" />
           <StatBlock label="Replied" value={stats.replied || 0} color="text-violet-600" />
+          <StatBlock label="Suppressed" value={stats.suppressed || 0} color="text-rose-600" />
           <StatBlock label="Sent" value={stats.emails_sent || 0} color="text-slate-900" />
         </div>
 
@@ -665,6 +672,8 @@ export default function DripCampaignView({ user, setUser }) {
                                   ? "bg-blue-50 text-blue-700"
                                   : c.status === "replied"
                                   ? "bg-violet-50 text-violet-700"
+                                  : c.status === "suppressed"
+                                  ? "bg-rose-50 text-rose-700"
                                   : "bg-red-50 text-red-700"
                               }`}
                             >
@@ -728,6 +737,10 @@ export default function DripCampaignView({ user, setUser }) {
                             {l.status === "sent" ? (
                               <span className="inline-flex items-center text-emerald-700 text-xs">
                                 <CheckCircle2 size={12} className="mr-1" /> sent
+                              </span>
+                            ) : l.status === "suppressed" ? (
+                              <span className="inline-flex items-center text-rose-700 text-xs">
+                                <AlertCircle size={12} className="mr-1" /> suppressed
                               </span>
                             ) : (
                               <span className="inline-flex items-center text-red-700 text-xs">
@@ -830,6 +843,65 @@ export default function DripCampaignView({ user, setUser }) {
                     data-testid="drip-stop-bounce-switch"
                   />
                 </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <Label>Do Not Email Lists</Label>
+                <p className="text-xs text-slate-500 mb-3">
+                  Emails in selected Do Not Email lists will be automatically excluded before
+                  every step. The Global list is always applied.
+                </p>
+                {dneLists.filter((l) => !l.is_global).length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No custom Do Not Email lists yet.{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate("/do-not-email")}
+                      className="text-violet-600 underline"
+                    >
+                      Create one
+                    </button>
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {dneLists
+                      .filter((l) => !l.is_global)
+                      .map((dne) => (
+                        <label
+                          key={dne.list_id}
+                          className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={(form.suppression_list_ids || []).includes(dne.list_id)}
+                            onCheckedChange={() => {
+                              if (!canEdit) return;
+                              const cur = form.suppression_list_ids || [];
+                              const next = cur.includes(dne.list_id)
+                                ? cur.filter((id) => id !== dne.list_id)
+                                : [...cur, dne.list_id];
+                              setForm({ ...form, suppression_list_ids: next });
+                            }}
+                            disabled={!canEdit}
+                            data-testid={`drip-dne-${dne.list_id}`}
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-slate-900">{dne.name}</div>
+                            <div className="text-xs text-slate-500">
+                              {dne.email_count || 0} suppressed email
+                              {dne.email_count === 1 ? "" : "s"}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                  </div>
+                )}
+                {dneLists.some((l) => l.is_global) && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 bg-rose-50/40 border border-rose-200 rounded-lg px-3 py-2">
+                    <span className="inline-flex w-2 h-2 rounded-full bg-rose-500" />
+                    Global Do Not Email list is always applied (
+                    {dneLists.find((l) => l.is_global)?.email_count || 0} emails).
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>

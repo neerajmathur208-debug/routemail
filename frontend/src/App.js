@@ -23,6 +23,8 @@ import CampaignLogs from "./pages/CampaignLogs";
 import CampaignView from "./pages/CampaignView";
 import DripCampaigns from "./pages/DripCampaigns";
 import DripCampaignView from "./pages/DripCampaignView";
+import DoNotEmail from "./pages/DoNotEmail";
+import DoNotEmailDetail from "./pages/DoNotEmailDetail";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
@@ -229,6 +231,22 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <DripCampaignView user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/do-not-email"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <DoNotEmail user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/do-not-email/:listId"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <DoNotEmailDetail user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />
