@@ -106,6 +106,15 @@ Build a simple SaaS web application for small businesses to automatically send e
 
 ## Implementation Status
 
+### ✅ Manual records, explicit DNE, in-editor unsubscribe link, no daily cap, searchable account picker (Feb 2026)
+- [x] **Manual Add/Delete records in lists** — `POST /api/lists/{id}/records` (validated email, lowercased, trimmed, dedupe per-list) + `DELETE /api/lists/{id}/records`. Frontend: Add Record dialog + per-row trash with confirmation in ListDetails.
+- [x] **Global DNE no longer auto-applied** — `is_email_suppressed` only checks DNE lists explicitly attached to the campaign; the legacy `suppression_list` (the unsubscribe register) remains the authoritative permanent block and is ALWAYS checked. Campaign + Drip Settings now show all DNE lists (Global as a regular checkbox with badge), with a warning banner when none selected.
+- [x] **In-editor "Add Unsubscribe Link"** — new toolbar button in shared RichTextEditor inserts `<a href="{{unsubscribe_url}}">…</a>` with editable link text. Backend resolves the placeholder to per-recipient `/api/unsubscribe/{user_id}/{email}` at send-time for both standard campaigns AND drip steps. Default footer is suppressed when the body already contains the URL (URL-match only, link text agnostic).
+- [x] **Unsubscribe immediately stops drips** — `/api/unsubscribe` now writes to suppression_list + Global DNE AND `update_many`-marks any active drip_contacts as `unsubscribed` for that email + user.
+- [x] **No daily-limit cap** — backend min=1, no max. Frontend min=1, no max. "Recommended maximum: 50 emails per day for better deliverability" helper text in Add + Edit dialogs.
+- [x] **Searchable account multi-select** — new `AccountMultiSelect` (shadcn Popover + checkboxes) used in Campaign and Drip Settings; search by email or display_name; Select-All / Clear-Selection; internal scroll; compact "X selected" trigger summary. Empty selection still uses all connected accounts.
+- [x] Tested: 19/19 new backend + 47/47 regression (iteration_28). Source-level verification on all 9 new frontend testids.
+
 ### ✅ Drip RTE + Auto-resume after daily limit (Feb 2026)
 - [x] **Drip step body uses shared RichTextEditor** — same component (`/app/frontend/src/components/RichTextEditor.jsx`) as standard campaigns. Bold/italic/underline, alignment, lists, links, images, variable insertion, plain-text toggle. HTML round-trips through PUT `/api/drip-campaigns/{id}` and renders correctly via `send_drip_email` (which already attaches both text + HTML MIME parts).
 - [x] **Auto-resume daily-limit-paused campaigns** — `check_scheduled_campaigns` scheduler loop (every 30s) now also enumerates `status='paused_daily_limit'` campaigns and flips them back to `running` (+ records `auto_resumed_at`) once at least one of their accounts has rolled over to a new day OR has fresh quota (e.g. user raised the limit). It then re-spawns `process_campaign_queue` to resume from the next `pending` queue item — no duplicates.

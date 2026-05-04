@@ -5130,8 +5130,9 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         body_html = (body_html or "").replace("{{unsubscribe_url}}", unsubscribe_url)
         body_text = (body_text or "").replace("{{unsubscribe_url}}", unsubscribe_url)
         
-        # Append our default footer ONLY if the email doesn't already contain an unsubscribe link
-        body_has_unsub = "unsubscribe" in body_html.lower() and unsubscribe_url in body_html
+        # Append our default footer ONLY if the email doesn't already contain the per-recipient
+        # unsubscribe URL (URL match alone — link text may say "click here", "Stop emails", etc.).
+        body_has_unsub = unsubscribe_url in body_html or unsubscribe_url in body_text
         if body_has_unsub:
             unsubscribe_text = ""
             unsubscribe_html = ""
