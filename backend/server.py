@@ -759,14 +759,17 @@ async def send_drip_email(account: dict, recipient: str, subject: str, body: str
         return False
 
 async def check_scheduled_campaigns():
-    """Check for scheduled campaigns that need to be started"""
+    """Check for scheduled campaigns that need to be started, AND
+    auto-resume campaigns that were paused due to daily limits whenever
+    at least one assigned account has rolled over to a new day."""
     global scheduler_running
     
     while scheduler_running:
         try:
             now = datetime.now(timezone.utc)
+            today = now.strftime("%Y-%m-%d")
             
-            # Find campaigns that are scheduled and ready to send
+            # ---- 1) Start scheduled campaigns ----
             scheduled_campaigns = await db.campaigns.find({
                 "status": "scheduled",
                 "scheduled_at": {"$ne": None}
@@ -778,25 +781,62 @@ async def check_scheduled_campaigns():
                     if not scheduled_at:
                         continue
                     
-                    # Parse scheduled_at datetime
                     if isinstance(scheduled_at, str):
                         scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
                     else:
                         scheduled_dt = scheduled_at
                     
-                    # Make it timezone-aware if not
                     if scheduled_dt.tzinfo is None:
                         scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
                     
-                    # Check if it's time to send
                     if now >= scheduled_dt:
                         logger.info(f"Starting scheduled campaign: {campaign['campaign_id']} - scheduled for {scheduled_at}")
-                        
-                        # Start the campaign
                         await start_scheduled_campaign(campaign)
                         
                 except Exception as e:
                     logger.error(f"Error processing scheduled campaign {campaign.get('campaign_id')}: {e}")
+            
+            # ---- 2) Auto-resume campaigns paused due to daily limits ----
+            paused_dl_campaigns = await db.campaigns.find({
+                "status": "paused_daily_limit"
+            }, {"_id": 0}).to_list(100)
+            
+            for campaign in paused_dl_campaigns:
+                try:
+                    user_id = campaign.get("user_id")
+                    account_ids = campaign.get("account_ids", [])
+                    query = {"user_id": user_id, "status": "connected"}
+                    if account_ids:
+                        query["account_id"] = {"$in": account_ids}
+                    accounts = await db.email_accounts.find(query, {"_id": 0}).to_list(100)
+                    if not accounts:
+                        continue
+                    # An account is "fresh" if its last_send_date is not today
+                    # OR (same day) it still has remaining quota (e.g. user raised the limit).
+                    has_capacity = False
+                    for acc in accounts:
+                        if acc.get("last_send_date") != today:
+                            has_capacity = True
+                            break
+                        if acc.get("daily_send_count", 0) < acc.get("daily_limit", 50):
+                            has_capacity = True
+                            break
+                    if not has_capacity:
+                        continue
+                    
+                    logger.info(f"[AUTO-RESUME] Daily-limit-paused campaign {campaign['campaign_id']} has fresh capacity — resuming")
+                    await db.campaigns.update_one(
+                        {"campaign_id": campaign["campaign_id"]},
+                        {"$set": {
+                            "status": "running",
+                            "is_locked": True,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "auto_resumed_at": datetime.now(timezone.utc).isoformat(),
+                        }}
+                    )
+                    asyncio.create_task(process_campaign_queue(campaign["campaign_id"], user_id))
+                except Exception as e:
+                    logger.error(f"Error auto-resuming campaign {campaign.get('campaign_id')}: {e}")
             
         except Exception as e:
             logger.error(f"Error in scheduled campaign checker: {e}")

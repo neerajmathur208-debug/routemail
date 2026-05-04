@@ -108,7 +108,7 @@ export default function CampaignView({ user, setUser }) {
     };
     const config = statusConfig[status] || statusConfig.draft;
     const Icon = config.icon;
-    const displayStatus = status === "paused_daily_limit" ? "Daily Limit Reached" : status.charAt(0).toUpperCase() + status.slice(1);
+    const displayStatus = status === "paused_daily_limit" ? "Daily limit reached — auto-resumes when reset" : status.charAt(0).toUpperCase() + status.slice(1);
     return (
       <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${config.color}`}>
         <Icon size={14} />

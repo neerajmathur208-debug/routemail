@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 27: drip RichTextEditor parity + auto-resume of paused_daily_limit campaigns. Backend pytest 5/5 PASSED (test_iteration_27_features.py). Regression: test_dne_lists.py + test_drip_campaigns.py = 47/47 PASSED. Frontend Playwright on /drip-campaigns/{drip_id}: RichTextEditor renders inside drip-step-0 with all 12 toolbar buttons (Bold/Italic/Underline/Align L/C/R/Bullet/Numbered/Link/Image/Font Size/Text Color); zero <textarea> inside step body; HTML body round-trip preserves <strong>, {{first_name}} variable, <a href> link, and <li>. Source-level confirmed Dashboard.jsx label 'Daily limit reached — will resume automatically' and CampaignView.jsx label 'Daily limit reached — auto-resumes when reset' are wired for status==='paused_daily_limit'. Auto-resume scheduler verified end-to-end: rolled-over account triggers status flip + auto_resumed_at marker within ~60s; today+at-limit account stays paused but resumes after raising daily_limit; user-paused (status:'paused') is NOT touched by scheduler.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "passed_tests": [
+    "TestDripHtmlBody::test_html_body_round_trip — PUT /drip-campaigns/{id} preserves <strong>, <a>, <ul><li>, {{first_name}} via GET",
+    "TestAutoResume::test_auto_resume_when_account_rolled_to_new_day — last_send_date='2020-01-01' → scheduler tick flips campaign + sets auto_resumed_at within 100s",
+    "TestAutoResume::test_no_resume_when_today_and_at_limit — at-limit today: stays paused_daily_limit; after daily_limit bump, auto-resumes within 70s",
+    "TestAutoResume::test_user_paused_not_auto_resumed — status='paused' (no _daily_limit) is left alone, no auto_resumed_at",
+    "TestStatusListing::test_paused_daily_limit_visible_in_list — GET /campaigns includes seeded campaign with status='paused_daily_limit'",
+    "Frontend Playwright: /drip-campaigns/{id} → RTE present, all 12 toolbar buttons, 0 textareas in step body, HTML body persists across reload",
+    "Source check: Dashboard.jsx + CampaignView.jsx render correct labels for paused_daily_limit"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_27_features.py",
+    "/app/test_reports/pytest/iteration_27_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "check_scheduled_campaigns auto-resume only flips status to 'running' but does NOT itself reset the account's daily_send_count — that reset happens lazily inside process_campaign_queue (line ~5130). The PRD asked the scheduler to 'also reset that account's daily_send_count'. Functionally correct (reset still happens before any send), but the request is technically out-of-scheduler. Consider doing the reset in the same updates_one for atomicity if observability matters.",
+    "process_campaign_queue is spawned via asyncio.create_task on a campaign whose 'is_locked' was just set true, but the auto-resume path does NOT clear is_locked on completion failure. A stale orphan worker that exits abnormally could leave is_locked=True. Existing top-of-loop guard `campaign['status'] != 'running'` prevents double-spawn (good), but locks should be released on exception.",
+    "server.py is now ~6304 lines. Reiterating prior review: split routers (campaigns, drips, accounts, lists) into modules.",
+    "Auto-resume cycle is 30s and reads ALL paused_daily_limit campaigns + their accounts on every tick — fine at low scale but could become an N+M query per tick at 100s of orgs. Consider an index on campaigns.status and aggregating per-user."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_27_features.py"
+  ],
+  "success_rate": {
+    "backend": "100% (5/5 new + 47/47 regression)",
+    "frontend": "100% on the drip RTE swap + body HTML round-trip + status-label source presence"
+  },
+  "test_credentials": "drip.tester@example.com / DripTest123! (pre-seeded, /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests seed (and clean up) Mongo: TEST_iter27_drip_* drip campaigns; acc_TEST_iter27_roll/full/userp/listcheck_* email_accounts; camp_TEST_iter27_roll/full/userp/listcheck_* campaigns. Direct mongo.delete_many on cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_iteration_27_features.py as regression for the drip RTE body + auto-resume scheduler. Note: auto-resume tests assert presence of the 'auto_resumed_at' marker rather than status=='running' because process_campaign_queue may immediately transition the seeded test campaign (no email_queue rows) to a terminal state; the marker is the durable, observable signal of scheduler action. Tests take ~133s due to the 30s scheduler interval — budget at least 5 min for full backend run.",
+  "rca of the issue": "N/A — no defects found. Both improvements (RichTextEditor reuse in DripCampaignView and scheduler-driven auto-resume of paused_daily_limit campaigns) verified working end-to-end."
+}

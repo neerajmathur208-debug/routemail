@@ -858,7 +858,7 @@ export default function Dashboard({ user, setUser }) {
                                   campaign.status === "failed" ? "bg-red-100 text-red-700" :
                                   "bg-slate-100 text-slate-600"
                                 }`}>
-                                  {campaign.status === "paused_daily_limit" ? "Daily Limit Reached" : campaign.status}
+                                  {campaign.status === "paused_daily_limit" ? "Daily limit reached — will resume automatically" : campaign.status}
                                 </span>
                               </div>
                               <div className="flex items-center gap-6 text-sm">

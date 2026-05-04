@@ -23,6 +23,7 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
+import RichTextEditor from "../components/RichTextEditor";
 import {
   Select,
   SelectContent,
@@ -170,6 +171,16 @@ export default function DripCampaignView({ user, setUser }) {
 
   const isRunning = campaign?.status === "running";
   const canEdit = !isRunning;
+
+  // Variables available to merge into subject/body — derived from enrolled contact fields
+  const availableVariables = (() => {
+    const set = new Set(["email"]);
+    for (const c of contacts) {
+      const data = c?.data || {};
+      Object.keys(data).forEach((k) => k && set.add(k));
+    }
+    return Array.from(set);
+  })();
 
   const addStep = () => {
     setForm((prev) => ({
@@ -490,14 +501,12 @@ export default function DripCampaignView({ user, setUser }) {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Body (HTML supported)</Label>
-                    <Textarea
-                      rows={6}
+                    <Label className="text-xs">Body</Label>
+                    <RichTextEditor
                       value={step.body || ""}
-                      onChange={(e) => updateStep(idx, "body", e.target.value)}
-                      placeholder="Hi {first_name},&#10;&#10;..."
-                      disabled={!canEdit}
-                      data-testid={`drip-step-${idx}-body`}
+                      onChange={(value) => updateStep(idx, "body", value)}
+                      placeholder={"Hi {first_name},\n\nQuick thought…\n\nBest regards"}
+                      variables={availableVariables}
                     />
                     <p className="text-xs text-slate-500 mt-1">
                       Use {"{column_name}"} to merge contact fields from your list (e.g. {"{first_name}"}).
