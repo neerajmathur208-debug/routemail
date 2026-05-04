@@ -624,6 +624,13 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     
     recipient_email = contact.get("email")
     
+    # Resolve {{unsubscribe_url}} (per-recipient) so that an Unsubscribe link inserted
+    # in the drip step body becomes a working URL.
+    frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
+    unsubscribe_url = f"{frontend_url}/api/unsubscribe/{campaign.get('user_id')}/{recipient_email}"
+    body = body.replace("{{unsubscribe_url}}", unsubscribe_url)
+    subject = subject.replace("{{unsubscribe_url}}", unsubscribe_url)
+    
     # Send email
     try:
         success = await send_drip_email(account, recipient_email, subject, body)
@@ -1045,10 +1052,13 @@ async def ensure_global_dne_list(user_id: str) -> str:
 async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Optional[List[str]] = None) -> bool:
     """Check whether `email` should be blocked from sending.
     
-    Checks (in one query each, indexed):
-    - Legacy unsubscribe collection (always applied)
-    - User's Global DNE list (always applied)
-    - Any explicitly-selected DNE lists on the campaign
+    Checks:
+    - Legacy unsubscribe register (`suppression_list`) — ALWAYS applied. This is the
+      authoritative "permanent unsubscribed" register; it covers public unsubscribe-link
+      clicks and is non-negotiable.
+    - The DNE lists explicitly attached to the campaign via `suppression_list_ids`.
+      The Global DNE list is ONLY checked when the user has explicitly selected it
+      (it is no longer auto-applied).
     """
     if not email:
         return False
@@ -1056,7 +1066,7 @@ async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Op
     if not email_norm:
         return False
     
-    # 1) Legacy unsubscribes (covers public /api/unsubscribe/ clicks)
+    # 1) Legacy unsubscribes — covers /api/unsubscribe/ link clicks. Always applied.
     legacy = await db.suppression_list.find_one(
         {"user_id": user_id, "email": email_norm},
         {"email": 1}
@@ -1064,12 +1074,8 @@ async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Op
     if legacy:
         return True
     
-    # 2) Build list of DNE list_ids to check: global + selected
+    # 2) Only the DNE lists explicitly selected on the campaign
     list_ids = list(suppression_list_ids or [])
-    global_id = await ensure_global_dne_list(user_id)
-    if global_id not in list_ids:
-        list_ids.append(global_id)
-    
     if not list_ids:
         return False
     
@@ -1818,6 +1824,13 @@ class UpdateListRecordRequest(BaseModel):
     """Payload for editing a single contact/record inside an email list."""
     original_email: str  # the current email value (used to locate the row)
     data: Dict[str, Any]  # full new row, e.g. {"email":"...","name":"...","company":"..."}
+
+class AddListRecordRequest(BaseModel):
+    """Payload for adding a single new contact to an email list."""
+    data: Dict[str, Any]  # at minimum must contain 'email'
+
+class DeleteListRecordRequest(BaseModel):
+    email: str
 
 class CreateCampaignRequest(BaseModel):
     name: str
@@ -2704,8 +2717,11 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
     if not test_result["success"]:
         raise HTTPException(status_code=400, detail=f"SMTP connection failed: {test_result['error']}")
     
-    # Validate daily limit (10-200)
-    daily_limit = max(10, min(200, request.daily_limit))
+    # Validate daily limit (>=1, no upper cap so users can configure freely)
+    try:
+        daily_limit = max(1, int(request.daily_limit))
+    except (TypeError, ValueError):
+        daily_limit = 50
     
     # Validate send delay (10-300 seconds)
     send_delay = max(10, min(300, request.send_delay))
@@ -2743,9 +2759,11 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
 
 @api_router.put("/accounts/{account_id}/limit")
 async def update_account_limit(account_id: str, request: UpdateAccountLimitRequest, user: User = Depends(get_current_user)):
-    """Update daily sending limit for an account"""
-    # Validate limit (10-200)
-    daily_limit = max(10, min(200, request.daily_limit))
+    """Update daily sending limit for an account (>=1, no upper cap)"""
+    try:
+        daily_limit = max(1, int(request.daily_limit))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="daily_limit must be a positive integer")
     
     result = await db.email_accounts.update_one(
         {"account_id": account_id, "user_id": user.user_id},
@@ -3146,7 +3164,10 @@ async def update_smtp_account(
     if request.smtp_encryption is not None:
         update_data["smtp_encryption"] = request.smtp_encryption
     if request.daily_limit is not None:
-        update_data["daily_limit"] = max(10, min(200, request.daily_limit))
+        try:
+            update_data["daily_limit"] = max(1, int(request.daily_limit))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="daily_limit must be a positive integer")
     if request.send_delay is not None:
         update_data["send_delay"] = max(10, min(300, request.send_delay))
     if request.smtp_password:
@@ -3287,7 +3308,7 @@ async def bulk_import_smtp_accounts(
             daily_limit = int(normalized.get("daily_limit") or 50)
         except ValueError:
             daily_limit = 50
-        daily_limit = max(10, min(200, daily_limit))
+        daily_limit = max(1, daily_limit)
         
         try:
             send_delay = int(normalized.get("delay_seconds") or 30)
@@ -3573,6 +3594,88 @@ async def update_list_record(list_id: str, request: UpdateListRecordRequest, use
         {"$set": {"emails": emails, "valid_emails": valid_count}}
     )
     return {"message": "Contact updated", "record": merged}
+
+@api_router.post("/lists/{list_id}/records")
+async def add_list_record(list_id: str, request: AddListRecordRequest, user: User = Depends(get_current_user)):
+    """Manually add a single contact to an email list."""
+    email_list = await db.email_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not email_list:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    raw_email = (request.data.get("email") or "").strip().lower()
+    if not raw_email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    if not email_pattern.match(raw_email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    
+    emails = email_list.get("emails", [])
+    for row in emails:
+        if (row.get("email") or "").strip().lower() == raw_email:
+            raise HTTPException(status_code=400, detail="A contact with this email already exists in this list")
+    
+    # Normalise the new row: trim every value, force email lowercase
+    new_row = {}
+    headers = email_list.get("column_headers") or list(request.data.keys())
+    for k in set(list(request.data.keys()) + headers):
+        v = request.data.get(k, "")
+        new_row[k] = (str(v).strip() if v is not None else "")
+    new_row["email"] = raw_email
+    
+    if "email" not in (email_list.get("column_headers") or []):
+        new_headers = ["email"] + [h for h in (email_list.get("column_headers") or []) if h != "email"]
+    else:
+        new_headers = email_list.get("column_headers")
+    
+    emails.append(new_row)
+    valid_count = sum(1 for r in emails if email_pattern.match((r.get("email") or "").strip()))
+    
+    await db.email_lists.update_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"$set": {
+            "emails": emails,
+            "valid_emails": valid_count,
+            "total_rows": len(emails),
+            "column_headers": new_headers,
+        }}
+    )
+    return {"message": "Contact added", "record": new_row, "valid_emails": valid_count}
+
+@api_router.delete("/lists/{list_id}/records")
+async def delete_list_record(list_id: str, request: DeleteListRecordRequest, user: User = Depends(get_current_user)):
+    """Delete a single contact (by email) from an email list."""
+    email_list = await db.email_lists.find_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not email_list:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    target = (request.email or "").strip().lower()
+    if not target:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    emails = email_list.get("emails", [])
+    new_emails = [r for r in emails if (r.get("email") or "").strip().lower() != target]
+    if len(new_emails) == len(emails):
+        raise HTTPException(status_code=404, detail="Contact not found in this list")
+    
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    valid_count = sum(1 for r in new_emails if email_pattern.match((r.get("email") or "").strip()))
+    
+    await db.email_lists.update_one(
+        {"list_id": list_id, "user_id": user.user_id},
+        {"$set": {
+            "emails": new_emails,
+            "valid_emails": valid_count,
+            "total_rows": len(new_emails),
+        }}
+    )
+    return {"message": "Contact deleted", "valid_emails": valid_count}
 
 @api_router.get("/lists/{list_id}/export")
 async def export_email_list(list_id: str, user: User = Depends(get_current_user)):
@@ -4918,6 +5021,19 @@ async def unsubscribe(user_id: str, email: str):
     # Mirror into Global DNE list so the user sees it in the UI and it's applied everywhere
     await add_email_to_global_dne(user_id, email)
     
+    # Immediately stop any active drip sequences for this contact across all the user's drips
+    await db.drip_contacts.update_many(
+        {
+            "user_id": user_id,
+            "email": email.lower(),
+            "status": {"$in": ["active", "paused"]},
+        },
+        {"$set": {
+            "status": "unsubscribed",
+            "unsubscribed_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
     return {"message": "You have been unsubscribed successfully"}
 
 # ==================== DASHBOARD STATS ====================
@@ -5009,8 +5125,19 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         
         frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
         unsubscribe_url = f"{frontend_url}/api/unsubscribe/{user_id}/{to_email}"
-        unsubscribe_text = f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
-        unsubscribe_html = f'<br><br><hr><p style="font-size:12px;color:#666;">To unsubscribe, <a href="{unsubscribe_url}">click here</a></p>'
+        
+        # Resolve {{unsubscribe_url}} token if the user inserted an Unsubscribe link in the editor
+        body_html = (body_html or "").replace("{{unsubscribe_url}}", unsubscribe_url)
+        body_text = (body_text or "").replace("{{unsubscribe_url}}", unsubscribe_url)
+        
+        # Append our default footer ONLY if the email doesn't already contain an unsubscribe link
+        body_has_unsub = "unsubscribe" in body_html.lower() and unsubscribe_url in body_html
+        if body_has_unsub:
+            unsubscribe_text = ""
+            unsubscribe_html = ""
+        else:
+            unsubscribe_text = f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
+            unsubscribe_html = f'<br><br><hr><p style="font-size:12px;color:#666;">To unsubscribe, <a href="{unsubscribe_url}">click here</a></p>'
         
         part1 = MIMEText((body_text or "") + unsubscribe_text, 'plain')
         part2 = MIMEText(body_html + unsubscribe_html, 'html')

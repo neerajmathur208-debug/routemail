@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { 
   Bold, Italic, Underline, Link, List, ListOrdered, 
   AlignLeft, AlignCenter, AlignRight, 
-  Image, ChevronDown, Type, Palette
+  Image, ChevronDown, Type, Palette, ShieldOff
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -38,6 +38,8 @@ export default function RichTextEditor({
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageResizing, setImageResizing] = useState(false);
+  const [unsubPopoverOpen, setUnsubPopoverOpen] = useState(false);
+  const [unsubText, setUnsubText] = useState('Unsubscribe');
   const resizeStartData = useRef(null);
 
   const fontSizes = [
@@ -207,6 +209,24 @@ export default function RichTextEditor({
       setLinkUrl('');
       setLinkPopoverOpen(false);
     }
+  };
+
+  // Insert an unsubscribe link placeholder. The token {{unsubscribe_url}} is
+  // resolved at send-time by the backend's `replace_variables` to the per-recipient,
+  // per-user GET /api/unsubscribe/{user_id}/{email} endpoint.
+  const insertUnsubscribeLink = () => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    const text = (unsubText || 'Unsubscribe').trim() || 'Unsubscribe';
+    const html = `<a href="{{unsubscribe_url}}" target="_blank" rel="noopener noreferrer">${text}</a>&nbsp;`;
+    if (savedRange.current) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+    document.execCommand('insertHTML', false, html);
+    handleInput();
+    setUnsubPopoverOpen(false);
   };
 
   const handleImageUpload = async (e) => {
@@ -658,6 +678,52 @@ export default function RichTextEditor({
               onChange={handleImageUpload}
               className="hidden"
             />
+
+            {/* Unsubscribe link */}
+            <Popover open={unsubPopoverOpen} onOpenChange={setUnsubPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="p-2 rounded hover:bg-rose-100 text-rose-600"
+                  title="Insert Unsubscribe Link"
+                  data-testid="editor-insert-unsubscribe-btn"
+                  onClick={() => {
+                    // Save cursor before opening the popover so we can insert at the right place
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange();
+                  }}
+                >
+                  <ShieldOff size={18} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">Insert Unsubscribe Link</p>
+                  <p className="text-xs text-slate-500">
+                    A unique unsubscribe URL is generated automatically for each recipient at send-time.
+                  </p>
+                  <Input
+                    placeholder="Link text"
+                    value={unsubText}
+                    onChange={(e) => setUnsubText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && insertUnsubscribeLink()}
+                    data-testid="editor-unsubscribe-text-input"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setUnsubPopoverOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={insertUnsubscribeLink}
+                      data-testid="editor-unsubscribe-insert-btn"
+                    >
+                      Insert
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           
           {/* Editable Area with Resize Handles */}

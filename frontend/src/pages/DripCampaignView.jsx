@@ -24,6 +24,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import RichTextEditor from "../components/RichTextEditor";
+import AccountMultiSelect from "../components/AccountMultiSelect";
 import {
   Select,
   SelectContent,
@@ -801,27 +802,14 @@ export default function DripCampaignView({ user, setUser }) {
                     </button>
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {accounts.map((acc) => (
-                      <label
-                        key={acc.account_id}
-                        className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={form.account_ids.includes(acc.account_id)}
-                          onCheckedChange={() => canEdit && toggleAccount(acc.account_id)}
-                          disabled={!canEdit}
-                          data-testid={`drip-account-${acc.account_id}`}
-                        />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-slate-900">{acc.email}</div>
-                          <div className="text-xs text-slate-500">
-                            Daily limit: {acc.daily_limit || 50}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  <AccountMultiSelect
+                    accounts={accounts}
+                    value={form.account_ids}
+                    onChange={(next) => canEdit && setForm({ ...form, account_ids: next })}
+                    disabled={!canEdit}
+                    testIdPrefix="drip-accounts"
+                    placeholder="Select sending accounts"
+                  />
                 )}
               </div>
 
@@ -857,12 +845,12 @@ export default function DripCampaignView({ user, setUser }) {
               <div className="border-t border-slate-200 pt-4">
                 <Label>Do Not Email Lists</Label>
                 <p className="text-xs text-slate-500 mb-3">
-                  Emails in selected Do Not Email lists will be automatically excluded before
-                  every step. The Global list is always applied.
+                  Pick the lists this drip should be checked against before every step.
+                  Permanent unsubscribes are always blocked regardless.
                 </p>
-                {dneLists.filter((l) => !l.is_global).length === 0 ? (
+                {dneLists.length === 0 ? (
                   <p className="text-sm text-slate-500">
-                    No custom Do Not Email lists yet.{" "}
+                    No Do Not Email lists yet.{" "}
                     <button
                       type="button"
                       onClick={() => navigate("/do-not-email")}
@@ -873,42 +861,56 @@ export default function DripCampaignView({ user, setUser }) {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {dneLists
-                      .filter((l) => !l.is_global)
-                      .map((dne) => (
-                        <label
-                          key={dne.list_id}
-                          className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={(form.suppression_list_ids || []).includes(dne.list_id)}
-                            onCheckedChange={() => {
-                              if (!canEdit) return;
-                              const cur = form.suppression_list_ids || [];
-                              const next = cur.includes(dne.list_id)
-                                ? cur.filter((id) => id !== dne.list_id)
-                                : [...cur, dne.list_id];
-                              setForm({ ...form, suppression_list_ids: next });
-                            }}
-                            disabled={!canEdit}
-                            data-testid={`drip-dne-${dne.list_id}`}
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-slate-900">{dne.name}</div>
-                            <div className="text-xs text-slate-500">
-                              {dne.email_count || 0} suppressed email
-                              {dne.email_count === 1 ? "" : "s"}
-                            </div>
+                    {dneLists.map((dne) => (
+                      <label
+                        key={dne.list_id}
+                        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer ${
+                          dne.is_global
+                            ? "border-rose-200 bg-rose-50/30"
+                            : "border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={(form.suppression_list_ids || []).includes(dne.list_id)}
+                          onCheckedChange={() => {
+                            if (!canEdit) return;
+                            const cur = form.suppression_list_ids || [];
+                            const next = cur.includes(dne.list_id)
+                              ? cur.filter((id) => id !== dne.list_id)
+                              : [...cur, dne.list_id];
+                            setForm({ ...form, suppression_list_ids: next });
+                          }}
+                          disabled={!canEdit}
+                          data-testid={`drip-dne-${dne.list_id}`}
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                            {dne.name}
+                            {dne.is_global && (
+                              <span className="text-[10px] uppercase tracking-wide bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+                                Global
+                              </span>
+                            )}
                           </div>
-                        </label>
-                      ))}
+                          <div className="text-xs text-slate-500">
+                            {dne.email_count || 0} suppressed email
+                            {dne.email_count === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
                   </div>
                 )}
-                {dneLists.some((l) => l.is_global) && (
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 bg-rose-50/40 border border-rose-200 rounded-lg px-3 py-2">
-                    <span className="inline-flex w-2 h-2 rounded-full bg-rose-500" />
-                    Global Do Not Email list is always applied (
-                    {dneLists.find((l) => l.is_global)?.email_count || 0} emails).
+                {dneLists.length > 0 && (form.suppression_list_ids || []).length === 0 && (
+                  <div
+                    className="mt-2 flex items-start gap-2 p-3 border border-amber-200 bg-amber-50 rounded-md text-amber-800 text-sm"
+                    data-testid="drip-dne-no-selection-warning"
+                  >
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                    <span>
+                      No unsubscribe list selected. Steps will not be checked against any
+                      suppression lists (permanent unsubscribes are always blocked).
+                    </span>
                   </div>
                 )}
               </div>

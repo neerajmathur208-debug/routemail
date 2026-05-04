@@ -60,6 +60,7 @@ import {
 } from "../components/ui/dialog";
 import Sidebar from "../components/Sidebar";
 import RichTextEditor from "../components/RichTextEditor";
+import AccountMultiSelect from "../components/AccountMultiSelect";
 import { api } from "../App";
 import { toast } from "sonner";
 
@@ -674,53 +675,28 @@ export default function Campaign({ user, setUser }) {
               <div>
                 <Label>Select Email Accounts (optional)</Label>
                 <p className="text-xs text-slate-500 mb-2">
-                  Leave empty to use all connected accounts
+                  Leave empty to use all connected accounts. Use search to quickly find accounts.
                 </p>
-                <div className="space-y-2 mt-1.5">
-                  {accounts.map((account) => (
-                    <div
-                      key={account.account_id}
-                      className="flex items-center gap-3 p-3 border border-slate-200 rounded-md"
-                    >
-                      <Checkbox
-                        id={account.account_id}
-                        checked={formData.account_ids.includes(account.account_id)}
-                        onCheckedChange={() => handleAccountToggle(account.account_id)}
-                        data-testid={`account-checkbox-${account.account_id}`}
-                      />
-                      <label
-                        htmlFor={account.account_id}
-                        className="flex-1 cursor-pointer"
-                      >
-                        <p className="font-medium text-slate-900">{account.display_name}</p>
-                        <p className="text-sm text-slate-500 font-mono">{account.email}</p>
-                      </label>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        account.status === "connected" 
-                          ? "bg-green-100 text-green-700" 
-                          : "bg-red-100 text-red-700"
-                      }`}>
-                        {account.status}
-                      </span>
-                    </div>
-                  ))}
-                  {accounts.length === 0 && (
-                    <p className="text-slate-500 text-sm">No accounts connected yet</p>
-                  )}
-                </div>
+                <AccountMultiSelect
+                  accounts={accounts}
+                  value={formData.account_ids}
+                  onChange={(next) => setFormData({ ...formData, account_ids: next })}
+                  testIdPrefix="campaign-accounts"
+                  placeholder={accounts.length === 0 ? "No accounts connected yet" : "All connected accounts"}
+                />
               </div>
 
               {/* Do Not Email Lists */}
               <div>
                 <Label>Do Not Email Lists (optional)</Label>
                 <p className="text-xs text-slate-500 mb-2">
-                  Emails in selected Do Not Email lists will be automatically excluded from
-                  sending. The Global list is always applied.
+                  Pick the lists this campaign should be checked against. Permanent unsubscribes
+                  (anyone who clicked an unsubscribe link) are always blocked regardless.
                 </p>
                 <div className="space-y-2 mt-1.5">
-                  {dneLists.filter((l) => !l.is_global).length === 0 && (
+                  {dneLists.length === 0 && (
                     <p className="text-sm text-slate-500">
-                      No custom Do Not Email lists yet.{" "}
+                      No Do Not Email lists yet.{" "}
                       <button
                         type="button"
                         onClick={() => navigate("/do-not-email")}
@@ -730,10 +706,14 @@ export default function Campaign({ user, setUser }) {
                       </button>
                     </p>
                   )}
-                  {dneLists.filter((l) => !l.is_global).map((dne) => (
+                  {dneLists.map((dne) => (
                     <div
                       key={dne.list_id}
-                      className="flex items-center gap-3 p-3 border border-slate-200 rounded-md"
+                      className={`flex items-center gap-3 p-3 border rounded-md ${
+                        dne.is_global
+                          ? "border-rose-200 bg-rose-50/30"
+                          : "border-slate-200"
+                      }`}
                     >
                       <Checkbox
                         id={`dne-${dne.list_id}`}
@@ -745,7 +725,14 @@ export default function Campaign({ user, setUser }) {
                         htmlFor={`dne-${dne.list_id}`}
                         className="flex-1 cursor-pointer"
                       >
-                        <p className="font-medium text-slate-900">{dne.name}</p>
+                        <p className="font-medium text-slate-900 flex items-center gap-2">
+                          {dne.name}
+                          {dne.is_global && (
+                            <span className="text-[10px] uppercase tracking-wide bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+                              Global
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-slate-500">
                           {dne.email_count || 0} suppressed email
                           {dne.email_count === 1 ? "" : "s"}
@@ -753,21 +740,15 @@ export default function Campaign({ user, setUser }) {
                       </label>
                     </div>
                   ))}
-                  {dneLists.some((l) => l.is_global) && (
-                    <div className="flex items-center gap-3 p-3 border border-rose-200 bg-rose-50/40 rounded-md">
-                      <div className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center flex-shrink-0">
-                        <svg viewBox="0 0 12 12" className="w-3 h-3 text-white fill-current">
-                          <path d="M4.5 8.5L2 6l1-1 1.5 1.5L9 2l1 1z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-slate-900">Global Do Not Email</p>
-                        <p className="text-xs text-slate-500">
-                          Always applied ({dneLists.find((l) => l.is_global)?.email_count || 0} emails)
-                        </p>
-                      </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                        Auto-applied
+                  {dneLists.length > 0 && (formData.suppression_list_ids || []).length === 0 && (
+                    <div
+                      className="flex items-start gap-2 p-3 border border-amber-200 bg-amber-50 rounded-md text-amber-800 text-sm"
+                      data-testid="dne-no-selection-warning"
+                    >
+                      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                      <span>
+                        No unsubscribe list selected. Emails will not be checked against any
+                        suppression lists (permanent unsubscribes are always blocked).
                       </span>
                     </div>
                   )}

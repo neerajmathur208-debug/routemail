@@ -12,6 +12,8 @@ import {
   X,
   Download,
   Pencil,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -33,6 +35,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import Sidebar from "../components/Sidebar";
 import { api, API } from "../App";
 import { toast } from "sonner";
@@ -51,6 +63,14 @@ export default function ListDetails({ user, setUser }) {
   const [editRow, setEditRow] = useState(null); // { original_email, data }
   const [editValues, setEditValues] = useState({});
   const [savingRow, setSavingRow] = useState(false);
+
+  // Add record dialog state
+  const [addOpen, setAddOpen] = useState(false);
+  const [addValues, setAddValues] = useState({});
+  const [addingRow, setAddingRow] = useState(false);
+
+  // Delete record state
+  const [deleteRow, setDeleteRow] = useState(null);
 
   const fetchList = useCallback(async () => {
     try {
@@ -109,6 +129,45 @@ export default function ListDetails({ user, setUser }) {
       toast.error(e.response?.data?.detail || "Failed to update contact");
     } finally {
       setSavingRow(false);
+    }
+  };
+
+  const handleOpenAdd = () => {
+    const seed = {};
+    (list?.column_headers || ["email"]).forEach((h) => { seed[h] = ""; });
+    setAddValues(seed);
+    setAddOpen(true);
+  };
+
+  const handleAddRecord = async () => {
+    const email = String(addValues.email || "").trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    setAddingRow(true);
+    try {
+      await api.post(`/lists/${listId}/records`, { data: addValues });
+      toast.success("Contact added");
+      setAddOpen(false);
+      setAddValues({});
+      fetchList();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to add contact");
+    } finally {
+      setAddingRow(false);
+    }
+  };
+
+  const handleDeleteRow = async () => {
+    if (!deleteRow) return;
+    try {
+      await api.delete(`/lists/${listId}/records`, { data: { email: deleteRow.email } });
+      toast.success("Contact removed");
+      setDeleteRow(null);
+      fetchList();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to remove contact");
     }
   };
 
@@ -269,6 +328,14 @@ export default function ListDetails({ user, setUser }) {
               <h2 className="font-semibold text-slate-900">
                 Contacts <span className="text-sm font-normal text-slate-500 ml-2">({emails.length})</span>
               </h2>
+              <Button
+                size="sm"
+                onClick={handleOpenAdd}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="list-add-record-btn"
+              >
+                <Plus size={14} className="mr-1.5" /> Add record
+              </Button>
             </div>
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <Table>
@@ -278,7 +345,7 @@ export default function ListDetails({ user, setUser }) {
                     {columnHeaders.map((header) => (
                       <TableHead key={header} className="whitespace-nowrap">{header}</TableHead>
                     ))}
-                    <TableHead className="w-20 text-right">Actions</TableHead>
+                    <TableHead className="w-28 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,15 +366,28 @@ export default function ListDetails({ user, setUser }) {
                           </TableCell>
                         ))}
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenEditRow(row)}
-                            data-testid={`list-edit-row-${row.email}`}
-                            className="h-8 w-8"
-                          >
-                            <Pencil size={14} />
-                          </Button>
+                          <div className="inline-flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenEditRow(row)}
+                              data-testid={`list-edit-row-${row.email}`}
+                              className="h-8 w-8"
+                              title="Edit"
+                            >
+                              <Pencil size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeleteRow(row)}
+                              data-testid={`list-delete-row-${row.email}`}
+                              className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
                         </TableCell>
                       </motion.tr>
                     ))
@@ -378,6 +458,73 @@ export default function ListDetails({ user, setUser }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Add Record Dialog */}
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogContent data-testid="list-add-record-dialog">
+            <DialogHeader>
+              <DialogTitle>Add a contact</DialogTitle>
+              <DialogDescription>
+                Manually add a single contact to this list. Email is required and will be
+                validated, lower-cased, and trimmed before saving.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              {columnHeaders.map((header) => (
+                <div key={header}>
+                  <Label htmlFor={`add-field-${header}`} className="capitalize">
+                    {header}
+                    {header === "email" && <span className="text-red-500 ml-1">*</span>}
+                  </Label>
+                  <Input
+                    id={`add-field-${header}`}
+                    data-testid={`list-add-field-${header}`}
+                    value={addValues[header] || ""}
+                    onChange={(e) => setAddValues({ ...addValues, [header]: e.target.value })}
+                    className="mt-1.5"
+                    type={header === "email" ? "email" : "text"}
+                    placeholder={header === "email" ? "name@example.com" : ""}
+                  />
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button
+                onClick={handleAddRecord}
+                disabled={addingRow}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="list-add-record-save-btn"
+              >
+                {addingRow ? "Adding…" : "Add contact"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Record Confirm */}
+        <AlertDialog open={!!deleteRow} onOpenChange={(o) => !o && setDeleteRow(null)}>
+          <AlertDialogContent data-testid="list-delete-row-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this contact?</AlertDialogTitle>
+              <AlertDialogDescription>
+                <span className="font-mono text-slate-700">{deleteRow?.email}</span> will be
+                permanently removed from this list. This cannot be undone. Other lists are not
+                affected.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteRow}
+                className="bg-red-600 hover:bg-red-700"
+                data-testid="list-delete-row-confirm-btn"
+              >
+                Remove contact
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   );

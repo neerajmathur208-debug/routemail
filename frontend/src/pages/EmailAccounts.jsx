@@ -603,14 +603,13 @@ export default function EmailAccounts({ user, setUser }) {
                         <Label className="text-xs text-slate-500 whitespace-nowrap">Daily Limit:</Label>
                         <Input
                           type="number"
-                          min="10"
-                          max="200"
+                          min="1"
                           value={editingLimit[account.account_id] || 50}
                           onChange={(e) => setEditingLimit({
                             ...editingLimit,
-                            [account.account_id]: parseInt(e.target.value) || 50
+                            [account.account_id]: Math.max(1, parseInt(e.target.value) || 50)
                           })}
-                          className="w-20 h-8 text-sm"
+                          className="w-24 h-8 text-sm"
                           data-testid={`limit-input-${account.account_id}`}
                         />
                         <Button
@@ -931,10 +930,13 @@ export default function EmailAccounts({ user, setUser }) {
                     </Select>
                   </div>
                   <div>
-                    <Label>Daily Limit (10-200)</Label>
-                    <Input type="number" min="10" max="200" value={formData.daily_limit}
-                      onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) || 50 })}
+                    <Label>Daily Limit</Label>
+                    <Input type="number" min="1" value={formData.daily_limit}
+                      onChange={(e) => setFormData({ ...formData, daily_limit: Math.max(1, parseInt(e.target.value) || 50) })}
                       className="mt-1.5" data-testid="daily-limit-input" />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Recommended maximum: 50 emails per day for better deliverability.
+                    </p>
                   </div>
                 </div>
 
@@ -1339,12 +1341,14 @@ export default function EmailAccounts({ user, setUser }) {
                   <Label>Daily sending limit</Label>
                   <Input
                     type="number"
-                    min={10}
-                    max={200}
+                    min={1}
                     value={editForm.daily_limit || 50}
-                    onChange={(e) => setEditForm({ ...editForm, daily_limit: parseInt(e.target.value || "0") })}
+                    onChange={(e) => setEditForm({ ...editForm, daily_limit: Math.max(1, parseInt(e.target.value || "0")) })}
                     data-testid="edit-daily-limit"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Recommended maximum: 50 emails per day for better deliverability.
+                  </p>
                 </div>
                 <div>
                   <Label>Delay between emails (s)</Label>
