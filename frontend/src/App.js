@@ -21,6 +21,8 @@ import UploadList from "./pages/UploadList";
 import Campaign from "./pages/Campaign";
 import CampaignLogs from "./pages/CampaignLogs";
 import CampaignView from "./pages/CampaignView";
+import DripCampaigns from "./pages/DripCampaigns";
+import DripCampaignView from "./pages/DripCampaignView";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
@@ -211,6 +213,22 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <CampaignView user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/drip-campaigns"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <DripCampaigns user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/drip-campaigns/:dripId"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <DripCampaignView user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />

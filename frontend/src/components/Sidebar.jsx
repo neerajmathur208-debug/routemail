@@ -6,6 +6,7 @@ import {
   FileText,
   Upload,
   Send,
+  Workflow,
   LogOut,
   Menu,
   X,
@@ -24,6 +25,7 @@ const navItems = [
   { path: "/accounts", label: "Email Accounts", icon: Mail },
   { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
+  { path: "/drip-campaigns", label: "Drip Campaigns", icon: Workflow },
   { path: "/subscription", label: "Subscription", icon: CreditCard },
 ];
 

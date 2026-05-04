@@ -1618,6 +1618,45 @@ class UpdateCampaignRequest(BaseModel):
 class AddToSuppressionRequest(BaseModel):
     email: str
 
+# ==================== DRIP CAMPAIGN MODELS ====================
+
+class DripStep(BaseModel):
+    """One step in a drip sequence"""
+    step_number: int  # 1, 2, 3...
+    subject: str
+    body: str
+    body_text: Optional[str] = None
+    delay_days: int = 0  # days after previous step (0 for first step)
+    delay_hours: int = 0  # hours after previous step
+
+class DripScheduleSettings(BaseModel):
+    timezone: str = "UTC"
+    sending_days: List[int] = [0, 1, 2, 3, 4]  # 0=Monday, 6=Sunday
+    start_time: str = "09:00"
+    end_time: str = "18:00"
+    randomize_time: bool = False
+
+class CreateDripCampaignRequest(BaseModel):
+    name: str
+    from_name: Optional[str] = None
+    account_ids: List[str] = []
+    steps: List[DripStep] = []
+    schedule: DripScheduleSettings = DripScheduleSettings()
+    stop_on_reply: bool = True
+    stop_on_bounce: bool = True
+
+class UpdateDripCampaignRequest(BaseModel):
+    name: Optional[str] = None
+    from_name: Optional[str] = None
+    account_ids: Optional[List[str]] = None
+    steps: Optional[List[DripStep]] = None
+    schedule: Optional[DripScheduleSettings] = None
+    stop_on_reply: Optional[bool] = None
+    stop_on_bounce: Optional[bool] = None
+
+class AddDripContactsRequest(BaseModel):
+    list_id: str
+
 # ==================== AUTH HELPERS ====================
 
 async def get_current_user(request: Request) -> User:
@@ -3637,6 +3676,349 @@ async def delete_campaign(campaign_id: str, user: User = Depends(get_current_use
     await db.campaigns.delete_one({"campaign_id": campaign_id})
     
     return {"message": "Campaign deleted"}
+
+# ==================== DRIP CAMPAIGNS ====================
+
+@api_router.get("/drip-campaigns")
+async def list_drip_campaigns(user: User = Depends(get_current_user)):
+    """List all drip campaigns for the current user"""
+    campaigns = await db.drip_campaigns.find(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return campaigns
+
+@api_router.post("/drip-campaigns")
+async def create_drip_campaign(request: CreateDripCampaignRequest, user: User = Depends(get_current_user)):
+    """Create a new drip campaign (in draft)"""
+    drip_id = f"drip_{uuid.uuid4().hex[:12]}"
+    
+    # Normalize step numbers
+    steps = []
+    for idx, step in enumerate(request.steps):
+        step_dict = step.model_dump()
+        step_dict["step_number"] = idx + 1
+        steps.append(step_dict)
+    
+    campaign = {
+        "drip_id": drip_id,
+        "user_id": user.user_id,
+        "name": request.name,
+        "from_name": request.from_name,
+        "account_ids": request.account_ids,
+        "steps": steps,
+        "schedule": request.schedule.model_dump(),
+        "stop_on_reply": request.stop_on_reply,
+        "stop_on_bounce": request.stop_on_bounce,
+        "status": "draft",  # draft, running, paused, completed
+        "total_sent": 0,
+        "total_contacts": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    await db.drip_campaigns.insert_one(campaign)
+    campaign.pop("_id", None)
+    return campaign
+
+@api_router.get("/drip-campaigns/{drip_id}")
+async def get_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Get drip campaign with live stats"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    # Get per-status contact counts
+    active_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "active"})
+    completed_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "completed"})
+    replied_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "replied"})
+    bounced_count = await db.drip_contacts.count_documents({"drip_id": drip_id, "status": "bounced"})
+    total_contacts = await db.drip_contacts.count_documents({"drip_id": drip_id})
+    sent_logs = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "sent"})
+    failed_logs = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "failed"})
+    
+    campaign["stats"] = {
+        "total_contacts": total_contacts,
+        "active": active_count,
+        "completed": completed_count,
+        "replied": replied_count,
+        "bounced": bounced_count,
+        "emails_sent": sent_logs,
+        "emails_failed": failed_logs,
+    }
+    return campaign
+
+@api_router.put("/drip-campaigns/{drip_id}")
+async def update_drip_campaign(drip_id: str, request: UpdateDripCampaignRequest, user: User = Depends(get_current_user)):
+    """Update a drip campaign (draft or paused only)"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    if campaign["status"] == "running":
+        raise HTTPException(status_code=400, detail="Pause the campaign before editing")
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if request.name is not None:
+        update_data["name"] = request.name
+    if request.from_name is not None:
+        update_data["from_name"] = request.from_name
+    if request.account_ids is not None:
+        update_data["account_ids"] = request.account_ids
+    if request.steps is not None:
+        steps = []
+        for idx, step in enumerate(request.steps):
+            step_dict = step.model_dump()
+            step_dict["step_number"] = idx + 1
+            steps.append(step_dict)
+        update_data["steps"] = steps
+    if request.schedule is not None:
+        update_data["schedule"] = request.schedule.model_dump()
+    if request.stop_on_reply is not None:
+        update_data["stop_on_reply"] = request.stop_on_reply
+    if request.stop_on_bounce is not None:
+        update_data["stop_on_bounce"] = request.stop_on_bounce
+    
+    await db.drip_campaigns.update_one({"drip_id": drip_id}, {"$set": update_data})
+    return {"message": "Drip campaign updated", "drip_id": drip_id}
+
+@api_router.delete("/drip-campaigns/{drip_id}")
+async def delete_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Delete drip campaign plus its contacts and logs"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    if campaign["status"] == "running":
+        raise HTTPException(status_code=400, detail="Pause the campaign before deleting")
+    
+    await db.drip_contacts.delete_many({"drip_id": drip_id})
+    await db.drip_logs.delete_many({"drip_id": drip_id})
+    await db.drip_campaigns.delete_one({"drip_id": drip_id})
+    return {"message": "Drip campaign deleted"}
+
+@api_router.post("/drip-campaigns/{drip_id}/contacts")
+async def add_drip_contacts(drip_id: str, request: AddDripContactsRequest, user: User = Depends(get_current_user)):
+    """Enroll contacts from an email list into the drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    email_list = await db.email_lists.find_one(
+        {"list_id": request.list_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not email_list:
+        raise HTTPException(status_code=404, detail="Email list not found")
+    
+    # Build contact records; skip duplicates already enrolled
+    existing_emails = set()
+    existing_cursor = db.drip_contacts.find(
+        {"drip_id": drip_id},
+        {"_id": 0, "email": 1}
+    )
+    async for doc in existing_cursor:
+        existing_emails.add(doc.get("email", "").lower())
+    
+    new_docs = []
+    skipped = 0
+    for row in email_list.get("emails", []):
+        email_addr = (row.get("email") or "").strip().lower()
+        if not email_addr or email_addr in existing_emails:
+            skipped += 1
+            continue
+        existing_emails.add(email_addr)
+        new_docs.append({
+            "contact_id": f"dc_{uuid.uuid4().hex[:12]}",
+            "drip_id": drip_id,
+            "user_id": user.user_id,
+            "email": email_addr,
+            "data": row,
+            "current_step": 0,
+            "status": "active",
+            "next_send_at": datetime.now(timezone.utc).isoformat(),  # first step eligible immediately
+            "enrolled_at": datetime.now(timezone.utc).isoformat(),
+        })
+    
+    if new_docs:
+        await db.drip_contacts.insert_many(new_docs)
+    
+    total_contacts = await db.drip_contacts.count_documents({"drip_id": drip_id})
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id},
+        {"$set": {"total_contacts": total_contacts, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "added": len(new_docs),
+        "skipped_duplicates": skipped,
+        "total_contacts": total_contacts,
+    }
+
+@api_router.get("/drip-campaigns/{drip_id}/contacts")
+async def list_drip_contacts(
+    drip_id: str,
+    user: User = Depends(get_current_user),
+    status: Optional[str] = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(50),
+):
+    """List contacts enrolled in a drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    query = {"drip_id": drip_id}
+    if status:
+        query["status"] = status
+    
+    contacts = await db.drip_contacts.find(
+        query, {"_id": 0}
+    ).sort("enrolled_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.drip_contacts.count_documents(query)
+    
+    return {"contacts": contacts, "total": total, "skip": skip, "limit": limit}
+
+@api_router.get("/drip-campaigns/{drip_id}/logs")
+async def list_drip_logs(
+    drip_id: str,
+    user: User = Depends(get_current_user),
+    status: Optional[str] = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(50),
+):
+    """List send logs for a drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    query = {"drip_id": drip_id}
+    if status:
+        query["status"] = status
+    
+    logs = await db.drip_logs.find(
+        query, {"_id": 0}
+    ).sort("sent_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.drip_logs.count_documents(query)
+    
+    return {"logs": logs, "total": total, "skip": skip, "limit": limit}
+
+@api_router.get("/drip-campaigns/{drip_id}/logs/export")
+async def export_drip_logs(drip_id: str, user: User = Depends(get_current_user)):
+    """Export drip logs as CSV"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    logs = await db.drip_logs.find(
+        {"drip_id": drip_id}, {"_id": 0}
+    ).sort("sent_at", -1).to_list(10000)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Recipient", "Step", "Subject", "Sent From", "Status", "Sent At", "Error"])
+    for log in logs:
+        writer.writerow([
+            log.get("contact_email", ""),
+            (log.get("step", 0) or 0) + 1,
+            log.get("subject", ""),
+            log.get("account_email", ""),
+            log.get("status", ""),
+            log.get("sent_at", ""),
+            log.get("error", ""),
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=drip_{drip_id}_logs.csv"}
+    )
+
+@api_router.post("/drip-campaigns/{drip_id}/start")
+async def start_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Start (or activate) a drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    
+    if not campaign.get("steps"):
+        raise HTTPException(status_code=400, detail="Add at least one step before starting")
+    if not campaign.get("account_ids"):
+        raise HTTPException(status_code=400, detail="Select at least one email account before starting")
+    
+    contact_count = await db.drip_contacts.count_documents({"drip_id": drip_id})
+    if contact_count == 0:
+        raise HTTPException(status_code=400, detail="Add contacts before starting the campaign")
+    
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id},
+        {"$set": {
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    return {"message": "Drip campaign started", "drip_id": drip_id}
+
+@api_router.post("/drip-campaigns/{drip_id}/pause")
+async def pause_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Pause a running drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    if campaign["status"] != "running":
+        raise HTTPException(status_code=400, detail="Only running campaigns can be paused")
+    
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id},
+        {"$set": {"status": "paused", "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Drip campaign paused", "drip_id": drip_id}
+
+@api_router.post("/drip-campaigns/{drip_id}/resume")
+async def resume_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Resume a paused drip campaign"""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    if campaign["status"] != "paused":
+        raise HTTPException(status_code=400, detail="Only paused campaigns can be resumed")
+    
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id},
+        {"$set": {"status": "running", "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Drip campaign resumed", "drip_id": drip_id}
 
 # ==================== SUPPRESSION LIST ====================
 
