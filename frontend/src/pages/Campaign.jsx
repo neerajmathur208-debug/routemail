@@ -791,6 +791,81 @@ export default function Campaign({ user, setUser }) {
                 </Select>
               </div>
 
+              {/* Send Range */}
+              <div data-testid="send-range-section">
+                <Label>Send Range</Label>
+                <p className="text-xs text-slate-500 mb-2 mt-0.5">
+                  Choose to send to all contacts in the list, or only to a subset (1-based, inclusive).
+                </p>
+                <div className="flex items-center gap-4 mb-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="send_range_mode"
+                      value="all"
+                      checked={(formData.send_range_mode || "all") === "all"}
+                      onChange={() => setFormData({ ...formData, send_range_mode: "all" })}
+                      data-testid="send-range-all-radio"
+                    />
+                    <span>All contacts{selectedList ? ` (${selectedList.valid_emails || 0})` : ""}</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="send_range_mode"
+                      value="range"
+                      checked={formData.send_range_mode === "range"}
+                      onChange={() => setFormData({ ...formData, send_range_mode: "range" })}
+                      data-testid="send-range-range-radio"
+                    />
+                    <span>Custom range</span>
+                  </label>
+                </div>
+                {formData.send_range_mode === "range" && (
+                  <div className="flex items-center gap-3 mt-1">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="send-range-start" className="text-xs text-slate-500">From</Label>
+                      <Input
+                        id="send-range-start"
+                        type="number"
+                        min={1}
+                        value={formData.send_range_start || 1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            send_range_start: Math.max(1, parseInt(e.target.value || "1", 10)),
+                          })
+                        }
+                        className="w-28"
+                        data-testid="send-range-start-input"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="send-range-end" className="text-xs text-slate-500">To</Label>
+                      <Input
+                        id="send-range-end"
+                        type="number"
+                        min={1}
+                        value={formData.send_range_end || 1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            send_range_end: Math.max(1, parseInt(e.target.value || "1", 10)),
+                          })
+                        }
+                        className="w-28"
+                        data-testid="send-range-end-input"
+                      />
+                    </div>
+                    {selectedList && (
+                      <span className="text-xs text-slate-400">
+                        of {selectedList.valid_emails || 0} valid contacts
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Subject Line */}
               <div>
                 <Label htmlFor="subject">Subject Line *</Label>

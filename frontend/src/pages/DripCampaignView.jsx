@@ -122,6 +122,9 @@ export default function DripCampaignView({ user, setUser }) {
   const [addContactsOpen, setAddContactsOpen] = useState(false);
   const [selectedList, setSelectedList] = useState("");
   const [addingContacts, setAddingContacts] = useState(false);
+  const [sendRangeMode, setSendRangeMode] = useState("all");
+  const [sendRangeStart, setSendRangeStart] = useState(1);
+  const [sendRangeEnd, setSendRangeEnd] = useState(100);
 
   const loadAll = useCallback(async () => {
     try {
@@ -281,14 +284,19 @@ export default function DripCampaignView({ user, setUser }) {
     }
     setAddingContacts(true);
     try {
-      const res = await api.post(`/drip-campaigns/${dripId}/contacts`, {
-        list_id: selectedList,
-      });
+      const payload = { list_id: selectedList };
+      if (sendRangeMode === "range") {
+        payload.send_range_mode = "range";
+        payload.send_range_start = Math.max(1, parseInt(sendRangeStart, 10) || 1);
+        payload.send_range_end = Math.max(1, parseInt(sendRangeEnd, 10) || 1);
+      }
+      const res = await api.post(`/drip-campaigns/${dripId}/contacts`, payload);
       toast.success(
         `Added ${res.data.added} contacts${res.data.skipped_duplicates ? ` (${res.data.skipped_duplicates} duplicates skipped)` : ""}`
       );
       setAddContactsOpen(false);
       setSelectedList("");
+      setSendRangeMode("all");
       loadAll();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to add contacts");
@@ -924,29 +932,86 @@ export default function DripCampaignView({ user, setUser }) {
             <DialogHeader>
               <DialogTitle>Add contacts from an email list</DialogTitle>
               <DialogDescription>
-                All valid emails in the list will be enrolled. Duplicates are automatically skipped.
+                Choose to enroll all valid emails in the list, or only a subset by row range. Duplicates are automatically skipped.
               </DialogDescription>
             </DialogHeader>
-            <div>
-              <Label>Email list</Label>
-              <Select value={selectedList} onValueChange={setSelectedList}>
-                <SelectTrigger data-testid="drip-list-select" className="mt-1.5">
-                  <SelectValue placeholder="Select a list" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lists.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">
-                      No email lists yet. Upload one from Email Lists.
+            <div className="space-y-4">
+              <div>
+                <Label>Email list</Label>
+                <Select value={selectedList} onValueChange={setSelectedList}>
+                  <SelectTrigger data-testid="drip-list-select" className="mt-1.5">
+                    <SelectValue placeholder="Select a list" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lists.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">
+                        No email lists yet. Upload one from Email Lists.
+                      </div>
+                    ) : (
+                      lists.map((l) => (
+                        <SelectItem key={l.list_id} value={l.list_id}>
+                          {l.name} ({l.valid_emails || 0})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div data-testid="drip-send-range-section">
+                <Label>Send Range</Label>
+                <div className="flex items-center gap-4 mt-1.5 mb-1">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="drip_send_range_mode"
+                      value="all"
+                      checked={sendRangeMode === "all"}
+                      onChange={() => setSendRangeMode("all")}
+                      data-testid="drip-send-range-all-radio"
+                    />
+                    <span>All contacts</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="drip_send_range_mode"
+                      value="range"
+                      checked={sendRangeMode === "range"}
+                      onChange={() => setSendRangeMode("range")}
+                      data-testid="drip-send-range-range-radio"
+                    />
+                    <span>Custom range</span>
+                  </label>
+                </div>
+                {sendRangeMode === "range" && (
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-slate-500">From</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={sendRangeStart}
+                        onChange={(e) => setSendRangeStart(e.target.value)}
+                        className="w-24"
+                        data-testid="drip-send-range-start-input"
+                      />
                     </div>
-                  ) : (
-                    lists.map((l) => (
-                      <SelectItem key={l.list_id} value={l.list_id}>
-                        {l.name} ({l.valid_emails || 0})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-slate-500">To</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={sendRangeEnd}
+                        onChange={(e) => setSendRangeEnd(e.target.value)}
+                        className="w-24"
+                        data-testid="drip-send-range-end-input"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-400">1-based, inclusive</span>
+                  </div>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddContactsOpen(false)}>

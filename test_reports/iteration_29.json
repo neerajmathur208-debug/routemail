@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 29 — verified Public Blog (CRUD + public list/detail + slug uniqueness + admin gating), Standard Campaign send_range persistence, Drip Campaign send_range enrollment (range / all / missing), Tawk widget removal, GET /api/accounts/{id}/credential (note: implemented as /credential not /password), and daily_limit min=1/no-max. Backend pytest = 12/12 PASSED in test_iteration_29_features.py. Regression on test_drip_campaigns + test_dne_lists + test_iteration_28_features = 66/66 PASSED. Frontend Playwright on the live preview URL: login OK, Dashboard 'Campaign Activity' is the FIRST left-column block with data-testid='campaign-activity-section', exactly 4 row testids rendered, 'View All' button navigates to /campaign, no Tawk on Dashboard or public /blog, /admin/blogs redirects non-admin to /dashboard, Campaign.jsx Send Range section + All/Custom radios + From/To inputs render and switch correctly, public /blog page renders (empty state — no published posts).",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "GET /api/accounts/{id}/credential", "issue": "Review brief calls this /password but server.py exposes it as /credential (line 3168). Frontend EmailAccounts.jsx already uses /credential. Behaviour matches spec, only the path name differs."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Drip 'Add contacts' dialog Send Range UI", "issue": "Could not interactively open the dialog from the test session because drip.tester has no contacts on the freshly-opened drip — the script loop matched 'Open' but did not find the 'Add contacts' button by text. Source-level: data-testid 'drip-send-range-section', 'drip-send-range-all-radio', 'drip-send-range-range-radio', 'drip-send-range-start-input', 'drip-send-range-end-input' are present in /app/frontend/src/pages/DripCampaignView.jsx (lines 961, 971, 982, 997, 1008). Backend enrollment with these fields PASSED in test_drip_range_enrolls_only_slice → 3 contacts enrolled for rows 2-4 of a 5-contact list.", "affected_selectors": ["drip-send-range-section"]},
+      {"flow": "Email Accounts View/Edit password reveal", "issue": "Could not interactively verify because drip.tester has 0 connected SMTP accounts (UI shows 'No accounts connected yet'). Backend GET /api/accounts/{id}/credential returns the correct decrypted password for the owner (verified via direct Mongo seed → 'S3cretP@ss!' returned). Frontend code in EmailAccounts.jsx calls api.get('/accounts/{id}/credential'). Main agent should manually verify the Edit dialog by adding a test account.", "affected_selectors": []}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_29_features.py",
+    "/app/test_reports/pytest/iteration_29_results.xml"
+  ],
+  "action_items": [
+    "Path naming: align review brief vs implementation — endpoint is /api/accounts/{id}/credential (not /password). No code change needed unless rename is desired.",
+    "Manual smoke for the password-reveal toggle in the EmailAccounts Edit dialog after connecting an SMTP account (cannot be reached automatically since drip.tester has none).",
+    "Manual smoke for drip 'Add contacts' dialog Send Range section — backend slicing is verified end-to-end, frontend testids verified by source. Just open the dialog and confirm radios/inputs visually."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py grew further to 6715 lines — the iter28 recommendation to split routers (blogs, campaigns, drips, accounts) is now even more pressing.",
+    "/api/admin/blogs/upload-image stores featured images as base64 data URIs in Mongo (line 5252+). Convenient but balloons db.blogs documents and JSON payloads — for any image > ~100KB the public list endpoint becomes heavy. Consider S3/static hosting before launch.",
+    "Drip add_drip_contacts (line 4639) clamps end to len(all_rows) and start to >=1; if start > end after clamping it returns an empty `selected_rows` silently. Consider 400 'invalid range' so the UI can surface it.",
+    "Standard campaign /campaigns POST builds the queue at /start time (range applied at line 909-914). A user editing the campaign with a smaller list later won't see the queue rebuilt — fine for MVP but worth documenting.",
+    "Slug generator falls back to `post-<6hex>` for empty titles — silently swallows a bad request rather than returning 400. Title is already required at the validator level so this branch is unreachable but the fallback adds noise.",
+    "GET /api/accounts/{id}/credential returns plaintext password as JSON. It is owner-scoped and over HTTPS, but consider audit-logging access events for SOC2 readiness."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_29_features.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 new + 66/66 regression)",
+    "frontend": "Verified: blog public render, login, dashboard campaign-activity first-fold + slice(0,4) + view-all → /campaign, Tawk absent, /admin/blogs gated for non-admin, Campaign Send Range UI + radios + inputs. Not interactively verified (prerequisite gap, not bug): drip Add-contacts dialog Send Range UI, EmailAccounts edit password reveal — both confirmed via source/backend."
+  },
+  "test_credentials": "drip.tester@example.com / DripTest123! (pre-seeded). No super-admin password available — promoted user role to 'super_admin' inside the test fixture and reverted in finally.",
+  "seed_data_creation": "Tests create TEST_iter29_* email_lists, TEST_iter29 blogs, acc_TEST_iter29_* email_accounts, TEST_iter29_drip drip campaigns. All cleaned up via direct Mongo delete or DELETE endpoints.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_iteration_29_features.py for blog + send_range + credential + daily_limit regression. The blog test promotes drip.tester to super_admin in DB then reverts on teardown — DO NOT skip the finally block. Drip dialog interactive Playwright is best run after seeding at least one drip with 0 contacts and clicking 'Add contacts' button (selector likely 'add-contacts-btn' or similar — verify by inspecting DripCampaignView.jsx ~ line 925). Email Accounts edit reveals require a connected SMTP account (e.g. seed via /api/accounts/smtp with a real test SMTP host or directly in db.email_accounts).",
+  "rca of the issue": "N/A — no defects. Two frontend interactive checks were inconclusive due to missing test seed data (no SMTP account, no drip-with-contacts on tester user), not implementation bugs. Backend coverage of the same flows passes."
+}

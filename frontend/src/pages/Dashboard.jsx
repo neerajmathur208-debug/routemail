@@ -347,6 +347,165 @@ export default function Dashboard({ user, setUser }) {
             <div className="grid lg:grid-cols-[1fr_340px] gap-6">
               {/* Left Column */}
               <div className="space-y-6">
+              {/* Campaign Activity Section (First Fold) */}
+              {stats?.campaigns && stats.campaigns.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-[20px] shadow-sm border border-slate-100 overflow-hidden"
+                  data-testid="campaign-activity-section"
+                >
+                  <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-heading font-semibold text-lg text-slate-900">
+                        Campaign Activity
+                      </h2>
+                      <p className="text-slate-400 text-sm">Latest campaigns and their status</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-500 hover:text-slate-700 rounded-xl"
+                      onClick={() => navigate("/campaign")}
+                      data-testid="campaign-activity-view-all-btn"
+                    >
+                      View All
+                      <ArrowRight size={14} className="ml-1.5" />
+                    </Button>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {stats.campaigns.slice(0, 4).map((campaign, index) => {
+                      const progressPercent = campaign.total_emails > 0 
+                        ? Math.round((campaign.sent_count / campaign.total_emails) * 100) 
+                        : 0;
+                      
+                      return (
+                        <motion.div 
+                          key={campaign.campaign_id} 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.05 * index }}
+                          className="p-5 hover:bg-slate-50/50 transition-colors duration-150"
+                          data-testid={`campaign-activity-row-${campaign.campaign_id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-2">
+                                <p className="font-medium text-slate-800 truncate">
+                                  {campaign.name || campaign.subject}
+                                </p>
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  campaign.status === "completed" ? "bg-emerald-100 text-emerald-700" :
+                                  campaign.status === "running" ? "bg-blue-100 text-blue-700" :
+                                  campaign.status === "paused" ? "bg-amber-100 text-amber-700" :
+                                  campaign.status === "paused_daily_limit" ? "bg-orange-100 text-orange-700" :
+                                  campaign.status === "scheduled" ? "bg-purple-100 text-purple-700" :
+                                  campaign.status === "failed" ? "bg-red-100 text-red-700" :
+                                  "bg-slate-100 text-slate-600"
+                                }`}>
+                                  {campaign.status === "paused_daily_limit" ? "Daily limit reached — will resume automatically" : campaign.status}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-6 text-sm">
+                                <span className="text-slate-400">{campaign.total_emails} recipients</span>
+                                {campaign.status !== "draft" && (
+                                  <span className="text-emerald-600 font-medium">{campaign.sent_count} sent</span>
+                                )}
+                                {campaign.status !== "draft" && campaign.total_emails > 0 && (
+                                  <span className="text-slate-400">{progressPercent}%</span>
+                                )}
+                              </div>
+                              {campaign.status !== "draft" && campaign.total_emails > 0 && (
+                                <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden max-w-md">
+                                  <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${progressPercent}%` }}
+                                    transition={{ duration: 0.8, delay: index * 0.1 }}
+                                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 ml-6">
+                              {campaign.status === "draft" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 rounded-xl"
+                                  onClick={() => navigate(`/campaign?edit=${campaign.campaign_id}`)}
+                                >
+                                  <Edit size={16} className="text-slate-400" />
+                                </Button>
+                              )}
+                              {campaign.status === "running" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
+                                  data-testid={`pause-campaign-${campaign.campaign_id}`}
+                                >
+                                  <Pause size={14} className="mr-1" />
+                                  Pause
+                                </Button>
+                              )}
+                              {campaign.status === "scheduled" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
+                                  data-testid={`pause-scheduled-${campaign.campaign_id}`}
+                                >
+                                  <Pause size={14} className="mr-1" />
+                                  Pause
+                                </Button>
+                              )}
+                              {(campaign.status === "paused" || campaign.status === "paused_daily_limit") && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  onClick={() => handleResumeCampaign(campaign.campaign_id)}
+                                  data-testid={`resume-campaign-${campaign.campaign_id}`}
+                                >
+                                  <Play size={14} className="mr-1" />
+                                  Resume
+                                </Button>
+                              )}
+                              {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused" || campaign.status === "paused_daily_limit" || campaign.status === "scheduled") && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/view`)}
+                                    data-testid={`view-campaign-${campaign.campaign_id}`}
+                                  >
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
+                                    data-testid={`view-logs-${campaign.campaign_id}`}
+                                  >
+                                    <FileText size={14} className="mr-1" />
+                                    Logs
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
               {/* Top Metric Cards */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Email Accounts Card with Gradient */}
@@ -800,163 +959,6 @@ export default function Dashboard({ user, setUser }) {
                         className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"
                       />
                     </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Campaign Activity Section */}
-              {stats?.campaigns && stats.campaigns.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-white rounded-[20px] shadow-sm border border-slate-100 overflow-hidden"
-                >
-                  <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <div>
-                      <h2 className="font-heading font-semibold text-lg text-slate-900">
-                        Campaign Activity
-                      </h2>
-                      <p className="text-slate-400 text-sm">Recent campaigns and their status</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-500 hover:text-slate-700 rounded-xl"
-                      onClick={() => navigate("/campaign")}
-                    >
-                      View All
-                      <ArrowRight size={14} className="ml-1.5" />
-                    </Button>
-                  </div>
-                  <div className="divide-y divide-slate-50">
-                    {stats.campaigns.slice(0, 5).map((campaign, index) => {
-                      const progressPercent = campaign.total_emails > 0 
-                        ? Math.round((campaign.sent_count / campaign.total_emails) * 100) 
-                        : 0;
-                      
-                      return (
-                        <motion.div 
-                          key={campaign.campaign_id} 
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.1 * index }}
-                          className="p-5 hover:bg-slate-50/50 transition-colors duration-150"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-2">
-                                <p className="font-medium text-slate-800 truncate">
-                                  {campaign.name || campaign.subject}
-                                </p>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                                  campaign.status === "completed" ? "bg-emerald-100 text-emerald-700" :
-                                  campaign.status === "running" ? "bg-blue-100 text-blue-700" :
-                                  campaign.status === "paused" ? "bg-amber-100 text-amber-700" :
-                                  campaign.status === "paused_daily_limit" ? "bg-orange-100 text-orange-700" :
-                                  campaign.status === "scheduled" ? "bg-purple-100 text-purple-700" :
-                                  campaign.status === "failed" ? "bg-red-100 text-red-700" :
-                                  "bg-slate-100 text-slate-600"
-                                }`}>
-                                  {campaign.status === "paused_daily_limit" ? "Daily limit reached — will resume automatically" : campaign.status}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-6 text-sm">
-                                <span className="text-slate-400">{campaign.total_emails} recipients</span>
-                                {campaign.status !== "draft" && (
-                                  <span className="text-emerald-600 font-medium">{campaign.sent_count} sent</span>
-                                )}
-                                {campaign.status !== "draft" && campaign.total_emails > 0 && (
-                                  <span className="text-slate-400">{progressPercent}%</span>
-                                )}
-                              </div>
-                              {campaign.status !== "draft" && campaign.total_emails > 0 && (
-                                <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden max-w-md">
-                                  <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${progressPercent}%` }}
-                                    transition={{ duration: 0.8, delay: index * 0.1 }}
-                                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 ml-6">
-                              {campaign.status === "draft" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-9 w-9 rounded-xl"
-                                  onClick={() => navigate(`/campaign?edit=${campaign.campaign_id}`)}
-                                >
-                                  <Edit size={16} className="text-slate-400" />
-                                </Button>
-                              )}
-                              {campaign.status === "running" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
-                                  data-testid={`pause-campaign-${campaign.campaign_id}`}
-                                >
-                                  <Pause size={14} className="mr-1" />
-                                  Pause
-                                </Button>
-                              )}
-                              {campaign.status === "scheduled" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                                  onClick={() => handlePauseCampaign(campaign.campaign_id)}
-                                  data-testid={`pause-scheduled-${campaign.campaign_id}`}
-                                >
-                                  <Pause size={14} className="mr-1" />
-                                  Pause
-                                </Button>
-                              )}
-                              {(campaign.status === "paused" || campaign.status === "paused_daily_limit") && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                  onClick={() => handleResumeCampaign(campaign.campaign_id)}
-                                  data-testid={`resume-campaign-${campaign.campaign_id}`}
-                                >
-                                  <Play size={14} className="mr-1" />
-                                  Resume
-                                </Button>
-                              )}
-                              {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused" || campaign.status === "paused_daily_limit" || campaign.status === "scheduled") && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="rounded-xl"
-                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/view`)}
-                                    data-testid={`view-campaign-${campaign.campaign_id}`}
-                                  >
-                                    <Eye size={14} className="mr-1" />
-                                    View
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="rounded-xl"
-                                    onClick={() => navigate(`/campaign/${campaign.campaign_id}/logs`)}
-                                    data-testid={`view-logs-${campaign.campaign_id}`}
-                                  >
-                                    <FileText size={14} className="mr-1" />
-                                    Logs
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
                   </div>
                 </motion.div>
               )}

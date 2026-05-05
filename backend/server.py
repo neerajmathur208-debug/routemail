@@ -1965,6 +1965,9 @@ class UpdateDripCampaignRequest(BaseModel):
 
 class AddDripContactsRequest(BaseModel):
     list_id: str
+    send_range_mode: Optional[str] = "all"  # 'all' | 'range'
+    send_range_start: Optional[int] = None  # 1-based inclusive
+    send_range_end: Optional[int] = None    # 1-based inclusive
 
 # ==================== DO NOT EMAIL (DNE / SUPPRESSION) MODELS ====================
 
@@ -4659,9 +4662,22 @@ async def add_drip_contacts(drip_id: str, request: AddDripContactsRequest, user:
     async for doc in existing_cursor:
         existing_emails.add(doc.get("email", "").lower())
     
+    # Apply send-range filter on the source list rows
+    all_rows = email_list.get("emails", [])
+    send_mode = (request.send_range_mode or "all").lower()
+    if send_mode == "range":
+        start = max(1, int(request.send_range_start or 1))
+        end = min(len(all_rows), int(request.send_range_end or len(all_rows)))
+        if start > end:
+            selected_rows = []
+        else:
+            selected_rows = all_rows[start - 1:end]
+    else:
+        selected_rows = all_rows
+    
     new_docs = []
     skipped = 0
-    for row in email_list.get("emails", []):
+    for row in selected_rows:
         email_addr = (row.get("email") or "").strip().lower()
         if not email_addr or email_addr in existing_emails:
             skipped += 1
