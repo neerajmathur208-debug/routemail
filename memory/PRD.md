@@ -527,6 +527,16 @@ Build a simple SaaS web application for small businesses to automatically send e
   - Use Different Email button to restart
   - Animated checkmark icon on success screen
 
+### ✅ Final Batch — Blog, Tawk removal, Send Range, Dashboard UI (Feb 2026)
+- [x] **Public Blog with Super Admin management** — `POST/PUT/DELETE /api/blogs[/{id}]` (super-admin only), `GET /api/blogs` + `GET /api/blogs/{slug}` public; admin Featured-image upload (base64). Frontend: `/blog`, `/blog/:slug`, `/admin/blogs`.
+- [x] **Tawk chat widget removed** — `TawkWidget.jsx` deleted, App.js cleaned. No `embed.tawk.to` on any page.
+- [x] **Show current SMTP password on edit** — `GET /api/accounts/{id}/credential` (owner-scoped) + reveal toggle in EmailAccounts edit dialog.
+- [x] **Daily limit text** — "Recommended maximum: 50 emails per day for better deliverability" (min=1, no max).
+- [x] **Send Range on Standard Campaigns** — `send_range_mode` ('all'|'range') + 1-based `send_range_start`/`send_range_end`. Applied at `/start` and in scheduled-campaign worker. UI in Campaign.jsx between list select and subject (`data-testid="send-range-section"`).
+- [x] **Send Range on Drip Campaigns** — `AddDripContactsRequest` extended with `send_range_mode/start/end`; slicing applied before `drip_contacts.insert_many`. UI in DripCampaignView "Add contacts" dialog (`drip-send-range-section`, `drip-send-range-all-radio`, `drip-send-range-range-radio`, `drip-send-range-start-input`, `drip-send-range-end-input`).
+- [x] **Dashboard Campaign Activity in first fold** — moved above metric cards in Dashboard.jsx; `slice(0, 4)`; "View All" CTA → `/campaign`. Testids: `campaign-activity-section`, `campaign-activity-view-all-btn`, `campaign-activity-row-{id}`.
+- [x] Tested: 12/12 new backend + 66/66 regression (iteration_29). Frontend Playwright: Dashboard first-fold + 4 rows + View All verified. Drip Send Range dialog interactively verified by main agent (section + radios + From/To inputs render correctly).
+
 ### 🔄 In Progress
 - None currently
 
