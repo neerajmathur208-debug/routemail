@@ -906,8 +906,21 @@ async def start_scheduled_campaign(campaign: dict):
         existing_queue = await db.email_queue.count_documents({"campaign_id": campaign_id})
         
         if existing_queue == 0:
+            # Apply send-range filter
+            all_emails = email_list["emails"]
+            send_mode = campaign.get("send_range_mode", "all")
+            if send_mode == "range":
+                start = max(1, int(campaign.get("send_range_start") or 1))
+                end = min(len(all_emails), int(campaign.get("send_range_end") or len(all_emails)))
+                if start > end:
+                    selected_emails = []
+                else:
+                    selected_emails = all_emails[start - 1:end]
+            else:
+                selected_emails = all_emails
+            
             queue_items = []
-            for email_data in email_list["emails"]:
+            for email_data in selected_emails:
                 item = {
                     "queue_id": f"q_{uuid.uuid4().hex[:12]}",
                     "campaign_id": campaign_id,
@@ -921,6 +934,10 @@ async def start_scheduled_campaign(campaign: dict):
             
             if queue_items:
                 await db.email_queue.insert_many(queue_items)
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"total_emails": len(queue_items)}}
+            )
         
         # Update campaign status and lock it
         await db.campaigns.update_one(
@@ -1729,6 +1746,9 @@ class Campaign(BaseModel):
     scheduled_at: Optional[datetime] = None  # For scheduled campaigns
     timezone: Optional[str] = None  # User-selected timezone for the schedule
     suppression_list_ids: List[str] = []  # DNE list IDs applied to this campaign
+    send_range_mode: str = "all"  # 'all' | 'range'
+    send_range_start: Optional[int] = None  # 1-based inclusive
+    send_range_end: Optional[int] = None    # 1-based inclusive
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
@@ -1832,6 +1852,46 @@ class AddListRecordRequest(BaseModel):
 class DeleteListRecordRequest(BaseModel):
     email: str
 
+# ==================== BLOG MODELS ====================
+
+class Blog(BaseModel):
+    blog_id: str = Field(default_factory=lambda: f"blog_{uuid.uuid4().hex[:12]}")
+    slug: str
+    title: str
+    excerpt: Optional[str] = ""
+    content: str
+    featured_image_url: Optional[str] = None
+    author: str = "RouteMail Team"
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    status: str = "draft"  # draft | published
+    published_at: Optional[datetime] = None
+    created_by: str  # user_id of super_admin
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CreateBlogRequest(BaseModel):
+    title: str
+    slug: Optional[str] = None
+    excerpt: Optional[str] = ""
+    content: str
+    featured_image_url: Optional[str] = None
+    author: Optional[str] = "RouteMail Team"
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    status: str = "draft"
+
+class UpdateBlogRequest(BaseModel):
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    excerpt: Optional[str] = None
+    content: Optional[str] = None
+    featured_image_url: Optional[str] = None
+    author: Optional[str] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    status: Optional[str] = None
+
 class CreateCampaignRequest(BaseModel):
     name: str
     subject: str
@@ -1843,6 +1903,9 @@ class CreateCampaignRequest(BaseModel):
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
     timezone: Optional[str] = None  # User's selected timezone
     suppression_list_ids: List[str] = []  # DNE list IDs to exclude
+    send_range_mode: Optional[str] = "all"  # 'all' | 'range'
+    send_range_start: Optional[int] = None
+    send_range_end: Optional[int] = None
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -1855,6 +1918,9 @@ class UpdateCampaignRequest(BaseModel):
     scheduled_at: Optional[str] = None  # ISO datetime string for scheduled sends
     timezone: Optional[str] = None  # User's selected timezone
     suppression_list_ids: Optional[List[str]] = None
+    send_range_mode: Optional[str] = None
+    send_range_start: Optional[int] = None
+    send_range_end: Optional[int] = None
 
 class AddToSuppressionRequest(BaseModel):
     email: str
@@ -3096,6 +3162,21 @@ async def get_email_account(account_id: str, user: User = Depends(get_current_us
         raise HTTPException(status_code=404, detail="Account not found")
     return acc
 
+@api_router.get("/accounts/{account_id}/credential")
+async def get_account_credential(account_id: str, user: User = Depends(get_current_user)):
+    """Return the saved SMTP password to the account owner ONLY.
+    Used by the in-app Edit dialog so the user can review/update existing credentials.
+    """
+    acc = await db.email_accounts.find_one(
+        {"account_id": account_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    enc = acc.get("smtp_password_encrypted")
+    plain = decrypt_data(enc) if enc else ""
+    return {"smtp_password": plain or ""}
+
 @api_router.put("/accounts/{account_id}")
 async def update_smtp_account(
     account_id: str,
@@ -3901,6 +3982,9 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         scheduled_at=scheduled_at,
         timezone=request.timezone,
         suppression_list_ids=request.suppression_list_ids,
+        send_range_mode=request.send_range_mode or "all",
+        send_range_start=request.send_range_start,
+        send_range_end=request.send_range_end,
     )
     
     camp_dict = campaign.model_dump()
@@ -3965,6 +4049,12 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
                 raise HTTPException(status_code=400, detail="Invalid scheduled_at datetime format")
     if request.timezone is not None:
         update_data["timezone"] = request.timezone
+    if request.send_range_mode is not None:
+        update_data["send_range_mode"] = request.send_range_mode
+    if request.send_range_start is not None:
+        update_data["send_range_start"] = request.send_range_start
+    if request.send_range_end is not None:
+        update_data["send_range_end"] = request.send_range_end
     
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},
@@ -4181,8 +4271,25 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
     existing_queue = await db.email_queue.count_documents({"campaign_id": campaign_id})
     
     if existing_queue == 0:
+        # Apply send-range filter (if user picked 'range' instead of 'all')
+        all_emails = email_list["emails"]
+        send_mode = campaign.get("send_range_mode", "all")
+        if send_mode == "range":
+            start = campaign.get("send_range_start") or 1
+            end = campaign.get("send_range_end") or len(all_emails)
+            try:
+                start = max(1, int(start))
+                end = min(len(all_emails), int(end))
+            except (TypeError, ValueError):
+                start, end = 1, len(all_emails)
+            if start > end:
+                raise HTTPException(status_code=400, detail="Send-range start must be <= end")
+            selected_emails = all_emails[start - 1:end]
+        else:
+            selected_emails = all_emails
+        
         queue_items = []
-        for email_data in email_list["emails"]:
+        for email_data in selected_emails:
             item = EmailQueueItem(
                 campaign_id=campaign_id,
                 user_id=user.user_id,
@@ -4194,6 +4301,12 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, us
         
         if queue_items:
             await db.email_queue.insert_many(queue_items)
+        
+        # Update total_emails to reflect what we'll actually send
+        await db.campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$set": {"total_emails": len(queue_items)}}
+        )
     
     # Update campaign status and lock it
     await db.campaigns.update_one(
@@ -4977,6 +5090,170 @@ async def delete_dne_list(list_id: str, user: User = Depends(get_current_user)):
     )
     return {"message": "DNE list deleted"}
 
+# ==================== BLOG ENDPOINTS ====================
+
+async def get_super_admin_user(request: Request) -> dict:
+    """Get current user and verify super_admin role.
+    (Hoisted here so blog/admin endpoints defined earlier can use it as a Depends.)
+    """
+    user = await get_current_user(request)
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    role = user_doc.get("role", "user")
+    if role != "super_admin":
+        raise HTTPException(status_code=403, detail="Access denied. Super admin required.")
+    return user_doc
+
+def _slugify(text: str) -> str:
+    text = re.sub(r'[^A-Za-z0-9]+', '-', (text or '').strip().lower())
+    return text.strip('-') or f"post-{uuid.uuid4().hex[:6]}"
+
+@api_router.get("/blogs/public")
+async def list_public_blogs(skip: int = Query(0), limit: int = Query(20)):
+    """List published blogs — public, no auth required."""
+    cursor = db.blogs.find(
+        {"status": "published"},
+        {"_id": 0, "content": 0}  # listings don't need full content
+    ).sort("published_at", -1).skip(skip).limit(min(50, max(1, limit)))
+    return await cursor.to_list(50)
+
+@api_router.get("/blogs/public/{slug}")
+async def get_public_blog(slug: str):
+    """Get a single published blog by slug — public, no auth required."""
+    blog = await db.blogs.find_one(
+        {"slug": slug, "status": "published"},
+        {"_id": 0}
+    )
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    return blog
+
+@api_router.get("/admin/blogs")
+async def admin_list_blogs(admin: dict = Depends(get_super_admin_user)):
+    """Super admin: list all blogs (drafts + published)."""
+    blogs = await db.blogs.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return blogs
+
+@api_router.post("/admin/blogs")
+async def admin_create_blog(request: CreateBlogRequest, admin: dict = Depends(get_super_admin_user)):
+    """Super admin: create a new blog."""
+    if not request.title.strip():
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not request.content.strip():
+        raise HTTPException(status_code=400, detail="Content is required")
+    
+    slug = (request.slug or "").strip() or _slugify(request.title)
+    slug = _slugify(slug)
+    # Ensure uniqueness — append suffix if needed
+    base_slug = slug
+    n = 2
+    while await db.blogs.find_one({"slug": slug}, {"slug": 1}):
+        slug = f"{base_slug}-{n}"
+        n += 1
+    
+    status_value = request.status if request.status in ("draft", "published") else "draft"
+    now = datetime.now(timezone.utc)
+    blog = Blog(
+        slug=slug,
+        title=request.title.strip(),
+        excerpt=(request.excerpt or "").strip(),
+        content=request.content,
+        featured_image_url=request.featured_image_url,
+        author=(request.author or "RouteMail Team").strip(),
+        seo_title=(request.seo_title or "").strip() or None,
+        seo_description=(request.seo_description or "").strip() or None,
+        status=status_value,
+        published_at=now if status_value == "published" else None,
+        created_by=admin["user_id"],
+        created_at=now,
+        updated_at=now,
+    ).model_dump()
+    blog["created_at"] = blog["created_at"].isoformat()
+    blog["updated_at"] = blog["updated_at"].isoformat()
+    if blog.get("published_at"):
+        blog["published_at"] = blog["published_at"].isoformat()
+    
+    await db.blogs.insert_one(blog)
+    blog.pop("_id", None)
+    return blog
+
+@api_router.get("/admin/blogs/{blog_id}")
+async def admin_get_blog(blog_id: str, admin: dict = Depends(get_super_admin_user)):
+    blog = await db.blogs.find_one({"blog_id": blog_id}, {"_id": 0})
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    return blog
+
+@api_router.put("/admin/blogs/{blog_id}")
+async def admin_update_blog(blog_id: str, request: UpdateBlogRequest, admin: dict = Depends(get_super_admin_user)):
+    existing = await db.blogs.find_one({"blog_id": blog_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if request.title is not None:
+        update_data["title"] = request.title.strip()
+    if request.slug is not None:
+        new_slug = _slugify(request.slug.strip())
+        if new_slug != existing.get("slug"):
+            # ensure unique
+            base = new_slug
+            n = 2
+            while await db.blogs.find_one({"slug": new_slug, "blog_id": {"$ne": blog_id}}, {"slug": 1}):
+                new_slug = f"{base}-{n}"
+                n += 1
+            update_data["slug"] = new_slug
+    if request.excerpt is not None:
+        update_data["excerpt"] = request.excerpt.strip()
+    if request.content is not None:
+        update_data["content"] = request.content
+    if request.featured_image_url is not None:
+        update_data["featured_image_url"] = request.featured_image_url
+    if request.author is not None:
+        update_data["author"] = request.author.strip()
+    if request.seo_title is not None:
+        update_data["seo_title"] = request.seo_title.strip() or None
+    if request.seo_description is not None:
+        update_data["seo_description"] = request.seo_description.strip() or None
+    if request.status is not None and request.status in ("draft", "published"):
+        update_data["status"] = request.status
+        # Set published_at the first time status flips to published
+        if request.status == "published" and not existing.get("published_at"):
+            update_data["published_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.blogs.update_one({"blog_id": blog_id}, {"$set": update_data})
+    updated = await db.blogs.find_one({"blog_id": blog_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/admin/blogs/{blog_id}")
+async def admin_delete_blog(blog_id: str, admin: dict = Depends(get_super_admin_user)):
+    res = await db.blogs.delete_one({"blog_id": blog_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Blog not found")
+    return {"message": "Blog deleted"}
+
+@api_router.post("/admin/blogs/upload-image")
+async def admin_upload_blog_image(
+    file: UploadFile = File(...),
+    admin: dict = Depends(get_super_admin_user),
+):
+    """Upload a featured image — stored as a base64 data URI in the DB.
+    Keeps deployment simple (no external CDN required).
+    """
+    allowed = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+    content_type = (file.content_type or "").lower()
+    if content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported image type. Use JPG/PNG/WEBP/GIF.")
+    
+    content = await file.read()
+    if len(content) > 3 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large (max 3MB).")
+    
+    import base64
+    data_uri = f"data:{content_type};base64,{base64.b64encode(content).decode('ascii')}"
+    return {"url": data_uri}
+
 # ==================== SUPPRESSION LIST ====================
 
 @api_router.get("/suppression")
@@ -5378,19 +5655,9 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
 
 # ==================== SUPER ADMIN MIDDLEWARE ====================
 
-async def get_super_admin_user(request: Request) -> dict:
-    """Get current user and verify super_admin role"""
-    user = await get_current_user(request)
-    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-    
-    if not user_doc:
-        raise HTTPException(status_code=401, detail="User not found")
-    
-    role = user_doc.get("role", "user")
-    if role != "super_admin":
-        raise HTTPException(status_code=403, detail="Access denied. Super admin required.")
-    
-    return user_doc
+async def _legacy_get_super_admin_user_DEPRECATED(request: Request) -> dict:
+    """Deprecated: use the hoisted definition near the blog endpoints."""
+    return await get_super_admin_user(request)
 
 # ==================== SUPER ADMIN ENDPOINTS ====================
 

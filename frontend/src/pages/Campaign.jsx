@@ -106,6 +106,9 @@ export default function Campaign({ user, setUser }) {
     scheduled_at: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     suppression_list_ids: [],
+    send_range_mode: "all",
+    send_range_start: 1,
+    send_range_end: 100,
   });
   const [dneLists, setDneLists] = useState([]);
 
@@ -148,6 +151,9 @@ export default function Campaign({ user, setUser }) {
             account_ids: campaign.account_ids || [],
             scheduled_at: campaign.scheduled_at || "",
             suppression_list_ids: campaign.suppression_list_ids || [],
+            send_range_mode: campaign.send_range_mode || "all",
+            send_range_start: campaign.send_range_start || 1,
+            send_range_end: campaign.send_range_end || 100,
           });
           setView("edit");
           

@@ -25,6 +25,9 @@ import DripCampaigns from "./pages/DripCampaigns";
 import DripCampaignView from "./pages/DripCampaignView";
 import DoNotEmail from "./pages/DoNotEmail";
 import DoNotEmailDetail from "./pages/DoNotEmailDetail";
+import BlogList from "./pages/BlogList";
+import BlogDetail from "./pages/BlogDetail";
+import AdminBlogs from "./pages/AdminBlogs";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
@@ -40,7 +43,6 @@ import GDPRCompliance from "./pages/GDPRCompliance";
 
 // Components
 import { Toaster } from "./components/ui/sonner";
-import TawkWidget from "./components/TawkWidget";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -267,6 +269,16 @@ function AppRouter() {
         }
       />
       <Route
+        path="/admin/blogs"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <AdminBlogs user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/blog" element={<BlogList />} />
+      <Route path="/blog/:slug" element={<BlogDetail />} />
+      <Route
         path="/subscription"
         element={
           <ProtectedRoute>
@@ -295,7 +307,6 @@ function App() {
     <div className="App font-body">
       <BrowserRouter>
         <AppRouter />
-        <TawkWidget />
       </BrowserRouter>
       <Toaster position="bottom-right" />
     </div>

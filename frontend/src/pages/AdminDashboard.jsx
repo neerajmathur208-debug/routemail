@@ -348,6 +348,14 @@ export default function AdminDashboard({ user, setUser }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/admin/blogs")}
+              data-testid="admin-nav-blogs-btn"
+            >
+              Manage Blogs
+            </Button>
             <Badge className="bg-violet-100 text-violet-700">
               {user?.email}
             </Badge>

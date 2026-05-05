@@ -226,9 +226,9 @@ export default function EmailAccounts({ user, setUser }) {
   };
 
   const handleUpdateLimit = async (accountId) => {
-    const newLimit = editingLimit[accountId];
-    if (newLimit < 10 || newLimit > 200) {
-      toast.error("Daily limit must be between 10 and 200");
+    const newLimit = parseInt(editingLimit[accountId]);
+    if (!Number.isFinite(newLimit) || newLimit < 1) {
+      toast.error("Daily limit must be at least 1");
       return;
     }
 
@@ -282,7 +282,7 @@ export default function EmailAccounts({ user, setUser }) {
     setViewAccount(account);
   };
 
-  const handleOpenEdit = (account) => {
+  const handleOpenEdit = async (account) => {
     setEditingAccount(account);
     setEditForm({
       email: account.email || "",
@@ -293,9 +293,17 @@ export default function EmailAccounts({ user, setUser }) {
       smtp_encryption: account.smtp_encryption || "tls",
       daily_limit: account.daily_limit || 50,
       send_delay: account.send_delay || 30,
-      smtp_password: "", // blank means "don't change"
+      smtp_password: "", // populated below from secure endpoint
     });
     setShowEditPassword(false);
+    // Fetch current credential so the owner can review/edit it
+    try {
+      const r = await api.get(`/accounts/${account.account_id}/credential`);
+      setEditForm((prev) => ({ ...prev, smtp_password: r.data?.smtp_password || "" }));
+    } catch (e) {
+      // Non-fatal — user can still rotate the password
+      console.warn("Could not load saved password", e);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -1312,11 +1320,11 @@ export default function EmailAccounts({ user, setUser }) {
               </div>
 
               <div>
-                <Label>New password / App password</Label>
+                <Label>Password / App password</Label>
                 <div className="relative">
                   <Input
                     type={showEditPassword ? "text" : "password"}
-                    placeholder="Leave blank to keep existing password"
+                    placeholder="Saved credentials shown — edit to update"
                     value={editForm.smtp_password || ""}
                     onChange={(e) => setEditForm({ ...editForm, smtp_password: e.target.value })}
                     className="pr-10"
@@ -1332,7 +1340,8 @@ export default function EmailAccounts({ user, setUser }) {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  We never show your saved password. Type a new value only if you need to rotate it.
+                  Your saved app password is shown so you can review or edit it. Changes are
+                  re-tested via SMTP before saving.
                 </p>
               </div>
 

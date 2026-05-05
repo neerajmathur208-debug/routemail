@@ -149,6 +149,14 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <Button
+              onClick={() => navigate("/blog")}
+              variant="ghost"
+              className="text-slate-600 hover:text-slate-900"
+              data-testid="nav-blog-btn"
+            >
+              Blog
+            </Button>
+            <Button
               onClick={() => navigate("/login")}
               variant="ghost"
               className="text-slate-600 hover:text-slate-900"
