@@ -537,6 +537,13 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Dashboard Campaign Activity in first fold** — moved above metric cards in Dashboard.jsx; `slice(0, 4)`; "View All" CTA → `/campaign`. Testids: `campaign-activity-section`, `campaign-activity-view-all-btn`, `campaign-activity-row-{id}`.
 - [x] Tested: 12/12 new backend + 66/66 regression (iteration_29). Frontend Playwright: Dashboard first-fold + 4 rows + View All verified. Drip Send Range dialog interactively verified by main agent (section + radios + From/To inputs render correctly).
 
+### ✅ Upload Limits Relaxed (Feb 2026)
+- [x] **Email list upload (`/api/lists/upload`)** — removed the 2MB cap completely. CSV/XLSX/XLS uploads of any reasonable size now process. Verified 5.28 MB CSV with 180,000 rows imports in seconds; 3.9 MB / 80,000 rows also OK. Existing validation (email column, duplicates, normalization) preserved.
+- [x] **UploadList.jsx UX** — added axios `onUploadProgress` (shows "Uploading X%" on the Select File button), and a `toast.loading` for files >2MB so the user sees a "Uploading X MB — N%" indicator until the server finishes parsing. Existing "Processing…" state preserved as fallback.
+- [x] **RichTextEditor image upload** — bumped from 2MB to 5MB and tightened allowed types to JPG/PNG/WEBP/GIF only. Used by Campaign editor and Drip campaign editor (shared component). Error text: "Image size exceeds maximum allowed size of 5 MB".
+- [x] **Blog featured image (`/api/admin/blogs/upload-image`)** — bumped from 3MB to 5MB with the same error text.
+- [x] DNE list upload (`/api/dne-lists/{id}/upload`) intentionally LEFT untouched — out of scope.
+
 ### 🔄 In Progress
 - None currently
 

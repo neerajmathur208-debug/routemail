@@ -233,15 +233,16 @@ export default function RichTextEditor({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+    // Validate file type — JPG, PNG, WEBP, GIF
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes((file.type || '').toLowerCase())) {
+      alert('Unsupported image type. Please use JPG, PNG, WEBP, or GIF.');
       return;
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image size must be less than 2MB');
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size exceeds maximum allowed size of 5 MB');
       return;
     }
 

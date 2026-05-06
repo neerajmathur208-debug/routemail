@@ -51,6 +51,7 @@ export default function UploadList({ user, setUser }) {
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [listName, setListName] = useState("");
@@ -90,23 +91,43 @@ export default function UploadList({ user, setUser }) {
     }
 
     setUploading(true);
+    setUploadProgress(0);
     const formData = new FormData();
     formData.append("file", file);
+
+    // Show informative loading toast for large files (>2MB)
+    const isLarge = file.size > 2 * 1024 * 1024;
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    const toastId = isLarge
+      ? toast.loading(`Uploading ${sizeMb} MB — this may take a moment…`)
+      : null;
 
     try {
       const response = await api.post("/lists/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (evt) => {
+          if (evt.total) {
+            const pct = Math.round((evt.loaded * 100) / evt.total);
+            setUploadProgress(pct);
+            if (toastId) {
+              toast.loading(`Uploading ${sizeMb} MB — ${pct}%`, { id: toastId });
+            }
+          }
+        },
       });
+      if (toastId) toast.dismiss(toastId);
       setPreviewData(response.data);
       // Remove extension from filename for list name
       const baseName = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
       setListName(baseName);
       setPreviewDialogOpen(true);
     } catch (error) {
+      if (toastId) toast.dismiss(toastId);
       const message = error.response?.data?.detail || "Failed to process file";
       toast.error(message);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -252,7 +273,11 @@ export default function UploadList({ user, setUser }) {
                 asChild
               >
                 <span data-testid="select-file-btn">
-                  {uploading ? "Processing..." : "Select File"}
+                  {uploading
+                    ? uploadProgress > 0 && uploadProgress < 100
+                      ? `Uploading ${uploadProgress}%`
+                      : "Processing..."
+                    : "Select File"}
                 </span>
               </Button>
             </label>

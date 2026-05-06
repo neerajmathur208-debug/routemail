@@ -3496,10 +3496,8 @@ async def upload_email_list(
     if not file_ext:
         raise HTTPException(status_code=400, detail="Only CSV and Excel files (.csv, .xlsx, .xls) are allowed")
     
-    # Check file size (max 2MB)
+    # Read file content. The 2MB cap was removed — large CSV/XLSX uploads are now allowed.
     content = await file.read()
-    if len(content) > 2 * 1024 * 1024:  # 2MB limit
-        raise HTTPException(status_code=400, detail="File size exceeds 2MB limit. Please upload a smaller file.")
     
     try:
         # Parse based on file type
@@ -5263,8 +5261,8 @@ async def admin_upload_blog_image(
         raise HTTPException(status_code=400, detail="Unsupported image type. Use JPG/PNG/WEBP/GIF.")
     
     content = await file.read()
-    if len(content) > 3 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image too large (max 3MB).")
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image size exceeds maximum allowed size of 5 MB")
     
     import base64
     data_uri = f"data:{content_type};base64,{base64.b64encode(content).decode('ascii')}"
