@@ -544,6 +544,19 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Blog featured image (`/api/admin/blogs/upload-image`)** — bumped from 3MB to 5MB with the same error text.
 - [x] DNE list upload (`/api/dne-lists/{id}/upload`) intentionally LEFT untouched — out of scope.
 
+### ✅ Multi-Feature Batch — Capacity, Headers, Test Mail, Drip UX, Auto-save, Heading Colors (Feb 2026)
+- [x] **Total Daily Sending Capacity** indicator on Campaign + Drip account selectors — sums `daily_limit` across selected accounts (or all connected when nothing picked). Live updates as selection changes. Testids `total-daily-capacity`, `drip-total-daily-capacity`. Hidden when there are 0 connected accounts.
+- [x] **Header normalization** in `/api/lists/upload` — lowercase, replaces spaces/dots/dashes with `_`, strips other special chars, dedupes with `_2/_3` suffixes. Verified `['Email','First Name','first-name','Company.Name!','Last  Name'] → ['email','first_name','first_name_2','company_name','last_name']`.
+- [x] **Test Mail with selected contact** — Campaign + Drip per-step Test dialogs now have a "Personalize with contact" picker pulled from the selected list. `SendTestEmailRequest.recipient_data` field added; backend runs `replace_variables(...)` on subject and body when provided.
+- [x] **Drip per-step Test Mail** — buttons `drip-step-{idx}-test-btn` open a dialog with account/email/list/recipient pickers and call the same `/api/campaigns/send-test` endpoint (test mails do NOT count toward sending limits or update stats).
+- [x] **Drip tabs reordered** to **Select List → Settings → Sequence → Schedule → Logs**. Default open tab is now `Select List`.
+- [x] **Drip Duplicate Step** — `Copy` button per step inserts a new step right after the source with the same subject/body and renumbered `step_number`. Verified live.
+- [x] **Auto-save draft on Back** — `Campaign.jsx` `back-btn` and `DripCampaignView.jsx` `drip-back-btn` silently PUT/POST the form when there's enough content; toast shows `Draft saved automatically`.
+- [x] **Send Now / Schedule Now auto-save first** — `handleSendNow` PUTs (or creates) the campaign before starting; both flows redirect to `/campaign` (All Campaigns).
+- [x] **Heading accent colors** — Campaign setup labels use distinct colors (violet/indigo/blue/rose/emerald/cyan/amber) for visual hierarchy without clutter.
+- [x] **Open/Click tracking** — INTENTIONALLY SKIPPED per user choice (option `c`).
+- [x] Tested: 11/11 new backend + 59/59 regression (iteration_30). Drip step duplicate, tab order, accent colors, back-btn, drip-step-test-dialog all verified live.
+
 ### 🔄 In Progress
 - None currently
 
