@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   Mail,
   Settings,
+  Copy,
+  TestTube,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -94,7 +96,17 @@ export default function DripCampaignView({ user, setUser }) {
   const [campaign, setCampaign] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [lists, setLists] = useState([]);
-  const [tab, setTab] = useState("sequence");
+  const [tab, setTab] = useState("contacts");
+
+  // Drip step Test-Mail dialog state
+  const [stepTestOpen, setStepTestOpen] = useState(false);
+  const [stepTestIdx, setStepTestIdx] = useState(null);
+  const [stepTestEmail, setStepTestEmail] = useState("");
+  const [stepTestAccountId, setStepTestAccountId] = useState("");
+  const [stepTestRecipientIdx, setStepTestRecipientIdx] = useState("");
+  const [stepTestListId, setStepTestListId] = useState("");
+  const [stepTestListData, setStepTestListData] = useState(null);
+  const [sendingStepTest, setSendingStepTest] = useState(false);
 
   // Editable state
   const [form, setForm] = useState({
@@ -217,6 +229,111 @@ export default function DripCampaignView({ user, setUser }) {
     }));
   };
 
+  const duplicateStep = (idx) => {
+    setForm((prev) => {
+      const src = prev.steps[idx];
+      if (!src) return prev;
+      const copy = {
+        ...src,
+        step_number: idx + 2,
+        // Default delay for the duplicate (1 day after the previous step). Users can edit.
+        delay_days: src.delay_days ?? 1,
+        delay_hours: src.delay_hours ?? 0,
+      };
+      const newSteps = [...prev.steps];
+      newSteps.splice(idx + 1, 0, copy);
+      // Re-number steps
+      return {
+        ...prev,
+        steps: newSteps.map((s, i) => ({ ...s, step_number: i + 1 })),
+      };
+    });
+    toast.success("Step duplicated");
+  };
+
+  const openStepTest = async (idx) => {
+    setStepTestIdx(idx);
+    setStepTestEmail("");
+    setStepTestRecipientIdx("");
+    // Default to first connected account
+    const firstAcc = (accounts || []).find((a) => !a.status || a.status === "connected");
+    setStepTestAccountId(firstAcc?.account_id || "");
+    // Default to first email list
+    const firstList = (lists || [])[0];
+    if (firstList) {
+      setStepTestListId(firstList.list_id);
+      try {
+        const res = await api.get(`/lists/${firstList.list_id}`);
+        setStepTestListData(res.data);
+      } catch (err) {
+        setStepTestListData(null);
+      }
+    } else {
+      setStepTestListId("");
+      setStepTestListData(null);
+    }
+    setStepTestOpen(true);
+  };
+
+  const onStepTestListChange = async (listId) => {
+    setStepTestListId(listId);
+    setStepTestRecipientIdx("");
+    if (!listId) {
+      setStepTestListData(null);
+      return;
+    }
+    try {
+      const res = await api.get(`/lists/${listId}`);
+      setStepTestListData(res.data);
+    } catch (err) {
+      setStepTestListData(null);
+    }
+  };
+
+  const handleSendStepTest = async () => {
+    const step = form.steps[stepTestIdx];
+    if (!step) {
+      toast.error("Step not found");
+      return;
+    }
+    if (!stepTestEmail) {
+      toast.error("Enter a test email address");
+      return;
+    }
+    if (!stepTestAccountId) {
+      toast.error("Select an account to send from");
+      return;
+    }
+    if (!step.subject || !step.body) {
+      toast.error("Step subject and body are required");
+      return;
+    }
+    let recipientData = null;
+    if (stepTestRecipientIdx !== "" && stepTestListData?.emails) {
+      const i = parseInt(stepTestRecipientIdx, 10);
+      if (!Number.isNaN(i) && stepTestListData.emails[i]) {
+        recipientData = stepTestListData.emails[i];
+      }
+    }
+    setSendingStepTest(true);
+    try {
+      await api.post("/campaigns/send-test", {
+        test_email: stepTestEmail,
+        subject: step.subject,
+        body: step.body,
+        from_name: form.from_name || null,
+        account_id: stepTestAccountId,
+        recipient_data: recipientData,
+      });
+      toast.success(`Test email sent to ${stepTestEmail}`);
+      setStepTestOpen(false);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to send test email");
+    } finally {
+      setSendingStepTest(false);
+    }
+  };
+
   const toggleAccount = (id) => {
     setForm((prev) => ({
       ...prev,
@@ -258,6 +375,23 @@ export default function DripCampaignView({ user, setUser }) {
       setSaving(false);
     }
   };
+
+  // Silent auto-save on back/leave. Only runs when editing is allowed AND there's a name.
+  const autoSaveDraft = useCallback(async () => {
+    if (!campaign || !canEdit) return;
+    if (!form.name?.trim()) return;
+    // Skip if any step is missing required fields — backend will reject.
+    for (const s of form.steps || []) {
+      if (!s.subject?.trim() || !s.body?.trim()) return;
+    }
+    try {
+      await api.put(`/drip-campaigns/${dripId}`, form);
+      toast.success("Draft saved automatically");
+    } catch (err) {
+      // Non-fatal — user can manually save later
+      console.error("Drip auto-save failed:", err);
+    }
+  }, [campaign, canEdit, form, dripId]);
 
   const handleStartPauseResume = async () => {
     try {
@@ -328,7 +462,10 @@ export default function DripCampaignView({ user, setUser }) {
       <main className="flex-1 p-6 lg:p-10 max-w-[1400px]">
         <Button
           variant="ghost"
-          onClick={() => navigate("/drip-campaigns")}
+          onClick={async () => {
+            await autoSaveDraft();
+            navigate("/drip-campaigns");
+          }}
           className="mb-4"
           data-testid="drip-back-btn"
         >
@@ -406,13 +543,13 @@ export default function DripCampaignView({ user, setUser }) {
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="mb-6">
+            <TabsTrigger value="contacts" data-testid="tab-contacts">
+              Select List ({stats.total_contacts || 0})
+            </TabsTrigger>
+            <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
             <TabsTrigger value="sequence" data-testid="tab-sequence">Sequence</TabsTrigger>
             <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="contacts" data-testid="tab-contacts">
-              Contacts ({stats.total_contacts || 0})
-            </TabsTrigger>
             <TabsTrigger value="logs" data-testid="tab-logs">Logs</TabsTrigger>
-            <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
           </TabsList>
 
           {/* SEQUENCE */}
@@ -457,16 +594,38 @@ export default function DripCampaignView({ user, setUser }) {
                       </div>
                     </div>
                   </div>
-                  {canEdit && form.steps.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => removeStep(idx)}
-                      data-testid={`drip-remove-step-${idx}`}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                  {canEdit && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        onClick={() => openStepTest(idx)}
+                        data-testid={`drip-step-${idx}-test-btn`}
+                      >
+                        <TestTube size={14} className="mr-1" /> Test
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                        onClick={() => duplicateStep(idx)}
+                        data-testid={`drip-step-${idx}-duplicate-btn`}
+                      >
+                        <Copy size={14} className="mr-1" /> Duplicate
+                      </Button>
+                      {form.steps.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => removeStep(idx)}
+                          data-testid={`drip-remove-step-${idx}`}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -810,14 +969,39 @@ export default function DripCampaignView({ user, setUser }) {
                     </button>
                   </p>
                 ) : (
-                  <AccountMultiSelect
-                    accounts={accounts}
-                    value={form.account_ids}
-                    onChange={(next) => canEdit && setForm({ ...form, account_ids: next })}
-                    disabled={!canEdit}
-                    testIdPrefix="drip-accounts"
-                    placeholder="Select sending accounts"
-                  />
+                  <>
+                    <AccountMultiSelect
+                      accounts={accounts}
+                      value={form.account_ids}
+                      onChange={(next) => canEdit && setForm({ ...form, account_ids: next })}
+                      disabled={!canEdit}
+                      testIdPrefix="drip-accounts"
+                      placeholder="Select sending accounts"
+                    />
+                    {(() => {
+                      const connected = accounts.filter((a) => !a.status || a.status === "connected");
+                      const pool =
+                        form.account_ids?.length > 0
+                          ? connected.filter((a) => form.account_ids.includes(a.account_id))
+                          : connected;
+                      const total = pool.reduce((s, a) => s + (parseInt(a.daily_limit, 10) || 0), 0);
+                      const count = form.account_ids?.length > 0 ? form.account_ids.length : connected.length;
+                      return (
+                        <div
+                          className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium"
+                          data-testid="drip-total-daily-capacity"
+                        >
+                          <Mail size={12} />
+                          Total Daily Sending Capacity:&nbsp;
+                          <span className="font-bold">{total.toLocaleString()}</span>
+                          &nbsp;emails/day
+                          <span className="text-emerald-600 font-normal ml-1">
+                            ({count} account{count === 1 ? "" : "s"})
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
 
@@ -1024,6 +1208,105 @@ export default function DripCampaignView({ user, setUser }) {
                 data-testid="drip-add-contacts-confirm-btn"
               >
                 {addingContacts ? "Adding…" : "Enroll contacts"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Drip Step — Test Mail Dialog */}
+        <Dialog open={stepTestOpen} onOpenChange={setStepTestOpen}>
+          <DialogContent data-testid="drip-step-test-dialog">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <TestTube size={18} className="text-blue-600" />
+                Send Test Mail — Step {stepTestIdx !== null ? stepTestIdx + 1 : ""}
+              </DialogTitle>
+              <DialogDescription>
+                Test emails do NOT count toward the campaign sending limit and are not recorded in stats.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Send From Account</Label>
+                <Select value={stepTestAccountId} onValueChange={setStepTestAccountId}>
+                  <SelectTrigger className="mt-1.5" data-testid="drip-step-test-account">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(accounts || []).map((acc) => (
+                      <SelectItem key={acc.account_id} value={acc.account_id}>
+                        {acc.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Test Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={stepTestEmail}
+                  onChange={(e) => setStepTestEmail(e.target.value)}
+                  className="mt-1.5"
+                  data-testid="drip-step-test-email"
+                />
+              </div>
+              <div>
+                <Label>Email list</Label>
+                <Select value={stepTestListId} onValueChange={onStepTestListChange}>
+                  <SelectTrigger className="mt-1.5" data-testid="drip-step-test-list">
+                    <SelectValue placeholder="Select an email list" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(lists || []).map((l) => (
+                      <SelectItem key={l.list_id} value={l.list_id}>
+                        {l.name} ({l.valid_emails || 0})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Personalize with contact (optional)</Label>
+                <Select
+                  value={stepTestRecipientIdx}
+                  onValueChange={setStepTestRecipientIdx}
+                  disabled={!stepTestListData?.emails?.length}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="drip-step-test-recipient">
+                    <SelectValue placeholder={
+                      stepTestListData?.emails?.length
+                        ? "Pick a contact to merge variables (optional)"
+                        : "Select an email list first"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(stepTestListData?.emails || []).slice(0, 200).map((row, idx) => (
+                      <SelectItem key={idx} value={String(idx)}>
+                        {row.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!stepTestListData?.emails?.length && (
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    No contact selected — variables like {"{{first_name}}"} will be sent as-is.
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setStepTestOpen(false)} disabled={sendingStepTest}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendStepTest}
+                disabled={sendingStepTest || !stepTestEmail || !stepTestAccountId}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid="drip-step-test-send-btn"
+              >
+                {sendingStepTest ? "Sending…" : "Send Test"}
               </Button>
             </DialogFooter>
           </DialogContent>

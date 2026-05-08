@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 30 — Feb 2026 batch verified. Backend pytest test_iteration_30_features.py = 11/11 PASSED covering (a) /api/lists/upload header normalization with the exact spec input ['Email','First Name','first-name','Company.Name!','Last  Name'] -> ['email','first_name','first_name_2','company_name','last_name'] + row-key remap + clean-headers passthrough + dedupe of FIRST.NAME/first-name + 400 on missing email column, (b) SendTestEmailRequest accepts new optional recipient_data field (no 422), still 422 on missing required, still 400 on no-SMTP-account, (c) replace_variables() unit tests for {{first_name}} merge / missing-var-empty / case-insensitive, (d) end-to-end send-test with a seeded stub SMTP account proves the merge codepath runs (not 422 / not 'no account' 400). Regression on test_iteration_29_features + test_drip_campaigns + test_dne_lists = 59/59 PASSED. Frontend Playwright on the live preview URL: drip /drip-campaigns/{id} tab order is Select List → Settings → Sequence → Schedule → Logs (testids tab-contacts/tab-settings/tab-sequence/tab-schedule/tab-logs all present, default active = tab-contacts), drip-back-btn present, drip-step-0-test-btn + drip-step-0-duplicate-btn present, Duplicate adds a step (1 -> 2) and copies subject 'Hi' verbatim, Test button opens drip-step-test-dialog with all 5 sub-pickers (account/email/list/recipient/send-btn). Campaign /campaign 'New Campaign' button (data-testid=create-campaign-btn) opens setup form, accent-color labels present in spec colors (text-violet-700×2, text-indigo-700×1, text-blue-700×4, text-rose-700×2, text-emerald-700×1, text-cyan-700×1, text-amber-700×3 = 14 total). back-btn data-testid present. Note: total-daily-capacity and drip-total-daily-capacity badges are conditionally rendered only when hasAccounts is true (Campaign.jsx:772, similar in Drip) — drip.tester has 0 SMTP accounts so the badges correctly do NOT render. Source-level review confirms totalDailyCapacity / dailyCapacityCount derived state and the badge JSX exist exactly as documented.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/campaigns/send-test", "issue": "replace_variables uses double-curly syntax {{first_name}} (server.py:5444). Review brief mentions single-brace {first_name} in prose but the actual implementation requires {{var}} — frontend Campaign.jsx and DripCampaignView.jsx already insert {{var}} placeholders so this is a documentation nit only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Total Daily Sending Capacity badge", "issue": "Both Campaign.jsx (line 772) and DripCampaignView.jsx wrap the capacity badge in `hasAccounts && (...)`. drip.tester has 0 connected accounts so the badge is hidden — verified by source review and DOM probe. Behaviour is correct (no badge to show when nothing connected) but it cannot be exercised end-to-end without seeding an SMTP account. Main agent (or a future test pass) should seed one account and verify the badge text 'Total Daily Sending Capacity: N emails/day (M accounts)' appears and updates when subset selected.", "affected_selectors": ["total-daily-capacity", "drip-total-daily-capacity"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_30_features.py",
+    "/app/test_reports/pytest/iteration_30_results.xml"
+  ],
+  "action_items": [
+    "(Optional) seed an SMTP account for drip.tester (or another test user) so total-daily-capacity / drip-total-daily-capacity badges can be visually exercised — backend wiring is verified, only the conditional-render branch is unobserved.",
+    "(Doc) align review-brief phrasing of variable syntax to {{first_name}} (double curly) to match server replace_variables regex \\{\\{(\\w+)\\}\\}."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py is now 6755 lines — header-normalize helpers _normalize_header / _normalize_headers (3505-3527) and replace_variables (5438-5445) are sound but the iter28+iter29 split-into-routers recommendation remains.",
+    "send-test handler (server.py:4182) wraps replace_variables in try/except and only logs a warning on failure, falling back to the un-merged subject/body. Good defensive behaviour but means a malformed template (e.g. user pastes a JS object literal) silently sends untemplated content — consider surfacing a 200 response field { merged: false, reason } so the UI can flag it.",
+    "Campaign.jsx and DripCampaignView.jsx have grown fast (Campaign.jsx now >1700 lines per autosave/back/redirect changes). The autoSaveDraft logic is duplicated across both pages — extract into a shared hook useDraftAutosave({silent, fields}) to DRY and to keep the toast copy ('Draft saved automatically') in one place.",
+    "DripCampaignView duplicateStep clones subject/body but the test confirms only subject — recommend a follow-up Playwright assertion that copies body too and renumbers `step_number`/`order` keys correctly when sent to /api/drip-campaigns PUT.",
+    "Both pages use hasAccounts-gated capacity badges. If a user disconnects their last account mid-edit, the badge disappears silently. Consider keeping the badge visible with '0 emails/day' so the constraint stays in view."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_30_features.py",
+    "/app/test_reports/iteration_30.json",
+    "/app/test_reports/pytest/iteration_30_results.xml"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 new + 59/59 regression)",
+    "frontend": "Verified: drip tab order + default tab + back btn + step-0 test/duplicate buttons + duplicate adds+copies subject + drip-step-test-dialog + 5 picker testids; Campaign create form opens via create-campaign-btn, accent-color labels present in all 7 spec hues, back-btn testid present. Not interactively verified (conditional render, not bug): total-daily-capacity + drip-total-daily-capacity badges (require >=1 connected SMTP account)."
+  },
+  "test_credentials": "drip.tester@example.com / DripTest123! (pre-seeded). E2E send-test test seeds a stub SMTP account 'acc_TEST_iter30_*' in db.email_accounts via pymongo and tears it down in fixture teardown.",
+  "seed_data_creation": "TestSendTestVariableMergeE2E seeds one acc_TEST_iter30_<8hex> email_accounts doc with smtp_host='stub.invalid', cleaned up on teardown. No leaked rows after the run (verified).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_iteration_30_features.py for header-normalize + send-test recipient_data regression. The E2E class fixture uses sync pymongo (NOT motor) because session-scoped event_loop + class-scoped fixture caused a 'future belongs to different loop' error otherwise — keep that pattern. To exercise the capacity badges, either (a) connect a real SMTP account through the UI as drip.tester, or (b) seed via the same encrypt_data + db.email_accounts.insert_one pattern used in TestSendTestVariableMergeE2E.seeded_account, then revisit /campaign (click create-campaign-btn) and /drip-campaigns/{id} Settings tab and assert total-daily-capacity / drip-total-daily-capacity exist + show the right number. Drip duplicate test: subject 'Hi' was copied — duplicate logic is in DripCampaignView.jsx ~line 230 (duplicateStep). For the Back-button autosave toast verification, fill name+subject+body, click [data-testid='back-btn'] (Campaign) or [data-testid='drip-back-btn'] (Drip) and assert toast 'Draft saved automatically' visible.",
+  "rca of the issue": "N/A — no defects. Both unverified items (capacity badges) are conditional renders gated on hasAccounts being truthy; drip.tester has 0 SMTP accounts so the gate is closed. Source verified at Campaign.jsx:772 and DripCampaignView.jsx:990 area."
+}

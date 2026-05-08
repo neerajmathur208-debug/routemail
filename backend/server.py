@@ -1794,6 +1794,7 @@ class SendTestEmailRequest(BaseModel):
     body: str
     from_name: Optional[str] = None
     account_id: Optional[str] = None  # Optional: specific account to use
+    recipient_data: Optional[Dict[str, Any]] = None  # Optional: contact row to merge into {{vars}}
 
 class AddSMTPAccountRequest(BaseModel):
     email: str
@@ -3500,16 +3501,48 @@ async def upload_email_list(
     content = await file.read()
     
     try:
+        # Helper: normalize a single header value
+        def _normalize_header(h: str) -> str:
+            s = str(h or "").strip().lower()
+            # Replace any whitespace, dots, dashes with underscore
+            s = re.sub(r"[\s.\-]+", "_", s)
+            # Drop any other special characters (keep alphanumeric + underscore)
+            s = re.sub(r"[^a-z0-9_]+", "", s)
+            # Collapse runs of underscores and trim leading/trailing underscores
+            s = re.sub(r"_+", "_", s).strip("_")
+            return s
+
+        # Helper: normalize and dedupe a list of headers
+        def _normalize_headers(headers):
+            seen = {}
+            out = []
+            for raw in headers:
+                base = _normalize_header(raw) or "column"
+                if base in seen:
+                    seen[base] += 1
+                    out.append(f"{base}_{seen[base]}")
+                else:
+                    seen[base] = 1
+                    out.append(base)
+            return out
+
         # Parse based on file type
         if file_ext == '.csv':
             text_content = content.decode('utf-8')
             reader = csv.DictReader(io.StringIO(text_content))
-            column_headers = reader.fieldnames or []
-            column_headers = [h.strip().lower() for h in column_headers]
-            
+            raw_headers = reader.fieldnames or []
+            column_headers = _normalize_headers(raw_headers)
+            # Map original-trimmed -> normalized so we can rewrite each row's keys
+            header_map = {raw_headers[i]: column_headers[i] for i in range(len(raw_headers))}
+
             rows = []
             for row in reader:
-                normalized_row = {k.lower().strip(): v.strip() if v else "" for k, v in row.items()}
+                normalized_row = {}
+                for raw_key, val in row.items():
+                    new_key = header_map.get(raw_key)
+                    if not new_key:
+                        continue
+                    normalized_row[new_key] = (val.strip() if isinstance(val, str) else (str(val) if val is not None else "")) if val else ""
                 rows.append(normalized_row)
         else:
             # Excel file (.xlsx or .xls)
@@ -3519,8 +3552,8 @@ async def upload_email_list(
                 # Fallback to openpyxl for both
                 df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
             
-            # Clean column headers
-            df.columns = [str(col).strip().lower() for col in df.columns]
+            # Clean & dedupe column headers
+            df.columns = _normalize_headers([str(col) for col in df.columns])
             column_headers = df.columns.tolist()
             
             # Convert to list of dicts
@@ -4143,6 +4176,15 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     
     # Prepare email content with test indicator
     test_subject = f"[TEST] {request.subject}"
+    body_html = request.body
+    
+    # Merge {{variables}} from a selected contact row, if provided.
+    if request.recipient_data:
+        try:
+            test_subject = f"[TEST] {replace_variables(request.subject, request.recipient_data)}"
+            body_html = replace_variables(request.body, request.recipient_data)
+        except Exception as e:
+            logger.warning(f"send-test variable merge failed: {e}")
     
     # Add test banner to email body
     test_banner = """
@@ -4151,7 +4193,7 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
         <p style="color: #78350f; margin: 4px 0 0 0; font-size: 13px;">This is a test preview. Campaign stats are not affected.</p>
     </div>
     """
-    test_body = test_banner + request.body
+    test_body = test_banner + body_html
     
     # Create email message
     msg = MIMEMultipart('alternative')
@@ -4160,7 +4202,7 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
     msg['To'] = request.test_email
     
     # Plain text version
-    plain_text = re.sub('<[^<]+?>', '', request.body)
+    plain_text = re.sub('<[^<]+?>', '', body_html)
     part1 = MIMEText(plain_text, 'plain')
     part2 = MIMEText(test_body, 'html')
     msg.attach(part1)

@@ -86,6 +86,7 @@ export default function Campaign({ user, setUser }) {
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState("");
   const [testEmailAccountId, setTestEmailAccountId] = useState(""); // Selected account for test email
+  const [testRecipientId, setTestRecipientId] = useState(""); // Selected contact row index from list
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   // Scheduler state with timezone
@@ -318,13 +319,65 @@ export default function Campaign({ user, setUser }) {
     }
   };
 
-  // Send Now - immediately start campaign
+  // Internal: silent draft save used by auto-save on back / before send
+  // Returns the campaign_id (existing edit id, or new one), or null when nothing meaningful to save.
+  const autoSaveDraft = useCallback(async ({ silent = false } = {}) => {
+    // Don't autosave a completely empty form
+    if (!formData.name && !formData.subject && !formData.body) return null;
+    const payload = {
+      ...formData,
+      scheduled_at: "",
+      timezone: selectedTimezone,
+    };
+    try {
+      if (editId) {
+        await api.put(`/campaigns/${editId}`, payload);
+        if (!silent) toast.success("Draft saved automatically");
+        return editId;
+      }
+      // Create requires at least name+subject; silently skip otherwise
+      if (!formData.name || !formData.subject) return null;
+      const res = await api.post("/campaigns", payload);
+      if (!silent) toast.success("Draft saved automatically");
+      return res.data?.campaign_id || null;
+    } catch (err) {
+      console.error("Auto-save failed:", err);
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, selectedTimezone, editId]);
+
+  // Send Now - auto-save campaign first, then immediately start
   const handleSendNow = async (campaignId) => {
     try {
-      await api.post(`/campaigns/${campaignId}/start`);
-      toast.success("Campaign started successfully!");
+      // Persist any unsaved edits (subject/body/account/list/etc.) before starting
+      const payload = {
+        ...formData,
+        scheduled_at: "",
+        timezone: selectedTimezone,
+      };
+      let targetId = campaignId;
+      try {
+        if (targetId) {
+          await api.put(`/campaigns/${targetId}`, payload);
+        } else if (formData.name && formData.subject) {
+          const res = await api.post("/campaigns", payload);
+          targetId = res.data?.campaign_id;
+        }
+      } catch (saveErr) {
+        const msg = saveErr.response?.data?.detail || "Failed to save campaign before sending";
+        toast.error(msg);
+        return;
+      }
+      if (!targetId) {
+        toast.error("Could not save campaign — please fill in name and subject first.");
+        return;
+      }
+      await api.post(`/campaigns/${targetId}/start`);
+      toast.success("Campaign saved & started successfully!");
       setStartDialogOpen(false);
-      navigate("/dashboard"); // Redirect to All Campaigns
+      setView("list");
+      navigate("/campaign"); // Redirect to All Campaigns
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to start campaign";
       toast.error(message);
@@ -371,9 +424,10 @@ export default function Campaign({ user, setUser }) {
       
       // Then schedule it
       await api.post(`/campaigns/${campaignId}/schedule`);
-      toast.success("Campaign scheduled successfully");
+      toast.success("Campaign saved & scheduled successfully");
       setStartDialogOpen(false);
-      navigate("/dashboard"); // Redirect to All Campaigns
+      setView("list");
+      navigate("/campaign"); // Redirect to All Campaigns
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to schedule campaign";
       toast.error(message);
@@ -417,12 +471,21 @@ export default function Campaign({ user, setUser }) {
 
     setSendingTestEmail(true);
     try {
+      // If user picked a contact, send their row data so {{vars}} get merged
+      let recipientData = null;
+      if (testRecipientId !== "" && selectedList?.emails) {
+        const idx = parseInt(testRecipientId, 10);
+        if (!Number.isNaN(idx) && selectedList.emails[idx]) {
+          recipientData = selectedList.emails[idx];
+        }
+      }
       const response = await api.post("/campaigns/send-test", {
         test_email: testEmailAddress,
         subject: formData.subject,
         body: formData.body,
         from_name: formData.from_name || null,
         account_id: testEmailAccountId, // Send selected account
+        recipient_data: recipientData,
       });
       
       if (response.data?.success) {
@@ -432,6 +495,7 @@ export default function Campaign({ user, setUser }) {
       }
       setTestEmailDialogOpen(false);
       setTestEmailAddress("");
+      setTestRecipientId("");
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to send test email";
       toast.error(message);
@@ -510,6 +574,20 @@ export default function Campaign({ user, setUser }) {
   const hasAccounts = accounts.length > 0;
   const hasLists = lists.length > 0;
 
+  // Compute total daily sending capacity:
+  // - If specific accounts selected → sum their daily_limits.
+  // - If empty (= "use all connected accounts") → sum daily_limits of all connected accounts.
+  const totalDailyCapacity = (() => {
+    const connected = accounts.filter((a) => a.status === "connected" || !a.status);
+    const pool =
+      formData.account_ids && formData.account_ids.length > 0
+        ? connected.filter((a) => formData.account_ids.includes(a.account_id))
+        : connected;
+    return pool.reduce((sum, a) => sum + (parseInt(a.daily_limit, 10) || 0), 0);
+  })();
+  const dailyCapacityCount =
+    formData.account_ids.length > 0 ? formData.account_ids.length : accounts.length;
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-slate-50">
@@ -536,7 +614,8 @@ export default function Campaign({ user, setUser }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
+                onClick={async () => {
+                  await autoSaveDraft();
                   setView("list");
                   resetForm();
                   navigate("/campaign");
@@ -650,7 +729,7 @@ export default function Campaign({ user, setUser }) {
             <div className="bg-white border border-slate-200 rounded-md p-6 space-y-6">
               {/* Campaign Name */}
               <div>
-                <Label htmlFor="name">Campaign Name *</Label>
+                <Label htmlFor="name" className="text-violet-700">Campaign Name *</Label>
                 <Input
                   id="name"
                   placeholder="My Email Campaign"
@@ -663,7 +742,7 @@ export default function Campaign({ user, setUser }) {
 
               {/* From Name */}
               <div>
-                <Label htmlFor="from_name">From Name (optional)</Label>
+                <Label htmlFor="from_name" className="text-indigo-700">From Name (optional)</Label>
                 <Input
                   id="from_name"
                   placeholder="John Doe"
@@ -679,7 +758,7 @@ export default function Campaign({ user, setUser }) {
 
               {/* Email Accounts Selection */}
               <div>
-                <Label>Select Email Accounts (optional)</Label>
+                <Label className="text-blue-700">Select Email Accounts (optional)</Label>
                 <p className="text-xs text-slate-500 mb-2">
                   Leave empty to use all connected accounts. Use search to quickly find accounts.
                 </p>
@@ -690,11 +769,25 @@ export default function Campaign({ user, setUser }) {
                   testIdPrefix="campaign-accounts"
                   placeholder={accounts.length === 0 ? "No accounts connected yet" : "All connected accounts"}
                 />
+                {hasAccounts && (
+                  <div
+                    className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium"
+                    data-testid="total-daily-capacity"
+                  >
+                    <Send size={12} />
+                    Total Daily Sending Capacity:&nbsp;
+                    <span className="font-bold">{totalDailyCapacity.toLocaleString()}</span>
+                    &nbsp;emails/day
+                    <span className="text-emerald-600 font-normal ml-1">
+                      ({dailyCapacityCount} account{dailyCapacityCount === 1 ? "" : "s"})
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Do Not Email Lists */}
               <div>
-                <Label>Do Not Email Lists (optional)</Label>
+                <Label className="text-rose-700">Do Not Email Lists (optional)</Label>
                 <p className="text-xs text-slate-500 mb-2">
                   Pick the lists this campaign should be checked against. Permanent unsubscribes
                   (anyone who clicked an unsubscribe link) are always blocked regardless.
@@ -763,7 +856,7 @@ export default function Campaign({ user, setUser }) {
 
               {/* Email List Selection */}
               <div>
-                <Label>Select Email List *</Label>
+                <Label className="text-emerald-700">Select Email List *</Label>
                 <Select
                   value={formData.list_id}
                   onValueChange={handleListChange}
@@ -793,7 +886,7 @@ export default function Campaign({ user, setUser }) {
 
               {/* Send Range */}
               <div data-testid="send-range-section">
-                <Label>Send Range</Label>
+                <Label className="text-cyan-700">Send Range</Label>
                 <p className="text-xs text-slate-500 mb-2 mt-0.5">
                   Choose to send to all contacts in the list, or only to a subset (1-based, inclusive).
                 </p>
@@ -868,7 +961,7 @@ export default function Campaign({ user, setUser }) {
 
               {/* Subject Line */}
               <div>
-                <Label htmlFor="subject">Subject Line *</Label>
+                <Label htmlFor="subject" className="text-blue-700">Subject Line *</Label>
                 <Input
                   id="subject"
                   placeholder="Hi {{first_name}}, quick question about {{company}}"
@@ -885,7 +978,7 @@ export default function Campaign({ user, setUser }) {
               {/* Email Body */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <Label>Email Body *</Label>
+                  <Label className="text-violet-700">Email Body *</Label>
                   <div className="flex items-center gap-2">
                     <FileText size={14} className="text-slate-400" />
                     <span className="text-xs text-slate-500">Rich Text</span>
@@ -938,7 +1031,7 @@ Best regards"
 
               {/* Sending Options */}
               <div className="border-t border-slate-100 pt-6">
-                <Label className="mb-3 block">Sending Options</Label>
+                <Label className="mb-3 block text-amber-700">Sending Options</Label>
                 <div className="flex gap-4">
                   <div
                     onClick={() => setSendOption("now")}
@@ -1147,6 +1240,42 @@ Best regards"
                   className="mt-1.5"
                   data-testid="test-email-input"
                 />
+              </div>
+              <div>
+                <Label htmlFor="test-recipient">Personalize with contact (optional)</Label>
+                <Select
+                  value={testRecipientId}
+                  onValueChange={setTestRecipientId}
+                  disabled={!selectedList?.emails?.length}
+                >
+                  <SelectTrigger className="mt-1.5" data-testid="test-email-recipient-select">
+                    <SelectValue placeholder={
+                      selectedList?.emails?.length
+                        ? "Pick a contact to merge variables (optional)"
+                        : "Select an email list first to enable personalization"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(selectedList?.emails || []).slice(0, 200).map((row, idx) => {
+                      const label = [row.first_name, row.last_name].filter(Boolean).join(" ").trim();
+                      return (
+                        <SelectItem key={idx} value={String(idx)}>
+                          {row.email}{label ? ` — ${label}` : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                {testRecipientId !== "" && selectedList?.emails?.[parseInt(testRecipientId, 10)] && (
+                  <p className="text-xs text-emerald-700 mt-1.5" data-testid="test-recipient-preview">
+                    Variables will be filled from: {selectedList.emails[parseInt(testRecipientId, 10)].email}
+                  </p>
+                )}
+                {!selectedList?.emails?.length && (
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    No contact selected — variables like {"{{first_name}}"} will be sent as-is.
+                  </p>
+                )}
               </div>
               <p className="text-xs text-slate-500">
                 The test email will include a "[TEST]" prefix in the subject line.
