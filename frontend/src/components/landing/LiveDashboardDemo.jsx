@@ -44,7 +44,7 @@ const SAMPLE = {
     contacts_used: 4235,
     contacts_limit: 10000,
     accounts_connected: 18,
-    warmup_active: 9,
+    warmup_active: 16,
   },
   campaigns: [
     { id: "c1", name: "Product Launch Outreach",   status: "completed", sent: 1842, total: 1842, color: "emerald" },

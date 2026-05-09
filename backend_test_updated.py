@@ -8,7 +8,7 @@ import csv
 from datetime import datetime, timezone, timedelta
 
 class MultiSenderEmailAPITester:
-    def __init__(self, base_url="https://mailrotate-demo.preview.emergentagent.com"):
+    def __init__(self, base_url="https://routemail-demo.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_base = f"{base_url}/api"
         self.session_token = None

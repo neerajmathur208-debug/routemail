@@ -9,7 +9,7 @@ import requests
 import os
 import uuid
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://mailrotate-demo.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://routemail-demo.preview.emergentagent.com')
 BASE_URL = BASE_URL.rstrip('/')
 
 class TestSendTestEmail:

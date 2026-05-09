@@ -802,7 +802,6 @@ function PricingSection({ navigate, onPrimary }) {
         </div>
 
         <p className="mt-8 text-center text-xs text-slate-500 max-w-xl mx-auto">
-          All plans include unlimited connected email accounts on the Custom plan.
           Need an enterprise rollout? Email{" "}
           <a href="mailto:support@routemail.co" className="text-blue-600 underline">support@routemail.co</a>.
         </p>

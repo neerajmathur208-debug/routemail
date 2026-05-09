@@ -8,7 +8,7 @@ import requests
 import os
 from datetime import datetime, timezone
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://mailrotate-demo.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://routemail-demo.preview.emergentagent.com')
 
 
 class TestForcePasswordReset:
