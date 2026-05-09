@@ -110,6 +110,7 @@ export default function Campaign({ user, setUser }) {
     send_range_mode: "all",
     send_range_start: 1,
     send_range_end: 100,
+    add_unsubscribe_footer: false,
   });
   const [dneLists, setDneLists] = useState([]);
 
@@ -155,6 +156,7 @@ export default function Campaign({ user, setUser }) {
             send_range_mode: campaign.send_range_mode || "all",
             send_range_start: campaign.send_range_start || 1,
             send_range_end: campaign.send_range_end || 100,
+            add_unsubscribe_footer: campaign.add_unsubscribe_footer || false,
           });
           setView("edit");
           
@@ -1031,6 +1033,26 @@ Best regards"
 
               {/* Sending Options */}
               <div className="border-t border-slate-100 pt-6">
+                <div className="flex items-start gap-3 mb-4 p-3 bg-slate-50 rounded-lg" data-testid="add-unsubscribe-footer-toggle">
+                  <input
+                    id="add-unsub-footer"
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={!!formData.add_unsubscribe_footer}
+                    onChange={(e) =>
+                      setFormData({ ...formData, add_unsubscribe_footer: e.target.checked })
+                    }
+                    data-testid="add-unsubscribe-footer-checkbox"
+                  />
+                  <label htmlFor="add-unsub-footer" className="text-sm cursor-pointer flex-1">
+                    <span className="font-medium text-slate-900">Add Unsubscribe Footer</span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Off by default. When enabled, an unobtrusive "Unsubscribe" footer
+                      is appended to every email. You can also insert the link inline
+                      using the editor's Unsubscribe button.
+                    </p>
+                  </label>
+                </div>
                 <Label className="mb-3 block text-amber-700">Sending Options</Label>
                 <div className="flex gap-4">
                   <div

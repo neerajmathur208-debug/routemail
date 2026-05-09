@@ -393,6 +393,42 @@ export default function DripCampaignView({ user, setUser }) {
     }
   }, [campaign, canEdit, form, dripId]);
 
+  const validateDripBeforeStart = () => {
+    // 1. Campaign Name
+    if (!form.name?.trim()) {
+      toast.error("Campaign Name is required");
+      setTab("settings");
+      return false;
+    }
+    // 2. Email Accounts (must have ≥1 connected account; specific selection optional)
+    const connected = (accounts || []).filter((a) => !a.status || a.status === "connected");
+    if (connected.length === 0) {
+      toast.error("You need to connect at least one email account before starting");
+      return false;
+    }
+    // 3. Email List enrollment (≥1 contact enrolled)
+    if (!stats?.total_contacts || stats.total_contacts === 0) {
+      toast.error("Add an email list to this drip before starting");
+      setTab("contacts");
+      return false;
+    }
+    // 4. At least 1 step with subject + body
+    if (!form.steps || form.steps.length === 0) {
+      toast.error("Add at least one email step before starting");
+      setTab("sequence");
+      return false;
+    }
+    for (let i = 0; i < form.steps.length; i++) {
+      const s = form.steps[i];
+      if (!s.subject?.trim() || !s.body?.trim()) {
+        toast.error(`Step ${i + 1}: Subject and Body are required before starting`);
+        setTab("sequence");
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleStartPauseResume = async () => {
     try {
       if (campaign.status === "running") {
@@ -402,8 +438,17 @@ export default function DripCampaignView({ user, setUser }) {
         await api.post(`/drip-campaigns/${dripId}/resume`);
         toast.success("Resumed");
       } else {
+        // Validate before start
+        if (!validateDripBeforeStart()) return;
+        // Auto-save latest edits before starting
+        try {
+          await api.put(`/drip-campaigns/${dripId}`, form);
+        } catch (saveErr) {
+          toast.error(saveErr.response?.data?.detail || "Failed to save before starting");
+          return;
+        }
         await api.post(`/drip-campaigns/${dripId}/start`);
-        toast.success("Campaign started");
+        toast.success("Drip campaign saved & started");
       }
       loadAll();
     } catch (e) {
@@ -496,7 +541,7 @@ export default function DripCampaignView({ user, setUser }) {
               </span>
             </div>
             <p className="text-sm text-slate-500">
-              Sequence with {form.steps.length} step{form.steps.length === 1 ? "" : "s"} •{" "}
+              Compose Emails — {form.steps.length} step{form.steps.length === 1 ? "" : "s"} •{" "}
               {stats.total_contacts || 0} contacts
             </p>
           </div>
@@ -542,14 +587,49 @@ export default function DripCampaignView({ user, setUser }) {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="contacts" data-testid="tab-contacts">
+          <TabsList
+            className="mb-6 inline-flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-2xl"
+            data-testid="drip-tabs-list"
+          >
+            <TabsTrigger
+              value="contacts"
+              data-testid="tab-contacts"
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-emerald-200 hover:text-emerald-700 transition-colors"
+            >
+              <Users size={14} className="mr-1.5 inline-block" />
               Select List ({stats.total_contacts || 0})
             </TabsTrigger>
-            <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-            <TabsTrigger value="sequence" data-testid="tab-sequence">Sequence</TabsTrigger>
-            <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="logs" data-testid="tab-logs">Logs</TabsTrigger>
+            <TabsTrigger
+              value="settings"
+              data-testid="tab-settings"
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 data-[state=active]:bg-white data-[state=active]:text-amber-700 data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-amber-200 hover:text-amber-700 transition-colors"
+            >
+              <Settings size={14} className="mr-1.5 inline-block" />
+              Settings
+            </TabsTrigger>
+            <TabsTrigger
+              value="sequence"
+              data-testid="tab-sequence"
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 data-[state=active]:bg-white data-[state=active]:text-violet-700 data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-violet-200 hover:text-violet-700 transition-colors"
+            >
+              <Mail size={14} className="mr-1.5 inline-block" />
+              Compose Emails
+            </TabsTrigger>
+            <TabsTrigger
+              value="schedule"
+              data-testid="tab-schedule"
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-blue-200 hover:text-blue-700 transition-colors"
+            >
+              <Clock size={14} className="mr-1.5 inline-block" />
+              Schedule
+            </TabsTrigger>
+            <TabsTrigger
+              value="logs"
+              data-testid="tab-logs"
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-slate-300 hover:text-slate-900 transition-colors"
+            >
+              Logs
+            </TabsTrigger>
           </TabsList>
 
           {/* SEQUENCE */}
@@ -557,7 +637,7 @@ export default function DripCampaignView({ user, setUser }) {
             {form.steps.length === 0 && (
               <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center">
                 <Mail className="mx-auto text-slate-400 mb-3" size={40} strokeWidth={1.2} />
-                <h3 className="text-lg font-semibold text-slate-900 mb-1">Build your sequence</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">Compose your emails</h3>
                 <p className="text-slate-500 mb-5">
                   Add the first email — step 1 is sent as soon as a contact is enrolled.
                 </p>
@@ -823,9 +903,13 @@ export default function DripCampaignView({ user, setUser }) {
                   No contacts yet. Enroll an email list to begin.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div
+                  className="overflow-x-auto overflow-y-auto rounded-lg border border-slate-100"
+                  style={{ maxHeight: "250px" }}
+                  data-testid="drip-contacts-scroll"
+                >
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 bg-white z-10">
                       <tr className="border-b border-slate-200 text-left text-slate-500">
                         <th className="py-2 px-3">Email</th>
                         <th className="py-2 px-3">Current step</th>

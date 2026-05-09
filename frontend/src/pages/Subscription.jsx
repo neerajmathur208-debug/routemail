@@ -14,11 +14,24 @@ export default function Subscription({ user, setUser }) {
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [currency, setCurrency] = useState("usd");
   const [countryDetected, setCountryDetected] = useState(false);
+  const [customSlabs, setCustomSlabs] = useState([]);
+  const [selectedCustomSlab, setSelectedCustomSlab] = useState("custom_15k");
 
   useEffect(() => {
     fetchSubscriptionStatus();
+    fetchPrices();
     detectCountry();
   }, []);
+
+  const fetchPrices = async () => {
+    try {
+      const res = await api.get("/subscription/prices");
+      const slabs = res.data?.custom_plan?.slabs || [];
+      setCustomSlabs(slabs);
+    } catch (err) {
+      console.error("Failed to load prices:", err);
+    }
+  };
 
   const detectCountry = async () => {
     try {
@@ -49,20 +62,33 @@ export default function Subscription({ user, setUser }) {
   const handleUpgrade = async (plan) => {
     setCheckoutLoading(plan);
     try {
-      const priceKey = `${plan}_${currency}`;
-      const priceIds = {
-        starter_usd: "price_1T3JubD2HZgi5NSCVPybSMdk",
-        growth_usd: "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
-        starter_inr: "price_1T3xeED2HZgi5NSCTsHhLaVL",
-        growth_inr: "price_1T3xecD2HZgi5NSC84ntUhgG",
-      };
-
+      let priceId = null;
+      if (plan.startsWith("custom_")) {
+        const slab = customSlabs.find((s) => s.slug === plan);
+        if (!slab || !slab.available || !slab.price_id) {
+          toast.error("This Custom plan is not yet active. Please contact support@routemail.co.");
+          return;
+        }
+        priceId = slab.price_id;
+      } else {
+        const priceKey = `${plan}_${currency}`;
+        const priceIds = {
+          starter_usd: "price_1T3JubD2HZgi5NSCVPybSMdk",
+          growth_usd: "price_1T3Jv7D2HZgi5NSCTvsCbPBi",
+          starter_inr: "price_1T3xeED2HZgi5NSCTsHhLaVL",
+          growth_inr: "price_1T3xecD2HZgi5NSC84ntUhgG",
+        };
+        priceId = priceIds[priceKey];
+      }
+      if (!priceId) {
+        toast.error("Plan unavailable. Please contact support@routemail.co.");
+        return;
+      }
       const response = await api.post("/subscription/create-checkout", {
-        price_id: priceIds[priceKey],
+        price_id: priceId,
         success_url: `${window.location.origin}/dashboard?subscription=success`,
         cancel_url: `${window.location.origin}/subscription?canceled=true`,
       });
-
       window.location.href = response.data.checkout_url;
     } catch (error) {
       console.error("Checkout error:", error);
@@ -292,6 +318,67 @@ export default function Subscription({ user, setUser }) {
             )}
           </motion.div>
 
+          {/* Monthly Contacts Usage Tracker (prominent) */}
+          {subscriptionData?.usage?.recipients && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-br from-emerald-50 to-blue-50 rounded-xl border border-emerald-200 p-6 mb-6"
+              data-testid="monthly-contacts-tracker"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Contacts Used This Month</p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {subscriptionData.usage.recipients.current.toLocaleString()}{" "}
+                    <span className="text-base font-medium text-slate-500">
+                      / {subscriptionData.usage.recipients.limit.toLocaleString()}
+                    </span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500">Remaining</p>
+                  <p className="text-lg font-semibold text-emerald-700">
+                    {Math.max(
+                      subscriptionData.usage.recipients.limit -
+                        subscriptionData.usage.recipients.current,
+                      0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              {(() => {
+                const cur = subscriptionData.usage.recipients.current || 0;
+                const lim = subscriptionData.usage.recipients.limit || 1;
+                const pct = Math.min(Math.round((cur / lim) * 100), 100);
+                const tone =
+                  pct >= 95
+                    ? "bg-red-500"
+                    : pct >= 80
+                    ? "bg-amber-500"
+                    : "bg-emerald-500";
+                return (
+                  <>
+                    <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
+                      <div
+                        className={`h-full ${tone} transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                        data-testid="monthly-contacts-progress"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      {pct}% of monthly contact allowance used.{" "}
+                      <span className="text-slate-600">
+                        Sending to existing recipients you've already contacted this month
+                        does NOT count again.
+                      </span>
+                    </p>
+                  </>
+                );
+              })()}
+            </motion.div>
+          )}
+
           {/* Plans */}
           <div className="grid md:grid-cols-3 gap-6">
             {/* Free Plan */}
@@ -336,14 +423,12 @@ export default function Subscription({ user, setUser }) {
                   Current Plan
                 </Button>
               ) : (
-                <Button
-                  onClick={handleManageSubscription}
-                  variant="outline"
-                  className="w-full text-slate-600 hover:text-red-600 hover:border-red-300"
-                  data-testid="downgrade-free-btn"
-                >
-                  Downgrade to Free
-                </Button>
+                <div className="text-xs text-slate-500 px-2 py-2 text-center" data-testid="cancel-support-note">
+                  To cancel or downgrade, please email{" "}
+                  <a href="mailto:support@routemail.co" className="text-blue-600 underline">
+                    support@routemail.co
+                  </a>
+                </div>
               )}
             </motion.div>
 
@@ -409,24 +494,20 @@ export default function Subscription({ user, setUser }) {
                   >
                     Current Plan
                   </Button>
-                  <Button
-                    onClick={handleManageSubscription}
-                    variant="outline"
-                    className="w-full bg-transparent border-white/30 text-white hover:bg-white/10"
-                    data-testid="cancel-starter-btn"
-                  >
-                    Cancel Subscription
-                  </Button>
+                  <div className="text-xs text-white/85 text-center px-1" data-testid="cancel-support-note-starter">
+                    To cancel, email{" "}
+                    <a href="mailto:support@routemail.co" className="underline">
+                      support@routemail.co
+                    </a>
+                  </div>
                 </div>
-              ) : currentPlan === "growth" ? (
-                <Button
-                  onClick={handleManageSubscription}
-                  variant="outline"
-                  className="w-full bg-transparent border-white/30 text-white hover:bg-white/10"
-                  data-testid="downgrade-to-starter-btn"
-                >
-                  Downgrade to Starter
-                </Button>
+              ) : currentPlan === "growth" || (typeof currentPlan === "string" && currentPlan.startsWith("custom_")) ? (
+                <div className="text-xs text-white/85 text-center px-2 py-2" data-testid="cancel-support-note-starter-from-other">
+                  To downgrade, email{" "}
+                  <a href="mailto:support@routemail.co" className="underline">
+                    support@routemail.co
+                  </a>
+                </div>
               ) : (
                 <Button
                   onClick={() => handleUpgrade("starter")}
@@ -502,30 +583,12 @@ export default function Subscription({ user, setUser }) {
                     <Crown size={16} className="mr-2" />
                     Current Plan
                   </Button>
-                  <Button
-                    onClick={handleManageSubscription}
-                    variant="outline"
-                    className="w-full text-slate-600 hover:text-red-600 hover:border-red-300"
-                    data-testid="downgrade-from-growth-btn"
-                  >
-                    Downgrade to Starter
-                  </Button>
-                  <Button
-                    onClick={handleManageSubscription}
-                    variant="outline"
-                    className="w-full text-slate-500 hover:text-red-600 hover:border-red-300"
-                    data-testid="downgrade-free-from-growth-btn"
-                  >
-                    Downgrade to Free
-                  </Button>
-                  <Button
-                    onClick={handleManageSubscription}
-                    variant="ghost"
-                    className="w-full text-red-500 hover:text-red-700 hover:bg-red-50"
-                    data-testid="cancel-growth-btn"
-                  >
-                    Cancel Subscription
-                  </Button>
+                  <div className="text-xs text-slate-500 text-center px-1" data-testid="cancel-support-note-growth">
+                    To cancel or downgrade, please email{" "}
+                    <a href="mailto:support@routemail.co" className="text-blue-600 underline">
+                      support@routemail.co
+                    </a>
+                  </div>
                 </div>
               ) : (
                 <Button
@@ -545,6 +608,121 @@ export default function Subscription({ user, setUser }) {
                 </Button>
               )}
             </motion.div>
+          </div>
+
+          {/* Custom Plan */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mt-6 bg-white rounded-xl border-2 border-slate-200 p-6"
+            data-testid="custom-plan-card"
+          >
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Crown size={18} className="text-violet-600" />
+                  Custom Plan
+                  {typeof currentPlan === "string" && currentPlan.startsWith("custom_") && (
+                    <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-xs font-medium">
+                      Current
+                    </span>
+                  )}
+                </h3>
+                <p className="text-slate-500 text-sm mt-1">
+                  Pick the monthly contacts capacity that fits your team. Unlimited follow-ups, unlimited lists, unlimited accounts up to 25.
+                </p>
+              </div>
+            </div>
+
+            {customSlabs.length === 0 ? (
+              <p className="text-sm text-slate-500">Loading custom plan options…</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                  {customSlabs.map((s) => {
+                    const isSelected = selectedCustomSlab === s.slug;
+                    const isCurrent = currentPlan === s.slug;
+                    return (
+                      <button
+                        key={s.slug}
+                        type="button"
+                        onClick={() => setSelectedCustomSlab(s.slug)}
+                        className={`text-left rounded-lg border-2 p-3 transition-colors ${
+                          isSelected
+                            ? "border-violet-500 bg-violet-50"
+                            : "border-slate-200 hover:border-violet-300"
+                        }`}
+                        data-testid={`custom-slab-${s.slug}`}
+                      >
+                        <div className="text-xs text-slate-500 mb-1">
+                          {s.contacts_per_month.toLocaleString()} contacts/mo
+                        </div>
+                        <div className="text-lg font-bold text-slate-900">
+                          ${s.price_usd}
+                          <span className="text-xs font-medium text-slate-500">/yr</span>
+                        </div>
+                        {isCurrent && (
+                          <div className="mt-1 text-[10px] text-violet-700 font-medium">
+                            Current
+                          </div>
+                        )}
+                        {!s.available && (
+                          <div className="mt-1 text-[10px] text-amber-600">
+                            Setup pending
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(() => {
+                  const slab = customSlabs.find((s) => s.slug === selectedCustomSlab);
+                  if (!slab) return null;
+                  const isCurrent = currentPlan === slab.slug;
+                  if (isCurrent) {
+                    return (
+                      <div className="text-xs text-slate-500 text-center" data-testid="custom-current-note">
+                        You are on this plan. To change capacity or cancel, please email{" "}
+                        <a href="mailto:support@routemail.co" className="text-blue-600 underline">
+                          support@routemail.co
+                        </a>
+                      </div>
+                    );
+                  }
+                  return (
+                    <Button
+                      onClick={() => handleUpgrade(slab.slug)}
+                      disabled={checkoutLoading === slab.slug || !slab.available}
+                      className="w-full md:w-auto bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white"
+                      data-testid="upgrade-custom-btn"
+                    >
+                      {checkoutLoading === slab.slug ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : slab.available ? (
+                        <>
+                          <Crown size={16} className="mr-2" />
+                          Subscribe — ${slab.price_usd}/year ·{" "}
+                          {slab.contacts_per_month.toLocaleString()} contacts/mo
+                        </>
+                      ) : (
+                        "Contact support to enable this slab"
+                      )}
+                    </Button>
+                  );
+                })()}
+              </>
+            )}
+          </motion.div>
+
+          {/* Cancellation note */}
+          <div className="mt-6 text-center text-sm text-slate-600" data-testid="global-cancel-note">
+            Need to cancel or change your plan? Drop us a line at{" "}
+            <a href="mailto:support@routemail.co" className="text-blue-600 underline">
+              support@routemail.co
+            </a>{" "}
+            and our team will take care of it.
           </div>
         </div>
       </main>

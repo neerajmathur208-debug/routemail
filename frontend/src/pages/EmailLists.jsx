@@ -249,7 +249,15 @@ export default function EmailLists({ user, setUser }) {
                               </div>
                             ) : (
                               <div>
-                                <p className="font-medium text-slate-900">{list.name}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-slate-900">{list.name}</p>
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium"
+                                    data-testid={`list-contacts-badge-${list.list_id}`}
+                                  >
+                                    {(list.valid_emails || 0).toLocaleString()} contacts
+                                  </span>
+                                </div>
                                 {list.original_filename && list.original_filename !== list.name && (
                                   <p className="text-xs text-slate-400">{list.original_filename}</p>
                                 )}

@@ -277,6 +277,28 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
+  const handleSetLimitOverride = async ({ max_accounts, max_contacts }) => {
+    if (!selectedUser) return;
+    setOverrideLoading(true);
+    try {
+      const res = await api.post(
+        `/admin/users/${selectedUser.user_id}/limit-override`,
+        { max_accounts, max_contacts }
+      );
+      toast.success(
+        `Limits updated — accounts: ${res.data?.effective_limits?.max_accounts}, contacts: ${res.data?.effective_limits?.max_contacts}`
+      );
+      // Re-load the dialog state with updated values
+      const refresh = await api.get(`/admin/users/${selectedUser.user_id}/subscription`);
+      setSubscriptionData(refresh.data);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update limits");
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
   const getPlanSourceBadge = (source) => {
     switch (source) {
       case "stripe":
@@ -913,6 +935,23 @@ export default function AdminDashboard({ user, setUser }) {
                     </div>
                   </div>
 
+                  {/* Manual Limit Overrides — independent of plan selection */}
+                  <div className="pt-4 border-t border-slate-200" data-testid="manual-limit-overrides">
+                    <p className="text-sm font-medium text-slate-700 mb-2">
+                      Manual Limit Overrides
+                    </p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Apply per-user caps that take priority over the plan. Leave blank to clear.
+                      Does NOT change Stripe billing.
+                    </p>
+                    <ManualLimitOverrideForm
+                      defaultMaxAccounts={subscriptionData.admin_override_max_accounts}
+                      defaultMaxContacts={subscriptionData.admin_override_max_contacts}
+                      saving={overrideLoading}
+                      onSave={handleSetLimitOverride}
+                    />
+                  </div>
+
                   {/* Remove Override Button (if override is active) */}
                   {subscriptionData.admin_override_active && (
                     <div className="pt-4 border-t border-slate-200">
@@ -974,3 +1013,91 @@ export default function AdminDashboard({ user, setUser }) {
     </div>
   );
 }
+
+function ManualLimitOverrideForm({ defaultMaxAccounts, defaultMaxContacts, saving, onSave }) {
+  const [accountsVal, setAccountsVal] = useState(
+    defaultMaxAccounts !== null && defaultMaxAccounts !== undefined ? String(defaultMaxAccounts) : ""
+  );
+  const [contactsVal, setContactsVal] = useState(
+    defaultMaxContacts !== null && defaultMaxContacts !== undefined ? String(defaultMaxContacts) : ""
+  );
+
+  useEffect(() => {
+    setAccountsVal(
+      defaultMaxAccounts !== null && defaultMaxAccounts !== undefined
+        ? String(defaultMaxAccounts)
+        : ""
+    );
+    setContactsVal(
+      defaultMaxContacts !== null && defaultMaxContacts !== undefined
+        ? String(defaultMaxContacts)
+        : ""
+    );
+  }, [defaultMaxAccounts, defaultMaxContacts]);
+
+  const submit = () => {
+    const max_accounts = accountsVal === "" ? null : Math.max(0, parseInt(accountsVal, 10) || 0);
+    const max_contacts = contactsVal === "" ? null : Math.max(0, parseInt(contactsVal, 10) || 0);
+    onSave({ max_accounts, max_contacts });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-slate-600 mb-1 block">
+            Max Email Accounts
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={accountsVal}
+            onChange={(e) => setAccountsVal(e.target.value)}
+            placeholder="Plan default"
+            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
+            data-testid="override-max-accounts-input"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-600 mb-1 block">
+            Monthly Contact Limit
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={contactsVal}
+            onChange={(e) => setContactsVal(e.target.value)}
+            placeholder="Plan default"
+            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
+            data-testid="override-max-contacts-input"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-sm disabled:opacity-60"
+          data-testid="save-limit-overrides-btn"
+        >
+          {saving ? "Saving…" : "Save Limit Overrides"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAccountsVal("");
+            setContactsVal("");
+            onSave({ max_accounts: null, max_contacts: null });
+          }}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm"
+          data-testid="clear-limit-overrides-btn"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+

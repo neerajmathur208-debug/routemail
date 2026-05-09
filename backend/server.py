@@ -58,7 +58,24 @@ STRIPE_PRICES = {
     "growth_usd": os.environ.get('STRIPE_PRICE_GROWTH_USD'),
     "starter_inr": os.environ.get('STRIPE_PRICE_STARTER_INR'),
     "growth_inr": os.environ.get('STRIPE_PRICE_GROWTH_INR'),
+    # Custom Plan slabs (USD, yearly)
+    "custom_15k": os.environ.get('STRIPE_PRICE_CUSTOM_15K'),
+    "custom_20k": os.environ.get('STRIPE_PRICE_CUSTOM_20K'),
+    "custom_30k": os.environ.get('STRIPE_PRICE_CUSTOM_30K'),
+    "custom_50k": os.environ.get('STRIPE_PRICE_CUSTOM_50K'),
+    "custom_75k": os.environ.get('STRIPE_PRICE_CUSTOM_75K'),
+    "custom_100k": os.environ.get('STRIPE_PRICE_CUSTOM_100K'),
 }
+
+# Custom Plan slab definitions: contacts/month → yearly USD price
+CUSTOM_PLAN_SLABS = [
+    {"slug": "custom_15k",  "contacts": 15000,  "price_usd": 199, "label": "15,000 contacts"},
+    {"slug": "custom_20k",  "contacts": 20000,  "price_usd": 249, "label": "20,000 contacts"},
+    {"slug": "custom_30k",  "contacts": 30000,  "price_usd": 349, "label": "30,000 contacts"},
+    {"slug": "custom_50k",  "contacts": 50000,  "price_usd": 499, "label": "50,000 contacts"},
+    {"slug": "custom_75k",  "contacts": 75000,  "price_usd": 699, "label": "75,000 contacts"},
+    {"slug": "custom_100k", "contacts": 100000, "price_usd": 899, "label": "100,000 contacts"},
+]
 
 # Plan Limits Configuration
 PLAN_LIMITS = {
@@ -76,6 +93,15 @@ PLAN_LIMITS = {
         "max_accounts": 15,
         "max_contacts": 10000,
         "max_monthly_recipients": 10000,
+    },
+    # Custom plan slabs — accounts default to a generous 25, contacts/recipients per slab.
+    **{
+        s["slug"]: {
+            "max_accounts": 25,
+            "max_contacts": s["contacts"],
+            "max_monthly_recipients": s["contacts"],
+        }
+        for s in CUSTOM_PLAN_SLABS
     },
 }
 
@@ -1486,7 +1512,7 @@ async def get_effective_user_plan(user_id: str) -> dict:
     }
 
 async def get_user_plan_limits(user_id: str) -> dict:
-    """Get the plan limits for a user"""
+    """Get the plan limits for a user (with admin override applied)"""
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user:
         return PLAN_LIMITS["free"]
@@ -1494,7 +1520,17 @@ async def get_user_plan_limits(user_id: str) -> dict:
     # Use effective plan resolution
     effective = await get_effective_user_plan(user_id)
     plan_type = effective.get("plan", "free")
-    return PLAN_LIMITS.get(plan_type, PLAN_LIMITS["free"])
+    base = dict(PLAN_LIMITS.get(plan_type, PLAN_LIMITS["free"]))
+    
+    # Per-user admin overrides — take priority over plan when set.
+    override_max_accounts = user.get("admin_override_max_accounts")
+    override_max_contacts = user.get("admin_override_max_contacts")
+    if isinstance(override_max_accounts, int) and override_max_accounts >= 0:
+        base["max_accounts"] = override_max_accounts
+    if isinstance(override_max_contacts, int) and override_max_contacts >= 0:
+        base["max_contacts"] = override_max_contacts
+        base["max_monthly_recipients"] = override_max_contacts
+    return base
 
 async def check_account_limit(user_id: str) -> dict:
     """Check if user can add more email accounts"""
@@ -1907,6 +1943,7 @@ class CreateCampaignRequest(BaseModel):
     send_range_mode: Optional[str] = "all"  # 'all' | 'range'
     send_range_start: Optional[int] = None
     send_range_end: Optional[int] = None
+    add_unsubscribe_footer: Optional[bool] = False
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -1922,6 +1959,7 @@ class UpdateCampaignRequest(BaseModel):
     send_range_mode: Optional[str] = None
     send_range_start: Optional[int] = None
     send_range_end: Optional[int] = None
+    add_unsubscribe_footer: Optional[bool] = None
 
 class AddToSuppressionRequest(BaseModel):
     email: str
@@ -5444,7 +5482,7 @@ def replace_variables(template: str, data: dict) -> str:
     result = re.sub(r'\{\{(\w+)\}\}', replacer, template)
     return result
 
-async def send_email_smtp(account: dict, to_email: str, subject: str, body_html: str, body_text: str, from_name: str, user_id: str) -> dict:
+async def send_email_smtp(account: dict, to_email: str, subject: str, body_html: str, body_text: str, from_name: str, user_id: str, add_unsubscribe_footer: bool = False) -> dict:
     """Send email via SMTP"""
     try:
         password = decrypt_data(account.get("smtp_password_encrypted", ""))
@@ -5463,15 +5501,16 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         body_html = (body_html or "").replace("{{unsubscribe_url}}", unsubscribe_url)
         body_text = (body_text or "").replace("{{unsubscribe_url}}", unsubscribe_url)
         
-        # Append our default footer ONLY if the email doesn't already contain the per-recipient
-        # unsubscribe URL (URL match alone — link text may say "click here", "Stop emails", etc.).
+        # Default unsubscribe footer is now OPT-IN per campaign (was previously always-on).
+        # We only append it when the campaign explicitly enabled `add_unsubscribe_footer`,
+        # AND the email body does not already contain the per-recipient unsubscribe URL.
         body_has_unsub = unsubscribe_url in body_html or unsubscribe_url in body_text
-        if body_has_unsub:
-            unsubscribe_text = ""
-            unsubscribe_html = ""
-        else:
+        if add_unsubscribe_footer and not body_has_unsub:
             unsubscribe_text = f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
             unsubscribe_html = f'<br><br><hr><p style="font-size:12px;color:#666;">To unsubscribe, <a href="{unsubscribe_url}">click here</a></p>'
+        else:
+            unsubscribe_text = ""
+            unsubscribe_html = ""
         
         part1 = MIMEText((body_text or "") + unsubscribe_text, 'plain')
         part2 = MIMEText(body_html + unsubscribe_html, 'html')
@@ -5632,7 +5671,8 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 body_html=body_html,
                 body_text=body_text,
                 from_name=from_name,
-                user_id=user_id
+                user_id=user_id,
+                add_unsubscribe_footer=bool(campaign.get("add_unsubscribe_footer", False)),
             )
         else:
             # Simulated sending for demo accounts
@@ -6052,6 +6092,11 @@ def get_plan_info_from_price_id(price_id: str) -> dict:
         STRIPE_PRICES.get("starter_inr"): {"plan": "starter", "currency": "INR"},
         STRIPE_PRICES.get("growth_inr"): {"plan": "growth", "currency": "INR"},
     }
+    # Add Custom Plan slabs
+    for s in CUSTOM_PLAN_SLABS:
+        slab_price_id = STRIPE_PRICES.get(s["slug"])
+        if slab_price_id:
+            price_mapping[slab_price_id] = {"plan": s["slug"], "currency": "USD"}
     
     return price_mapping.get(price_id, {"plan": "unknown", "currency": "unknown"})
 
@@ -6091,6 +6136,8 @@ async def get_admin_user_subscription(
             "admin_override_active": user.get("admin_override_active", False),
             "admin_override_plan": user.get("admin_override_plan"),
             "admin_override_updated_at": user.get("admin_override_updated_at"),
+            "admin_override_max_accounts": user.get("admin_override_max_accounts"),
+            "admin_override_max_contacts": user.get("admin_override_max_contacts"),
             "has_stripe_subscription": bool(stripe_subscription_id),
         }
         
@@ -6323,6 +6370,87 @@ async def admin_remove_override(
         logger.error(f"Admin remove override error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class AdminLimitOverrideRequest(BaseModel):
+    max_accounts: Optional[int] = None  # None = clear override; int >= 0 sets it
+    max_contacts: Optional[int] = None  # None = clear override; int >= 0 sets it (also caps monthly recipients)
+
+@api_router.post("/admin/users/{user_id}/limit-override")
+async def admin_set_limit_override(
+    user_id: str,
+    request: AdminLimitOverrideRequest,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """
+    Set or clear per-user max_accounts / max_contacts overrides.
+    These take priority over plan limits while set, do NOT touch Stripe,
+    and do NOT change plan_type or plan_source.
+    Pass null in a field to clear that specific override.
+    """
+    try:
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if request.max_accounts is not None and request.max_accounts < 0:
+            raise HTTPException(status_code=400, detail="max_accounts must be >= 0")
+        if request.max_contacts is not None and request.max_contacts < 0:
+            raise HTTPException(status_code=400, detail="max_contacts must be >= 0")
+
+        update_set = {"admin_override_updated_at": datetime.now(timezone.utc).isoformat()}
+        update_unset = {}
+        # max_accounts
+        if request.max_accounts is None:
+            # Only unset if it was set; harmless either way.
+            update_unset["admin_override_max_accounts"] = ""
+        else:
+            update_set["admin_override_max_accounts"] = int(request.max_accounts)
+        # max_contacts
+        if request.max_contacts is None:
+            update_unset["admin_override_max_contacts"] = ""
+        else:
+            update_set["admin_override_max_contacts"] = int(request.max_contacts)
+
+        update_doc = {"$set": update_set}
+        if update_unset:
+            update_doc["$unset"] = update_unset
+        await db.users.update_one({"user_id": user_id}, update_doc)
+
+        admin_log = {
+            "admin_email": admin["email"],
+            "target_user_email": user.get("email"),
+            "target_user_id": user_id,
+            "action": "ADMIN_SET_LIMIT_OVERRIDE",
+            "max_accounts": request.max_accounts,
+            "max_contacts": request.max_contacts,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        await db.admin_logs.insert_one(admin_log)
+        logger.info(
+            f"Admin {admin['email']} set limit override for {user.get('email')}: "
+            f"max_accounts={request.max_accounts}, max_contacts={request.max_contacts}"
+        )
+
+        # Return the resolved effective limits so the UI can refresh.
+        effective = await get_user_plan_limits(user_id)
+        return {
+            "success": True,
+            "user_id": user_id,
+            "effective_limits": effective,
+            "max_accounts_override": request.max_accounts,
+            "max_contacts_override": request.max_contacts,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin limit override error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin remove override error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
 
 class CreateCheckoutRequest(BaseModel):
@@ -6361,6 +6489,16 @@ async def get_subscription_status(user: User = Depends(get_current_user)):
 @api_router.get("/subscription/prices")
 async def get_subscription_prices():
     """Get available subscription prices"""
+    custom_slabs = []
+    for s in CUSTOM_PLAN_SLABS:
+        custom_slabs.append({
+            "slug": s["slug"],
+            "label": s["label"],
+            "contacts_per_month": s["contacts"],
+            "price_usd": s["price_usd"],
+            "price_id": STRIPE_PRICES.get(s["slug"]),
+            "available": bool(STRIPE_PRICES.get(s["slug"])),
+        })
     return {
         "plans": [
             {
@@ -6388,6 +6526,11 @@ async def get_subscription_prices():
                 }
             }
         ],
+        "custom_plan": {
+            "name": "Custom",
+            "currency": "USD",
+            "slabs": custom_slabs,
+        },
         "free_plan": {
             "name": "Free Trial",
             "trial_days": 14,
@@ -6429,6 +6572,11 @@ async def create_checkout_session(request: CreateCheckoutRequest, user: User = D
         plan_type = "starter"
         if request.price_id in [STRIPE_PRICES["growth_usd"], STRIPE_PRICES["growth_inr"]]:
             plan_type = "growth"
+        else:
+            for s in CUSTOM_PLAN_SLABS:
+                if request.price_id == STRIPE_PRICES.get(s["slug"]):
+                    plan_type = s["slug"]
+                    break
         
         # Create checkout session
         checkout_session = stripe.checkout.Session.create(

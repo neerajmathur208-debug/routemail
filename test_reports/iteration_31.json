@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 31 — Feb 2026 batch tested. Backend pytest test_iteration_31_features.py = 18/20 PASSED, 2 FAILED. Critical bug: POST/PUT /api/campaigns does NOT persist add_unsubscribe_footer (Campaign model lacks the field, create endpoint omits it, update endpoint never includes it in update_data) — toggle UI is wired but the value is silently dropped, so the footer can never be turned ON in production. All other backend coverage PASSED: /api/subscription/prices returns 6 custom slabs (15k/20k/30k/50k/75k/100k) at $199/$249/$349/$499/$699/$899 with valid Stripe price_ids and available=true; /api/subscription/create-checkout accepts each slab price_id (no 422 model rejection); /api/admin/users/{id}/limit-override is super-admin gated (regular user gets 403), 200 on set returns effective_limits, persists admin_override_max_accounts/max_contacts in DB, $unset works when null, 404 on unknown user, 400 on negative; send_email_smtp default add_unsubscribe_footer=False appends NO footer, =True appends footer, =True with body already containing the per-recipient unsub URL does NOT duplicate it; /api/lists/upload header normalize regression still passes ('Email,First Name,first-name,Company.Name!' -> ['email','first_name','first_name_2','company_name']). Regression: test_iteration_30_features + test_drip_campaigns + test_dne_lists = 58/58 PASSED. Frontend Playwright (correct preview URL https://mailrotate-demo.preview.emergentagent.com): subscription page renders all 6 'custom-slab-{slug}' buttons + 'custom-plan-card' + 'upgrade-custom-btn' + 'monthly-contacts-tracker' (showing '0 / 500 ... Remaining 500') + 'monthly-contacts-progress' + 'global-cancel-note'; forbidden testids cancel-starter-btn / cancel-growth-btn / downgrade-starter-btn / downgrade-growth-btn are all ABSENT; clicking custom_30k slab + upgrade-custom-btn fires POST /api/subscription/create-checkout; Campaign 'add-unsubscribe-footer-toggle' is PRESENT inside the create form. Drip card click did not navigate (anchor wraps the card body; nav requires clicking 'Open' link) — drip tab testids/labels were already covered in iteration_30 where they were verified PRESENT and active = tab-contacts. EmailLists 'list-contacts-badge-{id}' could not be visually verified because drip.tester has 0 lists; source review of EmailLists.jsx is the suggested follow-up.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/campaigns + PUT /api/campaigns/{id}",
+        "issue": "add_unsubscribe_footer is accepted by CreateCampaignRequest (default False) and UpdateCampaignRequest (default None) Pydantic models BUT never persisted. server.py:4043 Campaign(...) constructor call omits add_unsubscribe_footer, the Campaign model itself (server.py:1766) lacks the field, and update_campaign (server.py:4072) has no `if request.add_unsubscribe_footer is not None: update_data['add_unsubscribe_footer'] = ...` branch. Send loop reads campaign.get('add_unsubscribe_footer', False) at server.py:5675 which is permanently False -> the unsubscribe-footer toggle in Campaign.jsx is functionally dead. Test evidence: POST with add_unsubscribe_footer=True followed by GET shows the field absent from the campaign document; PUT with add_unsubscribe_footer=False followed by GET also shows it absent.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Campaign add-unsubscribe-footer toggle",
+        "issue": "Toggle is wired in the UI form (data-testid='add-unsubscribe-footer-toggle' present, default OFF) and the create payload includes add_unsubscribe_footer in formData, but because backend silently drops it (see backend critical), turning it ON in the UI has no effect on outgoing email — confirmed by direct API test (POST with True, GET shows missing).",
+        "affected_selectors": ["add-unsubscribe-footer-toggle"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_31_features.py",
+    "/app/test_reports/pytest/iteration_31_results.xml"
+  ],
+  "action_items": [
+    "FIX (HIGH): Add `add_unsubscribe_footer: Optional[bool] = False` to the Campaign model (server.py:1766). In create_campaign (server.py:4043) pass add_unsubscribe_footer=request.add_unsubscribe_footer to Campaign(...). In update_campaign (server.py:4072) add `if request.add_unsubscribe_footer is not None: update_data['add_unsubscribe_footer'] = request.add_unsubscribe_footer`. Re-run /app/backend/tests/test_iteration_31_features.py::TestCampaignAddUnsubscribeFooterPersistence to verify all three cases pass.",
+    "(Optional verification) Visit /lists with a user that has at least one list to visually verify list-contacts-badge-{id} renders with formatted counts."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~6900 lines. The 3-place wiring required for a single new persisted field (model, create constructor, update branch) is exactly the kind of bug that gets shipped — splitting routers into modules per resource (campaigns/drip/admin/subscription) would have caught the missing constructor arg via type-checking on Campaign(...) signature.",
+    "create_campaign already drops several fields silently if they are not in the Campaign() signature (compare Campaign() call at 4043 against CreateCampaignRequest fields). Recommend changing Campaign() to accept **request.model_dump() with field_validators, or use `Campaign.model_validate({**request.model_dump(), 'user_id': user.user_id})`. Same pattern would have made add_unsubscribe_footer work automatically.",
+    "Send-loop guard `campaign.get('add_unsubscribe_footer', False)` at server.py:5675 quietly defaults to False on missing key — this masked the persistence bug. Consider asserting/logging at campaign-creation time that all CreateCampaignRequest fields landed in the Mongo doc (drift detector).",
+    "AdminLimitOverrideRequest endpoint at server.py:6377 has a duplicated `except HTTPException / except Exception` block (6443-6447 then again 6448-6450 in the next function header area — likely a copy-paste leak that does no harm but is dead code). Worth a cleanup pass.",
+    "Drip card markup wraps content in an anchor and a separate 'Open' button; clicking the card body does not navigate. Minor UX nit — either make the entire card a clickable region or remove the redundant 'Open' button."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_31_features.py",
+    "/app/test_reports/iteration_31.json",
+    "/app/test_reports/pytest/iteration_31_results.xml"
+  ],
+  "success_rate": {
+    "backend": "90% (18/20 new — 2 expected fails on add_unsubscribe_footer persistence; 58/58 regression on iter30+drip+dne)",
+    "frontend": "Verified PRESENT: custom-plan-card, all 6 custom-slab-{slug}, upgrade-custom-btn, monthly-contacts-tracker (text '0 / 500 ... Remaining 500'), monthly-contacts-progress, global-cancel-note, add-unsubscribe-footer-toggle. Verified ABSENT: cancel-starter-btn, cancel-growth-btn, downgrade-starter-btn, downgrade-growth-btn. Verified network: clicking slab + upgrade-custom-btn fires POST /api/subscription/create-checkout. Not visually exercised this run (covered in iter30 or blocked by zero seed data): drip tabs (iter30 verified), list-contacts-badge (no lists for drip.tester), RichTextEditor auto-link, drip start validation toast, override modal in AdminDashboard (drip.tester is not super-admin in UI session)."
+  },
+  "test_credentials": "drip.tester@example.com / DripTest123! (pre-seeded). For super-admin endpoints, the test temporarily flips role='super_admin' on drip.tester via direct pymongo update and restores at fixture teardown — clean and idempotent.",
+  "seed_data_creation": "TestAdminLimitOverride creates a throwaway target user user_TESTov_<8hex> with email TEST_override_<6hex>@example.com to be the override target, deletes it on teardown. TestCampaignAddUnsubscribeFooterPersistence creates campaigns named TEST_unsub_<6hex> and deletes via DELETE /api/campaigns/{id} on teardown. No leaked rows after the run.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After the main agent fixes the add_unsubscribe_footer persistence bug (3-line patch: Campaign model field + create constructor arg + update_data branch), re-run pytest /app/backend/tests/test_iteration_31_features.py::TestCampaignAddUnsubscribeFooterPersistence — all 3 cases must turn green. Then add an end-to-end smoke that mocks send_email_smtp via the same pattern in TestSendEmailSmtpFooterBehaviour but invokes the campaign send path, to prove the flag survives end-to-end (model -> mongo -> send loop -> smtp). The TestAdminLimitOverride class flips drip.tester to super_admin via pymongo and back; if you reuse drip.tester for any other admin coverage, run TestAdminLimitOverride LAST in your suite or the role flip will race. Frontend: drip card body is not clickable — to navigate use [data-testid^='drip-card-'] >> 'Open' anchor or page.click(`[data-testid='drip-card-${id}'] a`).",
+  "rca of the issue": "BUG: add_unsubscribe_footer never persisted. Reproduction: (1) POST /api/campaigns with body {name,subject,body,add_unsubscribe_footer:true}; (2) GET /api/campaigns/{id} -> response object lacks add_unsubscribe_footer key. Root cause: the Campaign Pydantic model (server.py line 1766) was never updated to include `add_unsubscribe_footer: Optional[bool] = False`; consequently the create_campaign handler's Campaign(...) call silently ignores the request value (Pydantic `extra=ignore` default), and update_campaign's hand-rolled update_data dict has no branch for it. Send-loop default `campaign.get('add_unsubscribe_footer', False)` then locks the feature OFF for every campaign in DB. Mitigation: 3-line fix described in action_items #1; preferred long-term mitigation: replace hand-rolled update_data branches with `update_data.update({k: v for k, v in request.model_dump(exclude_unset=True).items() if k in ALLOWED_CAMPAIGN_UPDATE_FIELDS})` so future opt-in flags don't suffer the same fate."
+}

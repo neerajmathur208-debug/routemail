@@ -322,12 +322,77 @@ export default function RichTextEditor({
     handleInput();
   }, [handleInput]);
 
+  // Auto-link plain text — converts URLs / www. / emails to anchor tags.
+  // Used both on paste and on blur so autolinks happen in real workflows.
+  const autoLinkText = useCallback((rawText) => {
+    if (!rawText) return '';
+    // Order matters: emails first (more specific), then full URLs, then www.
+    const escapeHtml = (s) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // First escape, then process the regexes — we need raw chars for matching, so do it in pieces.
+    // Strategy: split by tokens that match either url/email/www, building HTML with anchors.
+    const combined = /(\bhttps?:\/\/[^\s<>"]+|\bwww\.[^\s<>"]+|\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    let result = '';
+    let lastIdx = 0;
+    rawText.replace(combined, (match, _g, idx) => {
+      result += escapeHtml(rawText.slice(lastIdx, idx));
+      let href = match;
+      if (match.includes('@') && !match.includes('://')) {
+        href = `mailto:${match}`;
+      } else if (match.startsWith('www.')) {
+        href = `https://${match}`;
+      }
+      result += `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(match)}</a>`;
+      lastIdx = idx + match.length;
+      return match;
+    });
+    result += escapeHtml(rawText.slice(lastIdx));
+    return result;
+  }, []);
+
   const handlePaste = useCallback((e) => {
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
+    const html = autoLinkText(text);
+    // Use insertHTML so any detected URLs/emails become real <a> tags.
+    document.execCommand('insertHTML', false, html);
     handleInput();
-  }, [handleInput]);
+  }, [handleInput, autoLinkText]);
+
+  // Auto-link any standalone URLs/emails that already exist as plain text
+  // (e.g. typed without spaces around them). Triggered on blur.
+  const handleEditorBlur = useCallback(() => {
+    if (!editorRef.current) return;
+    const root = editorRef.current;
+    const URL_RE = /(\bhttps?:\/\/[^\s<>"]+|\bwww\.[^\s<>"]+|\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    let mutated = false;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => {
+        // Skip text already inside an <a> element.
+        let p = n.parentNode;
+        while (p && p !== root) {
+          if (p.tagName && p.tagName.toLowerCase() === 'a') return NodeFilter.FILTER_REJECT;
+          p = p.parentNode;
+        }
+        return URL_RE.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const textNodes = [];
+    let node;
+    while ((node = walker.nextNode())) textNodes.push(node);
+    textNodes.forEach((textNode) => {
+      // Reset regex (test() advances lastIndex)
+      URL_RE.lastIndex = 0;
+      const text = textNode.nodeValue;
+      if (!URL_RE.test(text)) return;
+      URL_RE.lastIndex = 0;
+      const wrap = document.createElement('span');
+      wrap.innerHTML = autoLinkText(text);
+      textNode.replaceWith(...wrap.childNodes);
+      mutated = true;
+    });
+    if (mutated) handleInput();
+  }, [autoLinkText, handleInput]);
 
   // Image resize functionality
   const handleImageClick = useCallback((e) => {
@@ -734,6 +799,7 @@ export default function RichTextEditor({
               contentEditable
               onInput={handleInput}
               onPaste={handlePaste}
+              onBlur={handleEditorBlur}
               onClick={handleImageClick}
               onBlur={saveCursorPosition}
               onKeyUp={saveCursorPosition}
