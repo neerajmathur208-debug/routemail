@@ -1,162 +1,154 @@
 {
-  "design_system": {
-    "identity": {
-      "name": "Swiss Mail",
-      "archetype": "Swiss & High-Contrast (Archetype 4)",
-      "vibe": "Objective, Rigid, Functional, Trustworthy",
-      "core_values": [
-        "Clarity over decoration",
-        "Content is King",
-        "Grid is Law",
-        "High Contrast"
-      ]
+  "theme": "LIGHT",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "design_philosophy": {
+    "vibe": "Authority, Clarity, Truth, Premium SaaS, Linear/Vercel Aesthetic",
+    "description": "Clean minimalism, generous white space, geometric sans-serif for clear hierarchy, subtle interactions without overwhelming. Uses HTML/Tailwind for mockups where possible, and generated abstracts for rich visuals.",
+    "brand_name": "RouteMail"
+  },
+  "colors": {
+    "background": {
+      "primary": "bg-white",
+      "secondary": "bg-slate-50",
+      "tertiary": "bg-slate-100"
     },
-    "typography": {
-      "font_strategy": "The Soft Utility (Swiss Style)",
-      "headings": {
-        "family": "Manrope",
-        "weights": ["400", "600", "800"],
-        "tracking": "tight",
-        "usage": "Use font-semibold or font-extrabold. Avoid Regular for headings."
-      },
-      "body": {
-        "family": "Public Sans",
-        "weights": ["400", "500"],
-        "leading": "relaxed",
-        "usage": "High legibility for data and text."
-      },
-      "mono": {
-        "family": "JetBrains Mono",
-        "usage": "For email addresses, API keys, and logs."
-      },
-      "rules": [
-        "CRITICAL: DO NOT use Inter for headings.",
-        "Headings must be strictly Left Aligned.",
-        "Use generous line-height for body text (leading-7 or leading-8)."
-      ]
+    "text": {
+      "primary": "text-slate-900",
+      "secondary": "text-slate-600",
+      "tertiary": "text-slate-400",
+      "inverse": "text-white"
     },
-    "colors": {
-      "palette": {
-        "background": {
-          "default": "#FFFFFF",
-          "subtle": "#F8FAFC",
-          "dark": "#0F172A"
-        },
-        "foreground": {
-          "primary": "#0F172A",
-          "secondary": "#475569",
-          "muted": "#94A3B8"
-        },
-        "accent": {
-          "primary": "#2563EB", 
-          "cta": "#EA580C",
-          "success": "#16A34A",
-          "error": "#DC2626"
-        },
-        "border": {
-          "default": "#E2E8F0",
-          "strong": "#CBD5E1"
-        }
-      },
-      "usage_rules": [
-        "Primary CTA (Start Campaign, Upgrade) MUST use 'Signal Orange' (#EA580C) or 'Electric Blue' (#2563EB).",
-        "Dashboard graphs should use a monochrome scale with one accent color.",
-        "Avoid gradients. Use solid, flat colors.",
-        "Text on colored backgrounds must be white (#FFFFFF)."
-      ]
+    "brand": {
+      "accent_gradient": "bg-gradient-to-r from-blue-600 to-violet-600",
+      "accent_gradient_text": "bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-violet-600",
+      "accent_solid": "bg-blue-600",
+      "accent_hover": "hover:bg-blue-700",
+      "accent_light": "bg-blue-50 text-blue-700"
     },
-    "layout": {
-      "grid_system": "The Bento Grid (Mode B)",
-      "spacing": {
-        "container_padding": "p-8 or p-12",
-        "internal_padding": "p-6 or p-8",
-        "gap": "gap-6 or gap-8"
-      },
-      "containers": {
-        "card_style": "Bordered, No Shadow",
-        "border_radius": "rounded-md (4px-6px)",
-        "border_color": "border-slate-200"
-      },
-      "navigation": {
-        "style": "Sidebar or Topbar with minimal items.",
-        "alignment": "Left aligned logo, right aligned profile."
-      }
+    "border": {
+      "default": "border-slate-200",
+      "light": "border-slate-100",
+      "focus": "focus:border-blue-500 focus:ring-blue-500/20"
     },
-    "components": {
-      "buttons": {
-        "style": "Flat, sharp corners (rounded-sm or rounded-md).",
-        "hover": "translate-y-[-1px] transition-transform"
-      },
-      "inputs": {
-        "style": "bg-slate-50 border-slate-200 focus:ring-2 focus:ring-blue-500",
-        "height": "h-10 or h-12 for better touch targets"
-      },
-      "cards": {
-        "style": "bg-white border border-slate-200 p-6 rounded-lg",
-        "hover": "border-slate-300 transition-colors"
-      },
-      "toasts": {
-        "library": "sonner",
-        "position": "bottom-right",
-        "style": "clean white toast with black text"
-      },
-      "charts": {
-        "library": "recharts (via Shadcn)",
-        "style": "Minimal axes, tooltip enabled, monochromatic bars with active state highlight."
-      }
-    },
-    "visual_enhancers": {
-      "motion": {
-        "library": "framer-motion",
-        "transitions": "type: 'spring', stiffness: 300, damping: 30",
-        "micro_interactions": "Button hover lift, input focus ring expansion."
-      },
-      "icons": {
-        "library": "lucide-react",
-        "style": "Stroke width 1.5px or 2px. Color: slate-600."
-      },
-      "texture": {
-        "noise": "Optional subtle noise overlay on the sidebar or hero background to reduce digital flatness."
-      }
-    },
-    "accessibility": {
-      "contrast": "Ensure 4.5:1 contrast ratio for normal text.",
-      "focus": "Visible focus rings on all interactive elements.",
-      "attributes": "All interactive elements must have data-testid."
+    "surfaces": {
+      "glass": "bg-white/70 backdrop-blur-xl border border-white/40 shadow-sm",
+      "card": "bg-white border border-slate-200 shadow-sm rounded-xl",
+      "tracing_beam_card": "relative rounded-xl border border-slate-200 overflow-hidden group hover:border-blue-500/50 transition-colors"
     }
   },
-  "content_strategy": {
-    "tone": "Professional, Direct, Reassuring.",
-    "microcopy": {
-      "success": "Campaign started successfully.",
-      "error": "We couldn't connect to that account.",
-      "empty_state": "No campaigns yet. Start your first rotation."
+  "typography": {
+    "font_family": {
+      "heading": "font-sans",
+      "body": "font-sans"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-bold text-slate-900",
+      "h2": "text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900",
+      "h3": "text-2xl sm:text-3xl tracking-tight font-semibold text-slate-900",
+      "h4": "text-lg sm:text-xl font-semibold text-slate-900",
+      "body": "text-base sm:text-lg text-slate-600 leading-relaxed",
+      "label": "text-xs font-bold tracking-[0.2em] uppercase text-blue-600"
     }
+  },
+  "layout_spacing": {
+    "section_padding": "py-20 md:py-32",
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "card_padding": "p-6 md:p-8"
+  },
+  "motion_animations": {
+    "fade_up": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "duration": 0.5, "ease": [0.22, 1, 0.36, 1] }
+    },
+    "stagger_children": {
+      "transition": { "staggerChildren": 0.1 }
+    },
+    "hover_card": "hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ease-out",
+    "tabs_transition": "transition-opacity duration-300 ease-in-out"
+  },
+  "component_instructions": {
+    "LandingPage.jsx": {
+      "structure": [
+        "Header (Sticky, Glassmorphism, Links: /login, /register, etc.)",
+        "Hero (Headline, Subhead, Primary/Secondary CTAs, Dashboard Mockup image or HTML mockup, Floating Stats)",
+        "Trust Strip (Micro stats / Social proof)",
+        "Interactive Demo ('Explore RouteMail in Action' Tabs: Dashboard, Campaign, Drip, Warmup, Analytics - mock UI in pure HTML/Tailwind)",
+        "Features (5 sections: Multi-Account, Campaign Builder, Drip Campaigns, Email Warmup, Suppression - alternate left/right with text + image/mockup)",
+        "Use Cases (Grid of 5 personas: Agencies, Recruiters, Consultants, Founders, Sales)",
+        "Pricing (3 Tiers: Starter, Growth, CustomPlanCard)",
+        "Why RouteMail (List of benefits: Smart rotation, Warmup, etc.)",
+        "FAQ (Accordion for 5 questions)",
+        "Footer (Links to /blog, /privacy, /terms, /anti-spam, /gdpr, support email. NO 'Developed by Perfect Digitals')"
+      ],
+      "split_components": [
+        "HeroSection",
+        "InteractiveDemoTabs",
+        "FeatureSection",
+        "PricingSection",
+        "PricingCard",
+        "CustomPlanCard",
+        "UseCasesGrid",
+        "FAQAccordion"
+      ]
+    },
+    "Subscription.jsx": {
+      "structure": [
+        "Page Header (Current Plan, Renewal Date)",
+        "Usage Tracker (Contacts Used / Monthly Limit, Progress Bar)",
+        "Available Plans Grid (Starter, Growth, CustomPlanCard)",
+        "Helper Text Box ('A contact only counts once per month...')"
+      ],
+      "notes": "Must reuse the exact same <CustomPlanCard /> component as the landing page to ensure consistency."
+    },
+    "custom_plan_logic": {
+      "slabs": [
+        { "contacts": "15,000", "price": 199, "value": "15000" },
+        { "contacts": "20,000", "price": 249, "value": "20000" },
+        { "contacts": "30,000", "price": 349, "value": "30000" },
+        { "contacts": "50,000", "price": 499, "value": "50000" },
+        { "contacts": "75,000", "price": 699, "value": "75000" },
+        { "contacts": "100,000", "price": 899, "value": "100000" }
+      ],
+      "dropdown_instruction": "Implement a real <select> (or Shadcn Select). When selection changes, dynamically update the displayed price ($199/year etc). The CTA should pass this value to the existing stripe checkout logic."
+    },
+    "pricing_tiers": [
+      {
+        "name": "Starter",
+        "contacts": "4,000",
+        "price": "$99",
+        "period": "/year"
+      },
+      {
+        "name": "Growth",
+        "contacts": "10,000",
+        "price": "$149",
+        "period": "/year"
+      }
+    ]
   },
   "media": {
-    "image_urls": {
-      "hero_background": "https://images.unsplash.com/photo-1640551497504-ec05b9e50b50?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwd29ya3NwYWNlJTIwbGFwdG9wfGVufDB8fHx8MTc3MTUyODY1Mnww&ixlib=rb-4.1.0&q=85",
-      "feature_business_owner": "https://images.unsplash.com/photo-1758598497635-48cbbb1f6555?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxjb25maWRlbnQlMjBidXNpbmVzcyUyMG93bmVyJTIwb2ZmaWNlfGVufDB8fHx8MTc3MTUyODY1MXww&ixlib=rb-4.1.0&q=85",
-      "about_team": "https://images.unsplash.com/photo-1581090124321-d19ad6d7cd5a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwzfHxkaXZlcnNlJTIwdGVhbSUyMG1lZXRpbmclMjB3aGl0ZWJvYXJkfGVufDB8fHx8MTc3MTUyODY1M3ww&ixlib=rb-4.1.0&q=85"
+    "images": [
+      {
+        "category": "hero_dashboard_mockup",
+        "url": "https://static.prod-images.emergentagent.com/jobs/36cd76c4-54d5-47bd-90df-5015e893eeab/images/12763238044395b5e44fbf91a15d4a9377d7ffb7a3e0dc018e800486a4fe5a36.png",
+        "description": "High-end sleek UI mockup of an email marketing dashboard"
+      },
+      {
+        "category": "campaign_builder_mockup",
+        "url": "https://static.prod-images.emergentagent.com/jobs/36cd76c4-54d5-47bd-90df-5015e893eeab/images/c0ef01aa4c55e8d39894bafe0c6f4fa439a3170b9c4f3425c7274c0e90dc3c5c.png",
+        "description": "Minimalist UI interface mockup of a campaign builder"
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "instruction": "Use lucide-react for all standard icons. No external image logos needed unless explicitly provided."
     },
-    "placeholders": {
-      "logo": "Use a simple text logo 'ROTATION' in Manrope-ExtraBold."
-    }
+    "mockups_strategy": "For sections without generated images (Drip Campaigns, Warmup, Analytics, Suppression), strongly prefer building abstract, simplified UI mockups using pure HTML/Tailwind CSS blocks (glassmorphism cards, colored dots, progress bars, workflow node representations) rather than relying on placeholder images. This elevates the 'Premium SaaS' feel."
   },
-  "instructions_to_main_agent": [
-    "INSTALL FONTS: You MUST install '@fontsource/manrope', '@fontsource/public-sans', and '@fontsource/jetbrains-mono' immediately.",
-    "THEME SETUP: Ensure tailwind.config.js extends the font family to include these fonts.",
-    "LAYOUT: Use the 'Bento Grid' for the dashboard. Do not create a generic table layout.",
-    "COMPONENTS: Use Shadcn components for complex interactions (Dialog, Dropdown, Form). Customize them to remove the default rounded-xl and use rounded-md.",
-    "CHARTS: Use Recharts for the analytics. Keep them simple (BarChart, AreaChart).",
-    "PAGES: Create a Landing Page, Dashboard, Account Connection Page, and Campaign Creator.",
-    "TESTING: Add data-testid to every button, input, and link."
-  ],
-  "universal_guidelines": [
-    "Don't make generic centered layouts.",
-    "Create depth through subtle borders, not heavy shadows.",
-    "Use 2-3x more spacing than feels comfortable.",
-    "Every interaction needs micro-animations.",
-    "NEVER use AI assistant Emoji characters."
-  ]
+  "accessibility_and_testing": {
+    "data_testid": "MANDATORY. All interactive elements MUST have a semantic kebab-case data-testid (e.g., 'data-testid=\"start-free-trial-btn\"', 'data-testid=\"pricing-custom-select\"', 'data-testid=\"faq-accordion-1\"').",
+    "contrast": "Ensure minimum 4.5:1 contrast ratio. Gray text should be slate-600 minimum."
+  }
 }
