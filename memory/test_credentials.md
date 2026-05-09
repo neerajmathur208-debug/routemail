@@ -8,6 +8,14 @@
 - **email_verified:** true
 - **auth_method:** email
 
+## Additional Super Admin
+- **Email:** dhruvmathur@perfectdigitals.ie
+- **Password:** Perfect208#
+- **user_id:** user_dfda57d9d20a
+- **role:** super_admin
+- **email_verified:** true
+- **auth_method:** email
+
 ## Pre-seeded verified user (for drip campaign + general API testing)
 - **Email:** drip.tester@example.com
 - **Password:** DripTest123!
