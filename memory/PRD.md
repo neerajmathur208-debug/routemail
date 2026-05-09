@@ -572,6 +572,17 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Open/Click tracking** — INTENTIONALLY SKIPPED per user choice (option `c`).
 - [x] Tested: pytest **20/20 PASSED** for new features (incl. add_unsubscribe_footer persistence after fix), 58/58 regression on iteration_30/drip/dne. Frontend Playwright: subscription card grid, monthly tracker, all forbidden testids absent (cancel-/downgrade-*).
 
+### ✅ Landing Page + Subscription UI Redesign (Feb 2026)
+- [x] **LandingPage** fully rewritten — sticky glassmorphism header, hero with dashboard mockup + floating stat cards, trust strip (12M+/98.4%/1.5k+/47), Interactive Demo with 5 tabs (Dashboard / Campaign Builder / Drip / Warmup / Analytics) all framer-motion AnimatePresence with zero API calls, 5 alternating feature sections each with stylized HTML mockup, 5-persona Use Cases grid, refreshed Pricing (Starter / Growth featured / Custom), Why RouteMail, FAQ accordion (5), CTA banner, footer with policy links + `support@routemail.co`. **Removed "Developed by Perfect Digitals" everywhere.**
+- [x] **Shared CustomPlanCard component** — `/app/frontend/src/components/CustomPlanCard.jsx`, two variants:
+  - `public` (landing) → CTA routes to `/register?plan=<slug>`
+  - `dashboard` (Subscription page) → CTA fires `/api/subscription/create-checkout` with the matching Stripe price_id
+  - Pulls slabs from `/api/subscription/prices` with a static fallback. Dropdown updates `custom-plan-price` live.
+- [x] **Subscription page** simplified — replaced the inline 6-slab grid with `<CustomPlanCard variant="dashboard" />`. Existing tracker, current-plan banner, support note kept as-is.
+- [x] **Pricing copy** — only based on monthly unique contacts. No "email accounts" lever in any plan card. Helper banner: "Plans are based on monthly unique contacts contacted, not total emails sent. Unlimited follow-ups to the same contact. Only new unique recipients count."
+- [x] **Mobile responsive** — verified at 390x844 viewport: no horizontal overflow, hero CTAs stack vertically, pricing cards stack to 1 column, demo tabs wrap.
+- [x] **Tested**: frontend 100% verified by testing agent (iteration_32), all testids present, Stripe checkout request body intercepted and confirmed correct price_id (e.g. custom_50k → `price_1TV8zTD2HZgi5NSCmPpqjRtm`), no regression on previous backend behaviour.
+
 ### 🔄 In Progress
 - None currently
 
