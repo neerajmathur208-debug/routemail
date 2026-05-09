@@ -583,6 +583,13 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Mobile responsive** — verified at 390x844 viewport: no horizontal overflow, hero CTAs stack vertically, pricing cards stack to 1 column, demo tabs wrap.
 - [x] **Tested**: frontend 100% verified by testing agent (iteration_32), all testids present, Stripe checkout request body intercepted and confirmed correct price_id (e.g. custom_50k → `price_1TV8zTD2HZgi5NSCmPpqjRtm`), no regression on previous backend behaviour.
 
+### ✅ Landing Page Corrections — Real Logo + Real Demo Screenshots (Feb 2026)
+- [x] **Original RouteMail logo restored** — Header + Footer now use `<img src="/routemail-logo.png" />` (the pre-existing 65 KB asset). No more AI-generated gradient/Mail-icon mark.
+- [x] **Interactive Demo replaced with real platform screenshots** — 6 tabs (Dashboard / Campaign Builder / Drip Campaigns / Email Accounts / Warmup / Analytics) each show a real platform screenshot wrapped in a browser-chrome frame (3 traffic-light dots + `app.routemail.co/...` URL bar) with rounded corners, soft shadow, and a radial-gradient glow. Smooth `framer-motion` transitions between panels.
+- [x] **PII-masked screenshots** — captured live via Playwright while logged in as the test user, with TreeWalker substitution masking the real email/name to safe placeholders (`maya@routemail.co`, `sales@routemail.co`, `alex@routemail.co`, `demo@routemail.co`, `Demo User`) before each shot. Verified by tesseract OCR — `drip.tester@example.com` is absent from every screenshot.
+- [x] **Removed ~255 lines of dead mock UI** (`DemoDashboard`, `DemoCampaignBuilder`, `DemoDripCampaigns`, `DemoWarmup`, `DemoAnalytics`, `Field`, `Label` helpers).
+- [x] Tested: **29/29 desktop + mobile regression PASSED** (iteration_33). All 7 static PNGs return 200 OK; mobile 390x844 has no horizontal overflow.
+
 ### 🔄 In Progress
 - None currently
 
