@@ -1,1183 +1,1306 @@
-import { motion } from "framer-motion";
-import { useNavigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Mail,
-  Upload,
-  RefreshCw,
-  Shield,
-  BarChart3,
-  Check,
   ArrowRight,
+  Play,
+  Check,
+  Crown,
+  Send,
+  Workflow,
+  Activity,
+  ShieldCheck,
+  Layers,
   Users,
   Briefcase,
+  Building2,
   Target,
-  Calendar,
-  MessageSquare,
-  Building,
+  UserPlus,
   Sparkles,
-  Lock,
+  Plus,
+  Minus,
   Clock,
+  Repeat,
+  Zap,
+  Shield,
   TrendingUp,
-  Inbox,
-  Send,
-  Layers,
+  CheckCircle2,
+  XCircle,
+  ChevronDown,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../components/ui/accordion";
+import CustomPlanCard from "../components/CustomPlanCard";
 
-export default function LandingPage() {
-  const navigate = useNavigate();
-  const [currency, setCurrency] = useState("usd");
+// ────────────────────────────────────────────────────────────────────────────
+// Animation tokens
+// ────────────────────────────────────────────────────────────────────────────
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-50px" },
+  transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+};
 
-  useEffect(() => {
-    detectCountry();
-  }, []);
+// ────────────────────────────────────────────────────────────────────────────
+// Header
+// ────────────────────────────────────────────────────────────────────────────
+function Header({ onCtaClick, navigate }) {
+  return (
+    <header
+      className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-slate-200/60"
+      data-testid="landing-header"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <Link to="/" className="flex items-center gap-2 group" data-testid="landing-logo">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <Mail className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-bold text-slate-900">RouteMail</span>
+        </Link>
 
-  const detectCountry = async () => {
-    try {
-      const response = await fetch("https://ipapi.co/json/");
-      const data = await response.json();
-      if (data.country_code === "IN") {
-        setCurrency("inr");
-      }
-    } catch (error) {
-      console.log("Could not detect country, defaulting to USD");
-    }
-  };
+        <nav className="hidden md:flex items-center gap-8 text-sm text-slate-600">
+          <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
+          <a href="#demo" className="hover:text-slate-900 transition-colors">Demo</a>
+          <a href="#pricing" className="hover:text-slate-900 transition-colors">Pricing</a>
+          <a href="#faq" className="hover:text-slate-900 transition-colors">FAQ</a>
+          <Link to="/blog" className="hover:text-slate-900 transition-colors">Blog</Link>
+        </nav>
 
-  // Get display price based on geo
-  const getPrice = (plan) => {
-    if (currency === "inr") {
-      return plan === "starter" ? "₹5,000" : "₹12,000";
-    }
-    return plan === "starter" ? "$99" : "$149";
-  };
-  
-  // "Start Free" button - redirects to register page
-  const handleStartFree = () => {
-    navigate("/register");
-  };
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/login")}
+            className="hidden sm:inline-flex text-slate-600 hover:text-slate-900"
+            data-testid="header-login-btn"
+          >
+            Sign in
+          </Button>
+          <Button
+            onClick={onCtaClick}
+            className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white"
+            data-testid="header-start-trial-btn"
+          >
+            Start Free Trial
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}
 
-  // Handle plan-specific signup - pass plan in query params
-  const handleSelectPlan = (plan) => {
-    if (plan === "free") {
-      navigate("/register");
-    } else {
-      navigate(`/register?plan=${plan}`);
-    }
-  };
+// ────────────────────────────────────────────────────────────────────────────
+// Hero
+// ────────────────────────────────────────────────────────────────────────────
+function Hero({ onPrimary, onSecondary }) {
+  return (
+    <section
+      className="relative overflow-hidden border-b border-slate-200/60"
+      data-testid="hero-section"
+    >
+      {/* Background grid + radial glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.10),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(59,130,246,0.08),transparent_50%)] pointer-events-none" />
+      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(15,23,42,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.04)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_75%)] pointer-events-none" />
 
-  const painPoints = [
-    "Sending limits on a single email account",
-    "Emails landing in spam",
-    "Manual follow-ups taking hours",
-    "Complicated cold email tools built for large teams",
-    "Overpriced software with features you'll never use",
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 md:pt-24 md:pb-28">
+        <motion.div
+          initial="initial"
+          animate="whileInView"
+          variants={{
+            whileInView: { transition: { staggerChildren: 0.08 } },
+          }}
+          className="max-w-3xl"
+        >
+          <motion.div variants={fadeUp}>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold tracking-wide mb-6">
+              <Sparkles size={12} />
+              Multi-account email outreach, finally safe
+            </div>
+          </motion.div>
+
+          <motion.h1
+            variants={fadeUp}
+            className="text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-bold text-slate-900 leading-[1.05]"
+            data-testid="hero-headline"
+          >
+            Send Bulk Emails Safely from{" "}
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-violet-600">
+              Multiple Accounts
+            </span>
+          </motion.h1>
+
+          <motion.p
+            variants={fadeUp}
+            className="mt-6 text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl"
+            data-testid="hero-subhead"
+          >
+            RouteMail helps SMEs, agencies, recruiters, and consultants send outreach
+            campaigns through multiple connected email accounts with smart rotation,
+            scheduling, drip campaigns, warmup, and deliverability controls.
+          </motion.p>
+
+          <motion.div variants={fadeUp} className="mt-8 flex flex-col sm:flex-row gap-3">
+            <Button
+              size="lg"
+              onClick={onPrimary}
+              className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white h-12 px-6 text-base"
+              data-testid="hero-start-trial-btn"
+            >
+              Start Free Trial
+              <ArrowRight size={18} className="ml-1.5" />
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={onSecondary}
+              className="h-12 px-6 text-base border-slate-300"
+              data-testid="hero-watch-demo-btn"
+            >
+              <Play size={16} className="mr-2" />
+              Watch Demo
+            </Button>
+          </motion.div>
+
+          <motion.div
+            variants={fadeUp}
+            className="mt-6 flex items-center gap-4 text-xs text-slate-500"
+          >
+            <span className="inline-flex items-center gap-1">
+              <Check size={14} className="text-emerald-500" />
+              No credit card required
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Check size={14} className="text-emerald-500" />
+              14-day free trial
+            </span>
+          </motion.div>
+        </motion.div>
+
+        {/* Dashboard mockup + floating stat cards */}
+        <motion.div
+          {...fadeUp}
+          transition={{ delay: 0.25, duration: 0.6 }}
+          className="relative mt-14 md:mt-20"
+        >
+          <DashboardMockup />
+
+          {/* Floating stat cards */}
+          <motion.div
+            initial={{ opacity: 0, y: 20, x: -20 }}
+            whileInView={{ opacity: 1, y: 0, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+            className="hidden md:flex absolute -left-4 lg:-left-10 top-16 items-center gap-3 px-4 py-3 rounded-2xl bg-white/80 backdrop-blur-xl shadow-lg border border-white/60"
+            data-testid="hero-stat-1"
+          >
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
+              <TrendingUp size={18} className="text-emerald-600" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Deliverability</div>
+              <div className="text-base font-bold text-slate-900">98.4%</div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20, x: 20 }}
+            whileInView={{ opacity: 1, y: 0, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.65, duration: 0.5 }}
+            className="hidden md:flex absolute -right-2 lg:-right-6 bottom-12 items-center gap-3 px-4 py-3 rounded-2xl bg-white/80 backdrop-blur-xl shadow-lg border border-white/60"
+            data-testid="hero-stat-2"
+          >
+            <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center">
+              <Repeat size={18} className="text-violet-600" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Accounts rotating</div>
+              <div className="text-base font-bold text-slate-900">12 inboxes</div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Hero Mockup (HTML/Tailwind dashboard preview)
+// ────────────────────────────────────────────────────────────────────────────
+function DashboardMockup() {
+  return (
+    <div className="relative rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-blue-500/10 overflow-hidden">
+      {/* Browser chrome */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+        </div>
+        <div className="ml-3 px-3 py-1 rounded-md bg-white border border-slate-200 text-xs text-slate-500 font-mono">
+          app.routemail.co/dashboard
+        </div>
+      </div>
+      {/* Body */}
+      <div className="grid md:grid-cols-[200px_1fr]">
+        {/* Sidebar */}
+        <div className="hidden md:block bg-slate-50 border-r border-slate-200 p-4">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-600 to-violet-600" />
+            <span className="text-sm font-bold text-slate-900">RouteMail</span>
+          </div>
+          {[
+            { label: "Dashboard", active: true },
+            { label: "Email Accounts" },
+            { label: "Email Lists" },
+            { label: "Campaign" },
+            { label: "Drip Campaigns" },
+            { label: "Warmup" },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs mb-1 ${
+                item.active
+                  ? "bg-blue-50 text-blue-700 font-semibold"
+                  : "text-slate-500"
+              }`}
+            >
+              <span className="w-1 h-1 rounded-full bg-current" />
+              {item.label}
+            </div>
+          ))}
+        </div>
+        {/* Main */}
+        <div className="p-5 md:p-6">
+          {/* Stat strip */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {[
+              { label: "Sent today", value: "2,418", color: "blue" },
+              { label: "Delivered", value: "98.4%", color: "emerald" },
+              { label: "Replies", value: "164", color: "violet" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="rounded-xl border border-slate-200 p-3"
+              >
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                  {s.label}
+                </div>
+                <div className="text-lg md:text-xl font-bold text-slate-900 mt-0.5">
+                  {s.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Campaign rows */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-700">Campaign Activity</div>
+              <div className="text-[10px] text-slate-500">Latest 4</div>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {[
+                { name: "Q1 Outreach", status: "running", color: "blue", pct: 62 },
+                { name: "Founder Intro", status: "scheduled", color: "violet", pct: 0 },
+                { name: "Re-engagement", status: "completed", color: "emerald", pct: 100 },
+                { name: "VC partners", status: "draft", color: "slate", pct: 0 },
+              ].map((c) => (
+                <div key={c.name} className="px-4 py-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="text-xs font-medium text-slate-900 truncate w-28">
+                      {c.name}
+                    </div>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-${c.color}-100 text-${c.color}-700`}
+                    >
+                      {c.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <span>{c.pct}%</span>
+                    <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full bg-${c.color}-500`}
+                        style={{ width: `${c.pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Trust strip (micro stats / social proof)
+// ────────────────────────────────────────────────────────────────────────────
+function TrustStrip() {
+  const stats = [
+    { v: "12M+", l: "Emails routed/year" },
+    { v: "98.4%", l: "Avg deliverability" },
+    { v: "1.5k+", l: "Inboxes warmed" },
+    { v: "47", l: "Countries" },
   ];
+  return (
+    <section className="border-b border-slate-200/60 bg-slate-50/50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+        {stats.map((s) => (
+          <div key={s.l}>
+            <div className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
+              {s.v}
+            </div>
+            <div className="text-xs text-slate-500 mt-1">{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-  const howItWorks = [
-    {
-      step: "01",
-      icon: Mail,
-      title: "Connect Multiple Email Accounts",
-      description: "Gmail, Outlook, or custom domains — plug in as many as you want.",
-    },
-    {
-      step: "02",
-      icon: Upload,
-      title: "Upload Your Prospect List",
-      description: "CSV upload. Clean, simple, fast.",
-    },
-    {
-      step: "03",
-      icon: RefreshCw,
-      title: "We Rotate & Send Automatically",
-      description: "Emails are distributed across accounts to protect deliverability and increase inbox placement.",
-    },
-    {
-      step: "04",
-      icon: BarChart3,
-      title: "Track Performance",
-      description: "Monitor sends, opens, replies, and account health in one dashboard.",
-    },
-  ];
+// ────────────────────────────────────────────────────────────────────────────
+// Interactive Demo (5 tabs)
+// ────────────────────────────────────────────────────────────────────────────
+const DEMO_TABS = [
+  { id: "dashboard",  label: "Dashboard",        icon: Layers },
+  { id: "campaign",   label: "Campaign Builder", icon: Send },
+  { id: "drip",       label: "Drip Campaigns",   icon: Workflow },
+  { id: "warmup",     label: "Warmup",           icon: Activity },
+  { id: "analytics",  label: "Analytics",        icon: BarChart3 },
+];
 
-  const differentiators = [
-    "Built specifically for small businesses",
-    "Rotational sending protects domain reputation",
-    "No unnecessary enterprise complexity",
-    "Clean, intuitive dashboard",
-    "Affordable pricing",
-    "Scales as you grow",
-  ];
-
-  const useCases = [
-    { icon: Building, text: "Agencies doing outbound prospecting" },
-    { icon: Briefcase, text: "Local service businesses" },
-    { icon: Users, text: "Recruiters" },
-    { icon: Target, text: "B2B consultants" },
-    { icon: Sparkles, text: "Founders doing manual outreach" },
-    { icon: Calendar, text: "Businesses generating appointments via cold email" },
-  ];
-
-  const deliverabilityFeatures = [
-    "Sending limits per account",
-    "Natural sending rotation",
-    "Warm-up readiness",
-    "Clean sending patterns",
-    "Spam-risk reduction",
-  ];
-
-  const dashboardSteps = [
-    "Add accounts",
-    "Upload leads",
-    "Launch campaign",
-    "Monitor replies",
-  ];
+function InteractiveDemo() {
+  const [active, setActive] = useState("dashboard");
 
   return (
-    <div className="min-h-screen bg-[#faf9f7]">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-[1300px] mx-auto px-6 h-28 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img 
-              src="/routemail-logo.png" 
-              alt="RouteMail" 
-              className="h-24 sm:h-24 md:h-[100px] w-auto object-contain"
-            />
+    <section
+      id="demo"
+      className="border-b border-slate-200/60 py-20 md:py-28"
+      data-testid="interactive-demo-section"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div {...fadeUp} className="text-center max-w-2xl mx-auto mb-10">
+          <p className="text-xs font-bold tracking-[0.2em] uppercase text-blue-600 mb-3">
+            Interactive Tour
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
+            Explore RouteMail in Action
+          </h2>
+          <p className="mt-3 text-base sm:text-lg text-slate-600 leading-relaxed">
+            Click through the most-loved corners of the product.
+          </p>
+        </motion.div>
+
+        {/* Tabs */}
+        <div className="flex flex-wrap justify-center gap-2 mb-8" data-testid="demo-tabs">
+          {DEMO_TABS.map((t) => {
+            const Icon = t.icon;
+            const isActive = active === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActive(t.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border ${
+                  isActive
+                    ? "bg-slate-900 text-white border-slate-900 shadow-lg"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
+                }`}
+                data-testid={`demo-tab-${t.id}`}
+              >
+                <Icon size={14} />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab content */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/5 overflow-hidden min-h-[420px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={active}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+              className="p-5 md:p-8"
+              data-testid={`demo-panel-${active}`}
+            >
+              {active === "dashboard" && <DemoDashboard />}
+              {active === "campaign" && <DemoCampaignBuilder />}
+              {active === "drip" && <DemoDripCampaigns />}
+              {active === "warmup" && <DemoWarmup />}
+              {active === "analytics" && <DemoAnalytics />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DemoDashboard() {
+  return (
+    <div className="grid md:grid-cols-3 gap-4">
+      <div className="md:col-span-2 space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { l: "Connected Accounts", v: "12" },
+            { l: "Active Campaigns", v: "4" },
+            { l: "Sent Today", v: "2,418" },
+          ].map((s) => (
+            <div key={s.l} className="rounded-xl border border-slate-200 p-4">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                {s.l}
+              </div>
+              <div className="text-xl font-bold text-slate-900">{s.v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
+            Campaign Activity
           </div>
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={() => navigate("/blog")}
-              variant="ghost"
-              className="text-slate-600 hover:text-slate-900"
-              data-testid="nav-blog-btn"
-            >
-              Blog
-            </Button>
-            <Button
-              onClick={() => navigate("/login")}
-              variant="ghost"
-              className="text-slate-600 hover:text-slate-900"
-              data-testid="nav-login-btn"
-            >
-              Sign In
-            </Button>
-            <Button
-              onClick={handleStartFree}
-              className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6"
-              data-testid="nav-trial-btn"
-            >
-              Start Free
-            </Button>
+          <div className="divide-y divide-slate-100">
+            {[
+              { n: "Q1 Outreach", s: "running", t: "blue", p: 62 },
+              { n: "Founder Intro", s: "scheduled", t: "violet", p: 12 },
+              { n: "Re-engagement", s: "completed", t: "emerald", p: 100 },
+            ].map((c) => (
+              <div key={c.n} className="px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-slate-900 w-32 truncate">{c.n}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] bg-${c.t}-100 text-${c.t}-700`}>{c.s}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                  {c.p}%
+                  <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full bg-${c.t}-500`} style={{ width: `${c.p}%` }} />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </nav>
+      </div>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-xs font-semibold text-slate-700 mb-3">Plan & Usage</div>
+          <div className="text-sm font-bold text-slate-900 flex items-center gap-1">
+            <Crown size={14} className="text-amber-500" /> Growth
+          </div>
+          <div className="mt-3">
+            <div className="flex items-baseline justify-between text-xs">
+              <span className="text-slate-500">Contacts</span>
+              <span className="text-slate-700 font-semibold">4,235 / 10,000</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
+              <div className="h-full bg-emerald-500" style={{ width: "42%" }} />
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-xs font-semibold text-slate-700 mb-2">Today</div>
+          <div className="space-y-1.5 text-xs text-slate-600">
+            <div className="flex justify-between"><span>Sent</span><strong className="text-slate-900">2,418</strong></div>
+            <div className="flex justify-between"><span>Delivered</span><strong className="text-emerald-600">98.4%</strong></div>
+            <div className="flex justify-between"><span>Bounces</span><strong className="text-rose-600">12</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* 1️⃣ HERO SECTION */}
-      <section className="pt-40 pb-24 px-6">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center max-w-4xl mx-auto"
-          >
-            <h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-6xl text-slate-900 leading-tight">
-              Send Bulk Emails Safely
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">
-                from Multiple Accounts
+function DemoCampaignBuilder() {
+  return (
+    <div className="grid md:grid-cols-[1.1fr_1fr] gap-6">
+      <div className="space-y-3">
+        <Field label="Campaign Name" value="Q1 Outreach 2026" />
+        <Field label="From Name" value="Maya at RouteMail" />
+        <Field label="Email List" value="Founders – 4,582 contacts" />
+        <Field label="Subject Line" value='"{{first_name}}, quick question about {{company}}"' />
+        <div>
+          <Label>Variables</Label>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {["{{first_name}}", "{{company}}", "{{role}}", "{{city}}"].map((v) => (
+              <span key={v} className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-mono">
+                {v}
               </span>
-            </h1>
-            <p className="mt-6 text-xl text-slate-600 font-medium">
-              A simple rotational email tool built for SME businesses.
-            </p>
-            <p className="mt-4 text-lg text-slate-500 max-w-2xl mx-auto leading-relaxed">
-              Connect multiple email accounts. Upload your list.
-              We rotate, send, and optimise delivery — so your emails land in inboxes, not spam.
-            </p>
-            <div className="mt-10 flex items-center justify-center">
-              <Button
-                onClick={handleStartFree}
-                size="lg"
-                className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-10 py-6 text-lg rounded-full shadow-lg shadow-blue-500/25"
-                data-testid="hero-get-started-btn"
-              >
-                Start Free Trial
-                <ArrowRight size={20} className="ml-2" />
-              </Button>
-            </div>
-          </motion.div>
-
-          {/* Hero Video/Animation Preview */}
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3 }}
-            className="mt-20"
-          >
-            <div className="relative bg-gradient-to-br from-slate-100 to-slate-50 rounded-[20px] p-2 shadow-2xl shadow-slate-300/50 max-w-[950px] mx-auto">
-              <div className="bg-white rounded-[16px] overflow-hidden">
-                {/* Browser Chrome */}
-                <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
-                  <div className="w-3 h-3 rounded-full bg-red-400" />
-                  <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                  <div className="w-3 h-3 rounded-full bg-green-400" />
-                  <div className="flex-1 flex justify-center">
-                    <div className="bg-white rounded-md px-4 py-1 text-xs text-slate-400 border border-slate-200">
-                      app.rotation.io/dashboard
-                    </div>
-                  </div>
-                </div>
-                {/* Video Container - Animated Product Demo */}
-                <div className="aspect-[16/9] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
-                  {/* Animated Dashboard Simulation */}
-                  <div className="absolute inset-0 p-6">
-                    {/* Sidebar */}
-                    <div className="absolute left-0 top-0 bottom-0 w-16 bg-slate-800/50 flex flex-col items-center py-6 gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500" />
-                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
-                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
-                      <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
-                    </div>
-                    {/* Main Content */}
-                    <div className="ml-20 h-full flex flex-col">
-                      {/* Stats Row */}
-                      <div className="grid grid-cols-4 gap-3 mb-4">
-                        <motion.div 
-                          animate={{ opacity: [0.5, 1, 0.5] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="bg-gradient-to-br from-blue-500/20 to-violet-500/20 rounded-xl p-3 border border-blue-500/30"
-                        >
-                          <p className="text-[10px] text-blue-300">Connected</p>
-                          <p className="text-xl font-bold text-white">11</p>
-                        </motion.div>
-                        <div className="bg-slate-700/30 rounded-xl p-3 border border-slate-600/30">
-                          <p className="text-[10px] text-slate-400">Contacts</p>
-                          <p className="text-xl font-bold text-white">2.4k</p>
-                        </div>
-                        <motion.div 
-                          animate={{ scale: [1, 1.02, 1] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                          className="bg-slate-700/30 rounded-xl p-3 border border-emerald-500/30"
-                        >
-                          <p className="text-[10px] text-emerald-400">Sent Today</p>
-                          <p className="text-xl font-bold text-emerald-400">847</p>
-                        </motion.div>
-                        <div className="bg-slate-700/30 rounded-xl p-3 border border-slate-600/30">
-                          <p className="text-[10px] text-slate-400">Campaigns</p>
-                          <p className="text-xl font-bold text-white">8</p>
-                        </div>
-                      </div>
-                      {/* Chart Area */}
-                      <div className="flex-1 bg-slate-800/30 rounded-xl p-4 border border-slate-700/30">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs text-slate-400">Sending Activity</span>
-                          <span className="text-[10px] text-slate-500">Last 7 days</span>
-                        </div>
-                        <div className="flex items-end gap-2 h-24">
-                          {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                            <motion.div
-                              key={i}
-                              initial={{ height: 0 }}
-                              animate={{ height: `${h}%` }}
-                              transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity, repeatDelay: 3 }}
-                              className="flex-1 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t opacity-80"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      {/* Activity Row */}
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/30">
-                          <p className="text-[10px] text-slate-400 mb-2">Recent Campaigns</p>
-                          <div className="space-y-2">
-                            <motion.div 
-                              animate={{ x: [0, 2, 0] }}
-                              transition={{ duration: 2, repeat: Infinity }}
-                              className="flex items-center gap-2"
-                            >
-                              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                              <span className="text-[10px] text-slate-300">Q4 Outreach</span>
-                              <span className="text-[10px] text-emerald-400 ml-auto">Running</span>
-                            </motion.div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-blue-400" />
-                              <span className="text-[10px] text-slate-300">Holiday Promo</span>
-                              <span className="text-[10px] text-blue-400 ml-auto">Scheduled</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/30">
-                          <p className="text-[10px] text-slate-400 mb-2">Account Rotation</p>
-                          <div className="flex items-center gap-1">
-                            {[1,2,3,4].map((_, i) => (
-                              <motion.div
-                                key={i}
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
-                                className="flex-1 h-2 rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
-                              />
-                            ))}
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-2">Auto-rotating across 4 accounts</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Play overlay hint */}
-                  <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-1.5">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] text-white/80">Live Preview</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* 2️⃣ DASHBOARD PREVIEW (Moved here - right after Hero) */}
-      <section className="py-24 px-6 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-14"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-6">
-              Simple Dashboard. Zero Learning Curve.
-            </h2>
-            <div className="flex flex-wrap items-center justify-center gap-4 mt-8">
-              {dashboardSteps.map((step, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-violet-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-500/25">
-                    {index + 1}
-                  </div>
-                  <span className="text-slate-700 font-semibold">{step}</span>
-                  {index < dashboardSteps.length - 1 && (
-                    <ArrowRight size={18} className="text-slate-300 ml-2" />
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-slate-500 mt-6 text-lg">No technical knowledge required.</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className="relative max-w-5xl mx-auto"
-          >
-            <div className="bg-white rounded-[24px] shadow-2xl shadow-slate-300/60 overflow-hidden border border-slate-200">
-              {/* Browser Chrome */}
-              <div className="flex items-center gap-2 px-5 py-4 bg-slate-100 border-b border-slate-200">
-                <div className="w-3 h-3 rounded-full bg-red-400" />
-                <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                <div className="w-3 h-3 rounded-full bg-green-400" />
-                <div className="flex-1 flex justify-center">
-                  <div className="bg-white rounded-lg px-6 py-1.5 text-sm text-slate-500 border border-slate-200 shadow-sm">
-                    app.rotation.io/dashboard
-                  </div>
-                </div>
-              </div>
-              
-              {/* Dashboard Content */}
-              <div className="p-6 sm:p-8 bg-slate-50">
-                {/* Dashboard Header */}
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900">Welcome back, Sarah</h3>
-                    <p className="text-sm text-slate-500">Here's what's happening with your campaigns</p>
-                  </div>
-                  <button className="bg-gradient-to-r from-blue-600 to-violet-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg shadow-blue-500/25">
-                    + New Campaign
-                  </button>
-                </div>
-                
-                {/* Stats Grid - 3 cards only (removed Open Rate) */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Mail size={16} className="text-blue-600" />
-                      <span className="text-xs text-slate-500 font-medium">Accounts</span>
-                    </div>
-                    <p className="text-2xl font-bold text-slate-900">11</p>
-                    <p className="text-xs text-emerald-600 mt-1">All active</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users size={16} className="text-violet-600" />
-                      <span className="text-xs text-slate-500 font-medium">Contacts</span>
-                    </div>
-                    <p className="text-2xl font-bold text-slate-900">2,847</p>
-                    <p className="text-xs text-slate-400 mt-1">Across 3 lists</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Send size={16} className="text-emerald-600" />
-                      <span className="text-xs text-slate-500 font-medium">Sent Today</span>
-                    </div>
-                    <p className="text-2xl font-bold text-emerald-600">847</p>
-                    <p className="text-xs text-slate-400 mt-1">+12% from yesterday</p>
-                  </div>
-                </div>
-                
-                {/* Chart and Campaign List */}
-                <div className="grid lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="font-semibold text-slate-900">Sending Activity</span>
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">Last 7 days</span>
-                    </div>
-                    {/* Line Chart with Area Fill - Static Preview Only */}
-                    <div className="relative h-36">
-                      {/* Y-axis grid lines (subtle) */}
-                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                        {[0, 1, 2, 3].map((_, i) => (
-                          <div key={i} className="border-b border-slate-100 w-full" />
-                        ))}
-                      </div>
-                      
-                      {/* SVG Line Chart */}
-                      <svg className="w-full h-full" viewBox="0 0 400 120" preserveAspectRatio="none">
-                        <defs>
-                          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#8B5CF6" />
-                            <stop offset="100%" stopColor="#3B82F6" />
-                          </linearGradient>
-                          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.3" />
-                            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.05" />
-                          </linearGradient>
-                        </defs>
-                        {/* Area fill under the line */}
-                        <path
-                          d="M 0 90 C 30 90, 40 75, 57 75 C 74 75, 84 60, 114 60 C 144 60, 154 45, 171 45 C 188 45, 198 25, 228 25 C 258 25, 268 35, 285 35 C 302 35, 312 10, 342 10 C 372 10, 382 20, 400 20 L 400 120 L 0 120 Z"
-                          fill="url(#areaGradient)"
-                        />
-                        {/* Main line (smooth curve) */}
-                        <path
-                          d="M 0 90 C 30 90, 40 75, 57 75 C 74 75, 84 60, 114 60 C 144 60, 154 45, 171 45 C 188 45, 198 25, 228 25 C 258 25, 268 35, 285 35 C 302 35, 312 10, 342 10 C 372 10, 382 20, 400 20"
-                          fill="none"
-                          stroke="url(#lineGradient)"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        {/* Data points */}
-                        <circle cx="0" cy="90" r="3" fill="#8B5CF6" />
-                        <circle cx="57" cy="75" r="3" fill="#7C3AED" />
-                        <circle cx="114" cy="60" r="3" fill="#6D28D9" />
-                        <circle cx="171" cy="45" r="3" fill="#5B21B6" />
-                        <circle cx="228" cy="25" r="3" fill="#4C1D95" />
-                        <circle cx="285" cy="35" r="3" fill="#4338CA" />
-                        <circle cx="342" cy="10" r="3" fill="#3B82F6" />
-                        <circle cx="400" cy="20" r="3" fill="#2563EB" />
-                      </svg>
-                      
-                      {/* X-axis labels */}
-                      <div className="flex justify-between mt-2 px-0">
-                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
-                          <span key={i} className="text-[10px] text-slate-400">{day}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                    <span className="font-semibold text-slate-900">Active Campaigns</span>
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">Q4 Outreach</p>
-                          <p className="text-xs text-slate-400">847/2000 sent</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">Holiday Promo</p>
-                          <p className="text-xs text-slate-400">Scheduled for Dec 15</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                        <div className="w-2 h-2 rounded-full bg-slate-300" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">Newsletter #12</p>
-                          <p className="text-xs text-slate-400">Draft</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* 3️⃣ WHY THIS TOOL EXISTS */}
-      <section className="py-28 px-6 bg-white">
-        <div className="max-w-[1300px] mx-auto">
-          <div className="grid lg:grid-cols-2 gap-20 items-start">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true }}
-              className="lg:sticky lg:top-32"
-            >
-              <h2 className="font-heading font-extrabold text-4xl sm:text-5xl text-slate-900 leading-tight">
-                Why This Tool
-                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600 mt-2">
-                  Exists
-                </span>
-              </h2>
-              <p className="mt-6 text-slate-500 text-lg">
-                Small businesses face unique challenges with email outreach. We built this to solve them.
-              </p>
-              
-              {/* Bulk Email Platform Image */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                viewport={{ once: true }}
-                className="mt-10 hidden lg:block"
-              >
-                <img
-                  src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/qyxbl14u_pexels-burst-374074.jpg"
-                  alt="Professional working on bulk email campaigns"
-                  loading="lazy"
-                  className="w-full max-w-[450px] h-auto object-cover"
-                  style={{
-                    borderRadius: '16px',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-                  }}
-                />
-              </motion.div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              viewport={{ once: true }}
-              className="space-y-5"
-            >
-              {/* Mobile Image - Above pain points on mobile */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-                className="lg:hidden mb-8"
-              >
-                <img
-                  src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/qyxbl14u_pexels-burst-374074.jpg"
-                  alt="Professional working on bulk email campaigns"
-                  loading="lazy"
-                  className="w-full max-w-[450px] mx-auto h-auto object-cover"
-                  style={{
-                    borderRadius: '16px',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-                  }}
-                />
-              </motion.div>
-              
-              {painPoints.map((point, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                  className="group flex items-start gap-5 p-6 bg-gradient-to-br from-slate-50 to-white rounded-[20px] border border-slate-100 shadow-sm hover:shadow-lg hover:border-slate-200 transition-all duration-300"
-                >
-                  <div className="w-3 h-3 rounded-full bg-gradient-to-br from-rose-500 to-orange-500 flex-shrink-0 mt-1.5 group-hover:scale-110 transition-transform" />
-                  <span className="text-slate-700 text-base font-medium leading-relaxed">{point}</span>
-                </motion.div>
-              ))}
-              
-              <motion.div
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.6 }}
-                viewport={{ once: true }}
-                className="pt-8 border-t border-slate-100 mt-8"
-              >
-                <p className="text-xl font-bold text-slate-900 leading-relaxed">
-                  This tool is built specifically for SMEs who just want results — without complexity.
-                </p>
-              </motion.div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3️⃣ HOW IT WORKS */}
-      <section className="py-24 px-6 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
-              How It Works
-            </h2>
-            
-            {/* Email Icon Image - Centered */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              viewport={{ once: true }}
-              className="mt-8 mb-6 flex justify-center"
-            >
-              <img
-                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/edg8pmj5_jakub-zerdzicki-Xb1myRNASiM-unsplash.jpg"
-                alt="Email automation icon"
-                loading="lazy"
-                className="w-full max-w-[600px] h-auto object-cover block mx-auto"
-                style={{
-                  borderRadius: '16px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-                }}
-              />
-            </motion.div>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {howItWorks.map((item, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                className="bg-white rounded-[20px] p-6 shadow-sm hover:shadow-lg transition-all duration-300 group"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-4xl font-extrabold text-slate-200 group-hover:text-blue-200 transition-colors">
-                    {item.step}
-                  </span>
-                </div>
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-violet-100 rounded-2xl flex items-center justify-center mb-4">
-                  <item.icon size={24} className="text-blue-600" />
-                </div>
-                <h3 className="font-heading font-semibold text-lg text-slate-900 mb-2">
-                  {item.title}
-                </h3>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                  {item.description}
-                </p>
-              </motion.div>
             ))}
           </div>
         </div>
-      </section>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-xs font-semibold text-slate-700 mb-3">Preview</div>
+        <div className="rounded-lg bg-white border border-slate-200 p-4 text-sm text-slate-700 leading-relaxed">
+          <p>Hi <span className="bg-amber-100 px-0.5 rounded">Sara</span>,</p>
+          <p className="mt-2">
+            Quick question about <span className="bg-amber-100 px-0.5 rounded">Acme Corp</span> — we help founders like you keep deliverability high while scaling outreach. Worth a look?
+          </p>
+          <p className="mt-2 text-slate-400">— Maya at RouteMail</p>
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+          <Check size={14} className="text-emerald-500" />
+          Suppression list checked · 0 conflicts
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* 4️⃣ WHAT MAKES IT DIFFERENT */}
-      <section className="py-24 px-6 bg-white">
-        <div className="max-w-[1300px] mx-auto">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            {/* Smartphone Image - Left side */}
+function DemoDripCampaigns() {
+  const steps = [
+    { n: 1, label: "Intro", delay: "Day 0", color: "blue" },
+    { n: 2, label: "Soft follow-up", delay: "+ 3 days", color: "violet" },
+    { n: 3, label: "Case study", delay: "+ 7 days", color: "fuchsia" },
+    { n: 4, label: "Final nudge", delay: "+ 14 days", color: "rose" },
+  ];
+  return (
+    <div className="grid md:grid-cols-[1fr_300px] gap-6">
+      <div className="relative">
+        <div className="space-y-3">
+          {steps.map((s, i) => (
             <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-              className="flex justify-center lg:justify-start order-2 lg:order-1"
+              key={s.n}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className="relative rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-3"
             >
-              <img
-                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/x6qxmuht_mariia-shalabaieva-HyyHIYz_l0A-unsplash.jpg"
-                alt="Campaign control on mobile"
-                loading="lazy"
-                className="w-full max-w-[550px] h-auto object-cover block"
-                style={{
-                  borderRadius: '16px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-                }}
-              />
-            </motion.div>
-
-            {/* Content - Right side */}
-            <div className="order-1 lg:order-2">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-                className="text-center lg:text-left mb-12"
-              >
-                <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
-                  What Makes It Different?
-                </h2>
-              </motion.div>
-
-              <div className="grid sm:grid-cols-2 gap-4 mb-8">
-                {differentiators.map((item, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.4, delay: index * 0.05 }}
-                    viewport={{ once: true }}
-                    className="flex items-center gap-3 p-4 bg-emerald-50 rounded-2xl"
-                  >
-                    <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Check size={14} className="text-white" />
-                    </div>
-                    <span className="text-slate-800 font-medium">{item}</span>
-                  </motion.div>
-                ))}
+              <div className={`w-9 h-9 rounded-lg bg-${s.color}-100 text-${s.color}-700 flex items-center justify-center font-bold text-sm`}>
+                {s.n}
               </div>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-                viewport={{ once: true }}
-                className="text-lg text-center lg:text-left"
-              >
-                <span className="font-semibold text-slate-900">Most tools are built for venture-backed startups.</span>
-                <br />
-                <span className="text-slate-600">This one is built for businesses that actually sell.</span>
-              </motion.p>
-            </div>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-slate-900">{s.label}</div>
+                <div className="text-xs text-slate-500">{s.delay} after enrollment</div>
+              </div>
+              <Clock size={14} className="text-slate-400" />
+            </motion.div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-xs font-semibold text-slate-700 mb-2">Schedule</div>
+          <div className="text-xs text-slate-600">Mon–Fri · 09:00 – 17:00</div>
+          <div className="text-xs text-slate-500">Timezone: America/New_York</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-xs font-semibold text-slate-700 mb-1">Randomize send time</div>
+          <div className="flex items-center gap-2 text-xs text-emerald-600">
+            <Check size={12} /> Enabled · ±42 min jitter
           </div>
         </div>
-      </section>
+      </div>
+    </div>
+  );
+}
 
-      {/* 5️⃣ USE CASES */}
-      <section className="py-24 px-6 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-[1300px] mx-auto">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            {/* Content - Left side */}
-            <div>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-                className="text-center lg:text-left mb-12"
-              >
-                <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900">
-                  Built for Real Use Cases
-                </h2>
-              </motion.div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                {useCases.map((item, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.05 }}
-                    viewport={{ once: true }}
-                    className="flex items-center gap-4 p-5 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <item.icon size={22} className="text-blue-600" />
-                    </div>
-                    <span className="text-slate-700 font-medium">{item.text}</span>
-                  </motion.div>
-                ))}
+function DemoWarmup() {
+  const accounts = [
+    { e: "maya@routemail.co",   sent: 26, replies: 18, score: 92 },
+    { e: "sales@routemail.co",  sent: 31, replies: 22, score: 88 },
+    { e: "alex@routemail.co",   sent: 18, replies: 11, score: 76 },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Active warmup</div>
+          <div className="text-xl font-bold text-slate-900">3 inboxes</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Reply rate</div>
+          <div className="text-xl font-bold text-emerald-600">71%</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">RTM label hit</div>
+          <div className="text-xl font-bold text-slate-900">0.8%</div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
+          Warmup pool
+        </div>
+        <div className="divide-y divide-slate-100">
+          {accounts.map((a) => (
+            <div key={a.e} className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+                {a.e[0].toUpperCase()}
               </div>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-                viewport={{ once: true }}
-                className="text-slate-600 mt-10 text-lg text-center lg:text-left"
-              >
-                If outbound email is part of your growth strategy — this tool supports it properly.
-              </motion.p>
+              <div className="flex-1 text-sm text-slate-800">{a.e}</div>
+              <div className="text-xs text-slate-500">Sent {a.sent}</div>
+              <div className="text-xs text-slate-500">Replies {a.replies}</div>
+              <div className="flex items-center gap-2">
+                <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full bg-emerald-500" style={{ width: `${a.score}%` }} />
+                </div>
+                <span className="text-xs font-bold text-slate-900">{a.score}</span>
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            {/* Laptop Typing Image - Right side */}
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-              className="flex justify-center lg:justify-end"
-            >
-              <img
-                src="https://customer-assets.emergentagent.com/job_e1163c17-70e8-45be-a3be-f6a3cd76ae92/artifacts/ez8mlmjf_pexels-burst-374720.jpg"
-                alt="Professional typing on laptop for email campaigns"
-                loading="lazy"
-                className="w-full max-w-[450px] h-auto object-cover"
-                style={{
-                  borderRadius: '16px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-                }}
-              />
-            </motion.div>
+function DemoAnalytics() {
+  const bars = [38, 52, 41, 67, 73, 58, 81, 92, 64, 70, 88, 95];
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { l: "Total sent", v: "84,212", t: "blue" },
+          { l: "Delivered", v: "98.4%", t: "emerald" },
+          { l: "Open rate", v: "44.2%", t: "violet" },
+          { l: "Reply rate", v: "11.6%", t: "fuchsia" },
+        ].map((s) => (
+          <div key={s.l} className="rounded-xl border border-slate-200 p-4">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">{s.l}</div>
+            <div className={`text-xl font-bold text-${s.t}-700`}>{s.v}</div>
           </div>
-        </div>
-      </section>
-
-      {/* 6️⃣ DELIVERABILITY SECTION */}
-      <section className="py-32 px-6 bg-gradient-to-br from-blue-600 via-blue-700 to-violet-700">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/20 backdrop-blur-sm rounded-full text-white text-sm font-semibold mb-8">
-              <Lock size={18} />
-              Deliverability First
-            </div>
-            <h2 className="font-heading font-black text-4xl sm:text-5xl lg:text-6xl text-white mb-6 leading-tight">
-              Your Emails Actually Land
-            </h2>
-            <p className="text-blue-100 text-xl max-w-2xl mx-auto leading-relaxed">
-              We prioritize inbox placement over volume. Every feature is designed to protect your sender reputation.
-            </p>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-5 max-w-5xl mx-auto mb-16">
-            {deliverabilityFeatures.map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, delay: index * 0.08 }}
-                viewport={{ once: true }}
-                className="flex items-center gap-3 p-5 bg-white/15 backdrop-blur-sm rounded-2xl text-white border border-white/20 hover:bg-white/25 transition-all duration-300"
-              >
-                <Shield size={20} className="text-blue-200 flex-shrink-0" />
-                <span className="text-sm font-medium">{feature}</span>
-              </motion.div>
-            ))}
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            viewport={{ once: true }}
-            className="text-center"
-          >
-            <p className="text-2xl sm:text-3xl text-white font-bold leading-relaxed max-w-3xl mx-auto">
-              Because sending more emails is useless if they don't land in the inbox.
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* 7️⃣ PRICING */}
-      <section className="py-28 px-6 bg-white">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center mb-14"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-4">
-              Simple, Transparent Pricing
-            </h2>
-            <p className="text-slate-600 text-lg max-w-2xl mx-auto">
-              Choose the plan that fits your business. No hidden fees.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* Free Plan */}
+        ))}
+      </div>
+      <div className="rounded-xl border border-slate-200 p-5">
+        <div className="text-xs font-semibold text-slate-700 mb-4">Sends — last 12 weeks</div>
+        <div className="flex items-end gap-2 h-32">
+          {bars.map((b, i) => (
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0 }}
+              key={i}
+              initial={{ height: 0 }}
+              whileInView={{ height: `${b}%` }}
               viewport={{ once: true }}
-              className="bg-slate-50 rounded-[24px] p-8 border border-slate-200"
-            >
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold mb-4">
-                14-Day Trial
-              </div>
-              <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Free</h3>
-              <p className="text-slate-500 text-sm mb-6">Get started risk-free</p>
-              
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">3 connected email accounts</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">500 contacts/month</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Scheduler included</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Basic rotation</span>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => handleSelectPlan("free")}
-                variant="outline"
-                className="w-full rounded-full py-6"
-                data-testid="pricing-free-btn"
-              >
-                Start Free Trial
-              </Button>
-            </motion.div>
-
-            {/* Starter Plan - Most Popular */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              viewport={{ once: true }}
-              className="bg-gradient-to-br from-blue-600 to-violet-600 rounded-[24px] p-8 text-white relative shadow-xl shadow-blue-500/25 ring-4 ring-blue-500/20"
-            >
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="px-4 py-1.5 bg-amber-400 text-amber-900 rounded-full text-xs font-bold shadow-lg">
-                  Most Popular
-                </span>
-              </div>
-              <h3 className="font-heading font-bold text-2xl mb-2 mt-2">Starter</h3>
-              <div className="flex items-baseline gap-1 mb-6">
-                <span className="text-4xl font-extrabold">{getPrice("starter")}</span>
-                <span className="text-xl font-medium text-blue-200">/year</span>
-              </div>
-              
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">10 connected email accounts</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">4,000 contacts/month</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">48,000 contacts per year</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">Unlimited emails</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">Full rotation engine</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-blue-200 flex-shrink-0" />
-                  <span className="text-white/90">Unlimited campaigns</span>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => handleSelectPlan("starter")}
-                className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full py-6 font-semibold"
-                data-testid="pricing-starter-btn"
-              >
-                Get Started
-              </Button>
-            </motion.div>
-
-            {/* Growth Plan */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              viewport={{ once: true }}
-              className="bg-slate-50 rounded-[24px] p-8 border border-slate-200"
-            >
-              <h3 className="font-heading font-bold text-2xl text-slate-900 mb-2">Growth</h3>
-              <div className="flex items-baseline gap-1 mb-6">
-                <span className="text-4xl font-extrabold text-slate-900">{getPrice("growth")}</span>
-                <span className="text-xl font-medium text-slate-500">/year</span>
-              </div>
-              
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">15 connected email accounts</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">10,000 contacts/month</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">120,000 contacts per year</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Unlimited emails</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Full rotation engine</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-slate-700">Unlimited campaigns</span>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => handleSelectPlan("growth")}
-                variant="outline"
-                className="w-full rounded-full py-6"
-                data-testid="pricing-growth-btn"
-              >
-                Get Started
-              </Button>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* 8️⃣ BUILT FOR OWNERS */}
-      <section className="py-24 px-6 bg-white">
-        <div className="max-w-[1300px] mx-auto">
-          <div className="max-w-2xl mx-auto text-center">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-slate-900 mb-8">
-                Built for Owners, Not Just Marketers
-              </h2>
-              <div className="grid sm:grid-cols-2 gap-4 text-left mb-8">
-                <div className="p-5 bg-slate-50 rounded-2xl">
-                  <TrendingUp size={24} className="text-blue-600 mb-3" />
-                  <p className="font-semibold text-slate-900">Reliable sending</p>
-                </div>
-                <div className="p-5 bg-slate-50 rounded-2xl">
-                  <Shield size={24} className="text-blue-600 mb-3" />
-                  <p className="font-semibold text-slate-900">Protected domains</p>
-                </div>
-                <div className="p-5 bg-slate-50 rounded-2xl">
-                  <Inbox size={24} className="text-blue-600 mb-3" />
-                  <p className="font-semibold text-slate-900">Better inbox rate</p>
-                </div>
-                <div className="p-5 bg-slate-50 rounded-2xl">
-                  <MessageSquare size={24} className="text-blue-600 mb-3" />
-                  <p className="font-semibold text-slate-900">Consistent lead flow</p>
-                </div>
-              </div>
-              <p className="text-xl font-semibold text-slate-900">
-                That's what this does.
-              </p>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* 🔟 FINAL CTA */}
-      <section className="py-24 px-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="max-w-[1300px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="text-center max-w-3xl mx-auto"
-          >
-            <h2 className="font-heading font-extrabold text-3xl sm:text-4xl lg:text-5xl text-white mb-6">
-              Ready to Send Smarter?
-            </h2>
-            <div className="space-y-2 text-slate-400 text-lg mb-10">
-              <p>Stop risking your main domain.</p>
-              <p>Stop hitting sending limits.</p>
-              <p>Stop losing leads to spam folders.</p>
-            </div>
-            <p className="text-white text-xl font-medium mb-10">
-              Start sending professionally — across multiple accounts — today.
-            </p>
-            <div className="flex items-center justify-center">
-              <Button
-                onClick={handleStartFree}
-                size="lg"
-                className="bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white px-10 py-6 text-lg rounded-full shadow-lg shadow-blue-500/30"
-                data-testid="final-cta-btn"
-              >
-                Start Free Trial
-                <ArrowRight size={20} className="ml-2" />
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-12 px-6 bg-slate-900 border-t border-slate-800">
-        <div className="max-w-[1300px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <img 
-              src="/routemail-logo.png" 
-              alt="RouteMail" 
-              className="h-10 w-auto object-contain brightness-0 invert"
+              transition={{ delay: i * 0.04, duration: 0.4 }}
+              className="flex-1 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t-md"
+              style={{ height: `${b}%` }}
             />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const Field = ({ label, value }) => (
+  <div>
+    <Label>{label}</Label>
+    <div className="mt-1 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm text-slate-800">
+      {value}
+    </div>
+  </div>
+);
+const Label = ({ children }) => (
+  <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{children}</div>
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// Feature Sections
+// ────────────────────────────────────────────────────────────────────────────
+const FEATURES = [
+  {
+    eyebrow: "Multi-Account Sending",
+    title: "Send from multiple accounts without manual rotation.",
+    desc: "Connect any number of inboxes and let RouteMail spread sends across them with smart per-account daily limits.",
+    bullets: ["Per-account daily limits", "Smart rotation engine", "Live capacity tracker"],
+    icon: Repeat,
+    accent: "blue",
+    Mock: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
+        <div className="text-xs font-semibold text-slate-700 mb-3">Connected Accounts</div>
+        <div className="space-y-2">
+          {[
+            { e: "maya@routemail.co", limit: "50/day", sent: 32, color: "emerald" },
+            { e: "sales@routemail.co", limit: "100/day", sent: 87, color: "blue" },
+            { e: "alex@routemail.co", limit: "75/day", sent: 41, color: "violet" },
+          ].map((a) => (
+            <div key={a.e} className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full bg-${a.color}-500`} />
+              <div className="flex-1 text-sm text-slate-800">{a.e}</div>
+              <div className="text-xs text-slate-500">{a.sent} / {a.limit}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500 flex items-center gap-1.5">
+          <Zap size={12} className="text-amber-500" />
+          Total daily capacity: <strong className="text-slate-900">225 emails/day</strong>
+        </div>
+      </div>
+    ),
+  },
+  {
+    eyebrow: "Campaign Builder",
+    title: "Personalize at scale with confidence.",
+    desc: "Bring your CSV/Excel, map columns, insert variables, schedule — and never email anyone on your suppression list.",
+    bullets: ["Variables & merge tags", "CSV/Excel import", "Suppression checks"],
+    icon: Send,
+    accent: "violet",
+    Mock: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg space-y-3">
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-xs">
+          <div className="text-slate-400 font-semibold uppercase text-[10px] mb-1">Subject</div>
+          <div className="text-slate-800">"Hi <span className="bg-amber-100 px-0.5 rounded">{"{{first_name}}"}</span>, about <span className="bg-amber-100 px-0.5 rounded">{"{{company}}"}</span>..."</div>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 font-mono">{"{{first_name}}"}</span>
+          <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 font-mono">{"{{company}}"}</span>
+          <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 font-mono">{"{{role}}"}</span>
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs flex items-center gap-2">
+          <Check size={14} className="text-emerald-600" />
+          <span className="text-emerald-800">CSV uploaded — 4,582 contacts ready</span>
+        </div>
+      </div>
+    ),
+  },
+  {
+    eyebrow: "Drip Campaigns",
+    title: "Multi-step sequences that respect human inboxes.",
+    desc: "Compose N emails, choose delays, randomize send timing, set per-timezone working hours.",
+    bullets: ["Multi-step flows", "Randomized send timing", "Timezone scheduling"],
+    icon: Workflow,
+    accent: "fuchsia",
+    Mock: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
+        <div className="space-y-3">
+          {[
+            { n: 1, t: "Intro", d: "Day 0", c: "blue" },
+            { n: 2, t: "Follow-up", d: "+3 days", c: "violet" },
+            { n: 3, t: "Case study", d: "+7 days", c: "fuchsia" },
+          ].map((s) => (
+            <div key={s.n} className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-md bg-${s.c}-100 text-${s.c}-700 flex items-center justify-center text-xs font-bold`}>
+                {s.n}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-900">{s.t}</div>
+                <div className="text-xs text-slate-500">{s.d} · 09:00 – 17:00 ET</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+  },
+  {
+    eyebrow: "Email Warmup",
+    title: "Warm up new accounts before scaling outreach.",
+    desc: "Automated reply patterns + RTM warmup labels build sender reputation safely so your real sends actually land.",
+    bullets: ["Automated warmup interactions", "Per-account health score", "RTM warmup labels"],
+    icon: Activity,
+    accent: "emerald",
+    Mock: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg space-y-3">
+        {["maya@…", "sales@…", "alex@…"].map((e, i) => (
+          <div key={e} className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
+              {e[0].toUpperCase()}
+            </div>
+            <div className="flex-1 text-sm text-slate-800">{e}</div>
+            <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-emerald-500" style={{ width: `${[92, 88, 76][i]}%` }} />
+            </div>
+            <span className="text-xs font-bold text-slate-900">{[92, 88, 76][i]}</span>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
-            <a 
-              href="mailto:support@routemail.co" 
-              className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+        ))}
+      </div>
+    ),
+  },
+  {
+    eyebrow: "Suppression & Compliance",
+    title: "Never email anyone you shouldn't.",
+    desc: "Global Do-Not-Email lists, per-campaign suppression, automatic unsubscribe handling. CAN-SPAM and GDPR friendly.",
+    bullets: ["Global Do Not Email list", "Per-campaign suppression", "Automatic unsubscribe handling"],
+    icon: ShieldCheck,
+    accent: "rose",
+    Mock: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg space-y-2">
+        {[
+          { e: "j.smith@example.com", state: "blocked", reason: "Suppression list" },
+          { e: "amy@acme.io", state: "blocked", reason: "Unsubscribed" },
+          { e: "bob@globex.io", state: "ok" },
+          { e: "dana@initech.io", state: "ok" },
+        ].map((r) => (
+          <div key={r.e} className="flex items-center gap-3 text-xs">
+            {r.state === "blocked" ? (
+              <XCircle size={14} className="text-rose-500" />
+            ) : (
+              <CheckCircle2 size={14} className="text-emerald-500" />
+            )}
+            <span className="flex-1 text-slate-800">{r.e}</span>
+            <span className="text-slate-400">{r.reason || "Will send"}</span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+];
+
+function FeatureSections() {
+  return (
+    <section
+      id="features"
+      className="border-b border-slate-200/60 py-20 md:py-28 bg-white"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24 md:space-y-32">
+        {FEATURES.map((f, i) => {
+          const Icon = f.icon;
+          const Mock = f.Mock;
+          const reverse = i % 2 === 1;
+          return (
+            <motion.div
+              key={f.title}
+              {...fadeUp}
+              className={`grid md:grid-cols-2 gap-10 md:gap-16 items-center ${
+                reverse ? "md:[&>*:first-child]:order-2" : ""
+              }`}
+              data-testid={`feature-${i}`}
             >
-              support@routemail.co
-            </a>
-            <p className="text-sm text-slate-500">
-              &copy; {new Date().getFullYear()} RouteMail. All rights reserved.
+              <div>
+                <div className="inline-flex items-center gap-2 mb-3">
+                  <div className={`w-8 h-8 rounded-lg bg-${f.accent}-100 text-${f.accent}-700 flex items-center justify-center`}>
+                    <Icon size={16} />
+                  </div>
+                  <p className={`text-xs font-bold tracking-[0.2em] uppercase text-${f.accent}-700`}>
+                    {f.eyebrow}
+                  </p>
+                </div>
+                <h3 className="text-2xl sm:text-3xl tracking-tight font-semibold text-slate-900 leading-snug">
+                  {f.title}
+                </h3>
+                <p className="mt-3 text-base text-slate-600 leading-relaxed">{f.desc}</p>
+                <ul className="mt-5 space-y-2">
+                  {f.bullets.map((b) => (
+                    <li key={b} className="flex items-center gap-2 text-sm text-slate-700">
+                      <Check size={16} className={`text-${f.accent}-500`} />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <Mock />
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Use Cases
+// ────────────────────────────────────────────────────────────────────────────
+const PERSONAS = [
+  { icon: Briefcase,  title: "Agencies",   desc: "Run client outreach across many sender personas in parallel." },
+  { icon: UserPlus,   title: "Recruiters", desc: "Reach candidates without your domain getting blacklisted." },
+  { icon: Users,      title: "Consultants",desc: "Stay top-of-mind with founders and execs at your own pace." },
+  { icon: Building2,  title: "Founders",   desc: "Talk to investors, partners and early customers at scale." },
+  { icon: Target,     title: "Sales Teams",desc: "Pipeline coverage that doesn't burn your sender domain." },
+];
+
+function UseCases() {
+  return (
+    <section className="border-b border-slate-200/60 py-20 md:py-28 bg-slate-50/50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div {...fadeUp} className="text-center max-w-2xl mx-auto mb-12">
+          <p className="text-xs font-bold tracking-[0.2em] uppercase text-blue-600 mb-3">
+            Use cases
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
+            Built for teams who live in the inbox.
+          </h2>
+        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {PERSONAS.map((p, i) => {
+            const Icon = p.icon;
+            return (
+              <motion.div
+                key={p.title}
+                {...fadeUp}
+                transition={{ ...fadeUp.transition, delay: i * 0.05 }}
+                className="rounded-xl bg-white border border-slate-200 p-5 hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                data-testid={`persona-${p.title.toLowerCase()}`}
+              >
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-violet-100 text-violet-700 flex items-center justify-center">
+                  <Icon size={18} />
+                </div>
+                <h4 className="mt-4 text-base font-semibold text-slate-900">{p.title}</h4>
+                <p className="mt-1 text-xs text-slate-500 leading-relaxed">{p.desc}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Why RouteMail
+// ────────────────────────────────────────────────────────────────────────────
+const WHY = [
+  { icon: Repeat,       title: "Smart rotation",          desc: "Spread sends across inboxes automatically." },
+  { icon: Activity,     title: "Built-in warmup",         desc: "Reputation grows in the background." },
+  { icon: Workflow,     title: "Drip campaigns",          desc: "Multi-step sequences with timezone smarts." },
+  { icon: Shield,       title: "Deliverability controls", desc: "Suppression, throttling, RTM labels." },
+  { icon: Crown,        title: "Affordable annual pricing", desc: "Pay for the people you reach, not the inboxes." },
+];
+
+function WhyRouteMail() {
+  return (
+    <section className="border-b border-slate-200/60 py-20 md:py-28 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div {...fadeUp} className="text-center max-w-2xl mx-auto mb-12">
+          <p className="text-xs font-bold tracking-[0.2em] uppercase text-blue-600 mb-3">
+            Why RouteMail
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
+            Everything you need, nothing you don't.
+          </h2>
+        </motion.div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {WHY.map((w, i) => {
+            const Icon = w.icon;
+            return (
+              <motion.div
+                key={w.title}
+                {...fadeUp}
+                transition={{ ...fadeUp.transition, delay: i * 0.05 }}
+                className="rounded-xl border border-slate-200 p-5 bg-slate-50/40"
+              >
+                <Icon size={20} className="text-blue-600" />
+                <h4 className="mt-3 font-semibold text-slate-900">{w.title}</h4>
+                <p className="mt-1 text-xs text-slate-500 leading-relaxed">{w.desc}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pricing
+// ────────────────────────────────────────────────────────────────────────────
+function PricingCard({ name, contacts, price, period, accent = "slate", featured = false, ctaLabel, onCta, testId }) {
+  return (
+    <motion.div
+      {...fadeUp}
+      className={`relative rounded-2xl p-6 md:p-8 border-2 hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ${
+        featured
+          ? "border-blue-500 bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-xl"
+          : "border-slate-200 bg-white"
+      }`}
+      data-testid={testId}
+    >
+      {featured && (
+        <div className="absolute -top-3 left-6">
+          <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-400 text-amber-900 rounded-full text-xs font-bold">
+            <Crown size={12} />
+            MOST POPULAR
+          </span>
+        </div>
+      )}
+      <h3 className={`text-2xl font-bold ${featured ? "text-white" : "text-slate-900"}`}>{name}</h3>
+      <p className={`text-sm mt-1 ${featured ? "text-white/80" : "text-slate-500"}`}>
+        {contacts} unique contacts/month
+      </p>
+      <div className="mt-5 flex items-baseline gap-2">
+        <span className={`text-4xl md:text-5xl font-bold ${featured ? "text-white" : "text-slate-900"}`}>{price}</span>
+        <span className={`text-base ${featured ? "text-white/80" : "text-slate-500"}`}>{period}</span>
+      </div>
+      <ul className={`mt-5 space-y-2.5 ${featured ? "text-white/95" : "text-slate-700"}`}>
+        <li className="flex items-start gap-2 text-sm">
+          <Check size={16} className={featured ? "text-white mt-0.5 shrink-0" : `text-${accent}-500 mt-0.5 shrink-0`} />
+          <span><strong>{contacts}</strong> unique contacts/month</span>
+        </li>
+        <li className="flex items-start gap-2 text-sm">
+          <Check size={16} className={featured ? "text-white mt-0.5 shrink-0" : `text-${accent}-500 mt-0.5 shrink-0`} />
+          Unlimited follow-ups
+        </li>
+        <li className="flex items-start gap-2 text-sm">
+          <Check size={16} className={featured ? "text-white mt-0.5 shrink-0" : `text-${accent}-500 mt-0.5 shrink-0`} />
+          Smart rotation, drip campaigns, warmup
+        </li>
+        <li className="flex items-start gap-2 text-sm">
+          <Check size={16} className={featured ? "text-white mt-0.5 shrink-0" : `text-${accent}-500 mt-0.5 shrink-0`} />
+          Suppression & deliverability controls
+        </li>
+      </ul>
+      <Button
+        onClick={onCta}
+        className={`mt-6 w-full h-11 ${
+          featured
+            ? "bg-white text-blue-700 hover:bg-blue-50"
+            : "bg-slate-900 text-white hover:bg-slate-800"
+        }`}
+      >
+        {ctaLabel}
+      </Button>
+    </motion.div>
+  );
+}
+
+function PricingSection({ navigate, onPrimary }) {
+  return (
+    <section id="pricing" className="border-b border-slate-200/60 py-20 md:py-28 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div {...fadeUp} className="text-center max-w-2xl mx-auto mb-10">
+          <p className="text-xs font-bold tracking-[0.2em] uppercase text-blue-600 mb-3">
+            Pricing
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
+            Pay for the people you reach.
+          </h2>
+          <p className="mt-3 text-base sm:text-lg text-slate-600 leading-relaxed">
+            Plans are based on monthly <strong>unique contacts</strong> contacted, not total emails sent.
+          </p>
+          <div className="mt-4 inline-flex flex-col sm:flex-row gap-2 sm:gap-4 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800 max-w-2xl">
+            <span className="inline-flex items-center gap-1.5">
+              <Check size={12} className="text-emerald-500" />
+              Unlimited follow-ups to the same contact
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Check size={12} className="text-emerald-500" />
+              Only <em>new</em> unique recipients count
+            </span>
+          </div>
+        </motion.div>
+
+        <div className="grid md:grid-cols-3 gap-6" data-testid="pricing-grid">
+          <PricingCard
+            name="Starter"
+            contacts="4,000"
+            price="$99"
+            period="/year"
+            accent="blue"
+            ctaLabel="Start Free Trial"
+            onCta={onPrimary}
+            testId="pricing-card-starter"
+          />
+          <PricingCard
+            name="Growth"
+            contacts="10,000"
+            price="$149"
+            period="/year"
+            accent="emerald"
+            featured
+            ctaLabel="Start Free Trial"
+            onCta={onPrimary}
+            testId="pricing-card-growth"
+          />
+          <CustomPlanCard variant="public" navigate={navigate} />
+        </div>
+
+        <p className="mt-8 text-center text-xs text-slate-500 max-w-xl mx-auto">
+          All plans include unlimited connected email accounts on the Custom plan.
+          Need an enterprise rollout? Email{" "}
+          <a href="mailto:support@routemail.co" className="text-blue-600 underline">support@routemail.co</a>.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// FAQ
+// ────────────────────────────────────────────────────────────────────────────
+const FAQS = [
+  {
+    q: "What is RouteMail?",
+    a: "RouteMail is a multi-account email outreach platform for SMEs, agencies, recruiters, founders, and sales teams. Connect multiple inboxes, build campaigns and drip sequences, warm up new accounts, and protect your sender reputation — all from one place.",
+  },
+  {
+    q: "How do contact limits work?",
+    a: "Plans are priced by the number of unique people you contact in a calendar month. A contact is counted once the first time you email them in a month. Every follow-up to the same person — across the same month or any campaign — is free and does not count again.",
+  },
+  {
+    q: "Can I connect multiple email accounts?",
+    a: "Yes. RouteMail is built around safe multi-account sending. You can connect any number of SMTP inboxes, set per-account daily limits, and let our smart rotation engine spread sends across them.",
+  },
+  {
+    q: "Does RouteMail support drip campaigns?",
+    a: "Yes — multi-step drip sequences with per-step delays, timezone-aware schedules, randomized send timing, and easy step duplication.",
+  },
+  {
+    q: "Is there a free trial?",
+    a: "Yes — 14 days, no credit card required. You'll get 500 unique contacts/month and up to 3 connected accounts during the trial.",
+  },
+];
+
+function FAQ() {
+  return (
+    <section
+      id="faq"
+      className="border-b border-slate-200/60 py-20 md:py-28 bg-slate-50/50"
+    >
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div {...fadeUp} className="text-center mb-10">
+          <p className="text-xs font-bold tracking-[0.2em] uppercase text-blue-600 mb-3">
+            FAQ
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
+            Questions, answered.
+          </h2>
+        </motion.div>
+        <Accordion type="single" collapsible className="w-full" data-testid="faq-accordion">
+          {FAQS.map((f, i) => (
+            <AccordionItem
+              key={i}
+              value={`faq-${i}`}
+              className="border-b border-slate-200"
+            >
+              <AccordionTrigger
+                className="text-left text-base font-semibold text-slate-900 hover:no-underline"
+                data-testid={`faq-q-${i}`}
+              >
+                {f.q}
+              </AccordionTrigger>
+              <AccordionContent className="text-sm text-slate-600 leading-relaxed">
+                {f.a}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// CTA banner
+// ────────────────────────────────────────────────────────────────────────────
+function CtaBanner({ onPrimary }) {
+  return (
+    <section className="py-20 md:py-24 bg-white">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div
+          {...fadeUp}
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-violet-600 p-10 md:p-14 text-center text-white"
+        >
+          <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)] pointer-events-none" />
+          <div className="relative">
+            <h3 className="text-3xl md:text-4xl font-semibold tracking-tight">
+              Stop burning domains. Start landing in inboxes.
+            </h3>
+            <p className="mt-3 text-white/85 max-w-xl mx-auto">
+              14-day free trial · No credit card required · Cancel any time.
+            </p>
+            <Button
+              size="lg"
+              onClick={onPrimary}
+              className="mt-7 bg-white text-blue-700 hover:bg-blue-50 h-12 px-7"
+              data-testid="cta-banner-btn"
+            >
+              Start Free Trial
+              <ArrowRight size={18} className="ml-1.5" />
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Footer
+// ────────────────────────────────────────────────────────────────────────────
+function Footer() {
+  return (
+    <footer className="bg-slate-50 border-t border-slate-200" data-testid="landing-footer">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid md:grid-cols-[2fr_1fr_1fr] gap-8">
+          <div>
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center">
+                <Mail className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-bold text-slate-900">RouteMail</span>
+            </Link>
+            <p className="mt-3 text-sm text-slate-500 max-w-sm leading-relaxed">
+              Send bulk email safely from multiple accounts — built for SMEs, agencies, recruiters, and consultants.
+            </p>
+            <p className="mt-4 text-sm">
+              <a
+                href="mailto:support@routemail.co"
+                className="text-blue-600 hover:underline"
+                data-testid="footer-support-email"
+              >
+                support@routemail.co
+              </a>
             </p>
           </div>
-        </div>
-        {/* Legal Links */}
-        <div className="max-w-[1300px] mx-auto mt-6 pt-6 border-t border-slate-800">
-          <div className="flex flex-wrap justify-center gap-4 sm:gap-8 text-sm">
-            <Link 
-              to="/privacy-policy" 
-              className="text-slate-400 hover:text-slate-300 transition-colors"
-            >
-              Privacy Policy
-            </Link>
-            <Link 
-              to="/terms-and-conditions" 
-              className="text-slate-400 hover:text-slate-300 transition-colors"
-            >
-              Terms & Conditions
-            </Link>
-            <Link 
-              to="/anti-spam-policy" 
-              className="text-slate-400 hover:text-slate-300 transition-colors"
-            >
-              Anti-Spam Policy
-            </Link>
-            <Link 
-              to="/gdpr-compliance" 
-              className="text-slate-400 hover:text-slate-300 transition-colors"
-            >
-              GDPR Compliance
-            </Link>
+          <div>
+            <h5 className="text-xs font-bold tracking-[0.2em] uppercase text-slate-400 mb-3">
+              Product
+            </h5>
+            <ul className="space-y-2 text-sm">
+              <li><Link to="/blog" className="text-slate-600 hover:text-slate-900">Blog</Link></li>
+              <li><a href="#features" className="text-slate-600 hover:text-slate-900">Features</a></li>
+              <li><a href="#pricing" className="text-slate-600 hover:text-slate-900">Pricing</a></li>
+              <li><a href="#faq" className="text-slate-600 hover:text-slate-900">FAQ</a></li>
+            </ul>
+          </div>
+          <div>
+            <h5 className="text-xs font-bold tracking-[0.2em] uppercase text-slate-400 mb-3">
+              Legal
+            </h5>
+            <ul className="space-y-2 text-sm">
+              <li><Link to="/privacy-policy" className="text-slate-600 hover:text-slate-900">Privacy Policy</Link></li>
+              <li><Link to="/terms-and-conditions" className="text-slate-600 hover:text-slate-900">Terms</Link></li>
+              <li><Link to="/anti-spam-policy" className="text-slate-600 hover:text-slate-900">Anti-Spam Policy</Link></li>
+              <li><Link to="/gdpr-compliance" className="text-slate-600 hover:text-slate-900">GDPR</Link></li>
+            </ul>
           </div>
         </div>
-      </footer>
+        <div className="mt-10 pt-6 border-t border-slate-200 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>© {new Date().getFullYear()} RouteMail. All rights reserved.</span>
+          <span>Made with care for safe sending.</span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Page entry
+// ────────────────────────────────────────────────────────────────────────────
+export default function LandingPage() {
+  const navigate = useNavigate();
+  const onPrimary = () => navigate("/register");
+  const onWatchDemo = () => {
+    const el = document.getElementById("demo");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="min-h-screen bg-white text-slate-900 antialiased">
+      <Header onCtaClick={onPrimary} navigate={navigate} />
+      <Hero onPrimary={onPrimary} onSecondary={onWatchDemo} />
+      <TrustStrip />
+      <InteractiveDemo />
+      <FeatureSections />
+      <UseCases />
+      <PricingSection navigate={navigate} onPrimary={onPrimary} />
+      <WhyRouteMail />
+      <FAQ />
+      <CtaBanner onPrimary={onPrimary} />
+      <Footer />
     </div>
   );
 }

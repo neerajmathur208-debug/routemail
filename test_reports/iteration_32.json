@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only verification of the redesigned LandingPage and shared CustomPlanCard (variant=public on / and variant=dashboard on /subscription). Desktop @1920, mobile @390 viewports tested. All 7 testid groups in the request verified end-to-end including hero, interactive demo (5 tabs, no API fired during switch), 5 feature sections, 5 personas, pricing grid, FAQ accordion, footer policy links + support email. Regression: /api/subscription/prices, admin limit-override 403, login flow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console: 3rd-party https://ipapi.co/json/ blocked by CORS — minor, non-blocking, only seen on dashboard area, unrelated to this batch"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LandingPage.jsx is ~1300 lines. While well-organised into local components, consider splitting into separate files (Hero.jsx, InteractiveDemo.jsx, PricingSection.jsx, etc.) to keep each module under ~700 lines and improve maintainability.",
+    "CustomPlanCard logs nothing when /subscription/prices fails — fine for prod, but adding a single console.warn would help future debugging when the fallback kicks in."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "test_credentials": "drip.tester@example.com / DripTest123! (login:200 verified)",
+  "seed_data_creation": "None — no test data created. Stripe checkout was intercepted via page.route to avoid hitting Stripe.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All testids from review_request verified live: hero-section, hero-headline ('Send Bulk Emails Safely from Multiple Accounts'), hero-subhead (mentions SMEs/agencies/recruiters/consultants), hero-start-trial-btn → /register, hero-watch-demo-btn → smooth-scrolls #demo, hero-stat-1 + hero-stat-2 visible at md+. interactive-demo-section + demo-tabs + demo-tab-{dashboard,campaign,drip,warmup,analytics} all swap demo-panel-{id} with framer-motion AnimatePresence; ZERO /api calls fired during tab switching. feature-0..4 alternate left/right at md+. persona-{agencies,recruiters,consultants,founders,sales teams} all 5 cards render. pricing-grid contains pricing-card-starter ($99 / 4,000) + pricing-card-growth ($149 / 10,000 / MOST POPULAR) + custom-plan-card. pricing-custom-select updates custom-plan-price live ($199→$349 for 30k, $499 for 50k). custom-plan-cta-btn on public variant routes to /register?plan=custom_30k; on dashboard variant fires POST /api/subscription/create-checkout with the correct Stripe price_id (verified intercept body: price_id=price_1TV8zTD2HZgi5NSCmPpqjRtm for custom_50k slab) + correct success_url/cancel_url. NO 'email accounts' or 'inboxes' copy in any pricing card. faq-accordion has all 5 faq-q-0..4 and accordion expands aria-expanded=true on click. landing-footer contains /blog, /privacy-policy, /terms-and-conditions, /anti-spam-policy, /gdpr-compliance + footer-support-email href='mailto:support@routemail.co'. NO 'Perfect Digitals' anywhere in DOM/text. Mobile @390: no horizontal overflow (sw=cw=390), hero CTAs stacked vertically, pricing cards 1-column (all left=16, width=358), demo tabs wrap onto 3 rows. Regression: GET /api/subscription/prices returns 6 custom slabs all available=true with Stripe price_ids; POST /api/admin/users/{id}/limit-override returns 403 for non-admin user. monthly-contacts-tracker still present on /subscription. Login flow with drip.tester works (200, redirects to /dashboard).",
+  "rca of the issue": "n/a — no bugs found in this iteration's scope."
+}

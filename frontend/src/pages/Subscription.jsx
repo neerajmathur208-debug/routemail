@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Check, Zap, Crown, Shield, CreditCard, Loader2, Clock, AlertTriangle, Calendar, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
+import CustomPlanCard from "../components/CustomPlanCard";
 import { api } from "../App";
 import { toast } from "sonner";
 
@@ -610,111 +611,13 @@ export default function Subscription({ user, setUser }) {
             </motion.div>
           </div>
 
-          {/* Custom Plan */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="mt-6 bg-white rounded-xl border-2 border-slate-200 p-6"
-            data-testid="custom-plan-card"
-          >
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <Crown size={18} className="text-violet-600" />
-                  Custom Plan
-                  {typeof currentPlan === "string" && currentPlan.startsWith("custom_") && (
-                    <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-xs font-medium">
-                      Current
-                    </span>
-                  )}
-                </h3>
-                <p className="text-slate-500 text-sm mt-1">
-                  Pick the monthly contacts capacity that fits your team. Unlimited follow-ups, unlimited lists, unlimited accounts up to 25.
-                </p>
-              </div>
-            </div>
-
-            {customSlabs.length === 0 ? (
-              <p className="text-sm text-slate-500">Loading custom plan options…</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
-                  {customSlabs.map((s) => {
-                    const isSelected = selectedCustomSlab === s.slug;
-                    const isCurrent = currentPlan === s.slug;
-                    return (
-                      <button
-                        key={s.slug}
-                        type="button"
-                        onClick={() => setSelectedCustomSlab(s.slug)}
-                        className={`text-left rounded-lg border-2 p-3 transition-colors ${
-                          isSelected
-                            ? "border-violet-500 bg-violet-50"
-                            : "border-slate-200 hover:border-violet-300"
-                        }`}
-                        data-testid={`custom-slab-${s.slug}`}
-                      >
-                        <div className="text-xs text-slate-500 mb-1">
-                          {s.contacts_per_month.toLocaleString()} contacts/mo
-                        </div>
-                        <div className="text-lg font-bold text-slate-900">
-                          ${s.price_usd}
-                          <span className="text-xs font-medium text-slate-500">/yr</span>
-                        </div>
-                        {isCurrent && (
-                          <div className="mt-1 text-[10px] text-violet-700 font-medium">
-                            Current
-                          </div>
-                        )}
-                        {!s.available && (
-                          <div className="mt-1 text-[10px] text-amber-600">
-                            Setup pending
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {(() => {
-                  const slab = customSlabs.find((s) => s.slug === selectedCustomSlab);
-                  if (!slab) return null;
-                  const isCurrent = currentPlan === slab.slug;
-                  if (isCurrent) {
-                    return (
-                      <div className="text-xs text-slate-500 text-center" data-testid="custom-current-note">
-                        You are on this plan. To change capacity or cancel, please email{" "}
-                        <a href="mailto:support@routemail.co" className="text-blue-600 underline">
-                          support@routemail.co
-                        </a>
-                      </div>
-                    );
-                  }
-                  return (
-                    <Button
-                      onClick={() => handleUpgrade(slab.slug)}
-                      disabled={checkoutLoading === slab.slug || !slab.available}
-                      className="w-full md:w-auto bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white"
-                      data-testid="upgrade-custom-btn"
-                    >
-                      {checkoutLoading === slab.slug ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : slab.available ? (
-                        <>
-                          <Crown size={16} className="mr-2" />
-                          Subscribe — ${slab.price_usd}/year ·{" "}
-                          {slab.contacts_per_month.toLocaleString()} contacts/mo
-                        </>
-                      ) : (
-                        "Contact support to enable this slab"
-                      )}
-                    </Button>
-                  );
-                })()}
-              </>
-            )}
-          </motion.div>
+          {/* Custom Plan (shared component, reused on landing page too) */}
+          <div className="mt-6">
+            <CustomPlanCard
+              variant="dashboard"
+              currentPlanSlug={currentPlan}
+            />
+          </div>
 
           {/* Cancellation note */}
           <div className="mt-6 text-center text-sm text-slate-600" data-testid="global-cancel-note">
