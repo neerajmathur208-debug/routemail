@@ -60,10 +60,11 @@ function Header({ onCtaClick, navigate }) {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group" data-testid="landing-logo">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-            <Mail className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-slate-900">RouteMail</span>
+          <img
+            src="/routemail-logo.png"
+            alt="RouteMail"
+            className="h-9 md:h-10 w-auto object-contain group-hover:scale-105 transition-transform"
+          />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm text-slate-600">
@@ -370,23 +371,67 @@ function TrustStrip() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Interactive Demo (5 tabs)
+// Interactive Demo (real platform screenshots in browser-chrome frames)
 // ────────────────────────────────────────────────────────────────────────────
 const DEMO_TABS = [
-  { id: "dashboard",  label: "Dashboard",        icon: Layers },
-  { id: "campaign",   label: "Campaign Builder", icon: Send },
-  { id: "drip",       label: "Drip Campaigns",   icon: Workflow },
-  { id: "warmup",     label: "Warmup",           icon: Activity },
-  { id: "analytics",  label: "Analytics",        icon: BarChart3 },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: Layers,
+    image: "/landing/dashboard.png",
+    caption:
+      "Your real-time mission control: campaign activity in the first fold, plan & monthly contact usage on the right.",
+  },
+  {
+    id: "campaign",
+    label: "Campaign Builder",
+    icon: Send,
+    image: "/landing/campaign.png",
+    caption:
+      "Create campaigns, schedule sends, pick lists, and monitor every campaign's status — all from one place.",
+  },
+  {
+    id: "drip",
+    label: "Drip Campaigns",
+    icon: Workflow,
+    image: "/landing/drip-list.png",
+    caption:
+      "Multi-step email sequences with delays, randomized timing, and timezone-aware scheduling.",
+  },
+  {
+    id: "accounts",
+    label: "Email Accounts",
+    icon: Mail,
+    image: "/landing/email-accounts.png",
+    caption:
+      "Connect any number of SMTP inboxes, set per-account daily limits, and let smart rotation spread the load.",
+  },
+  {
+    id: "warmup",
+    label: "Warmup",
+    icon: Activity,
+    image: "/landing/warmup.png",
+    caption:
+      "Automated warmup interactions and per-account health scores to grow sender reputation safely.",
+  },
+  {
+    id: "analytics",
+    label: "Analytics",
+    icon: BarChart3,
+    image: "/landing/analytics.png",
+    caption:
+      "Per-step send logs, delivery, replies, and suppression stats — exportable CSV for every campaign.",
+  },
 ];
 
 function InteractiveDemo() {
   const [active, setActive] = useState("dashboard");
+  const current = DEMO_TABS.find((t) => t.id === active) || DEMO_TABS[0];
 
   return (
     <section
       id="demo"
-      className="border-b border-slate-200/60 py-20 md:py-28"
+      className="border-b border-slate-200/60 py-20 md:py-28 bg-gradient-to-b from-white to-slate-50/60"
       data-testid="interactive-demo-section"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -395,10 +440,10 @@ function InteractiveDemo() {
             Interactive Tour
           </p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl tracking-tight font-semibold text-slate-900">
-            Explore RouteMail in Action
+            Explore the actual RouteMail platform
           </h2>
           <p className="mt-3 text-base sm:text-lg text-slate-600 leading-relaxed">
-            Click through the most-loved corners of the product.
+            Real screens. Real product. Click a tab to walk through the most-used corners.
           </p>
         </motion.div>
 
@@ -425,286 +470,55 @@ function InteractiveDemo() {
           })}
         </div>
 
-        {/* Tab content */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/5 overflow-hidden min-h-[420px]">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={active}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25 }}
-              className="p-5 md:p-8"
-              data-testid={`demo-panel-${active}`}
-            >
-              {active === "dashboard" && <DemoDashboard />}
-              {active === "campaign" && <DemoCampaignBuilder />}
-              {active === "drip" && <DemoDripCampaigns />}
-              {active === "warmup" && <DemoWarmup />}
-              {active === "analytics" && <DemoAnalytics />}
-            </motion.div>
-          </AnimatePresence>
+        {/* Browser-chrome screenshot frame */}
+        <div className="relative">
+          {/* Soft gradient glow behind the frame */}
+          <div
+            className="absolute inset-x-0 -top-6 -bottom-6 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.18),transparent_60%)] pointer-events-none"
+            aria-hidden
+          />
+          <div className="relative rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-blue-500/10 overflow-hidden">
+            {/* Browser chrome */}
+            <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              </div>
+              <div className="ml-3 flex-1 max-w-md mx-auto px-3 py-1 rounded-md bg-white border border-slate-200 text-xs text-slate-500 font-mono text-center truncate">
+                app.routemail.co{active === "dashboard" ? "/dashboard" : `/${active}`}
+              </div>
+            </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={current.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                className="bg-white"
+                data-testid={`demo-panel-${current.id}`}
+              >
+                <img
+                  src={current.image}
+                  alt={`RouteMail — ${current.label}`}
+                  className="block w-full h-auto select-none"
+                  loading="eager"
+                  draggable={false}
+                />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+          {/* Caption */}
+          <p className="mt-4 text-center text-sm text-slate-600 max-w-2xl mx-auto" data-testid="demo-caption">
+            {current.caption}
+          </p>
         </div>
       </div>
     </section>
   );
 }
 
-function DemoDashboard() {
-  return (
-    <div className="grid md:grid-cols-3 gap-4">
-      <div className="md:col-span-2 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { l: "Connected Accounts", v: "12" },
-            { l: "Active Campaigns", v: "4" },
-            { l: "Sent Today", v: "2,418" },
-          ].map((s) => (
-            <div key={s.l} className="rounded-xl border border-slate-200 p-4">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                {s.l}
-              </div>
-              <div className="text-xl font-bold text-slate-900">{s.v}</div>
-            </div>
-          ))}
-        </div>
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
-            Campaign Activity
-          </div>
-          <div className="divide-y divide-slate-100">
-            {[
-              { n: "Q1 Outreach", s: "running", t: "blue", p: 62 },
-              { n: "Founder Intro", s: "scheduled", t: "violet", p: 12 },
-              { n: "Re-engagement", s: "completed", t: "emerald", p: 100 },
-            ].map((c) => (
-              <div key={c.n} className="px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-slate-900 w-32 truncate">{c.n}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] bg-${c.t}-100 text-${c.t}-700`}>{c.s}</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                  {c.p}%
-                  <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className={`h-full bg-${c.t}-500`} style={{ width: `${c.p}%` }} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-xs font-semibold text-slate-700 mb-3">Plan & Usage</div>
-          <div className="text-sm font-bold text-slate-900 flex items-center gap-1">
-            <Crown size={14} className="text-amber-500" /> Growth
-          </div>
-          <div className="mt-3">
-            <div className="flex items-baseline justify-between text-xs">
-              <span className="text-slate-500">Contacts</span>
-              <span className="text-slate-700 font-semibold">4,235 / 10,000</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
-              <div className="h-full bg-emerald-500" style={{ width: "42%" }} />
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-xs font-semibold text-slate-700 mb-2">Today</div>
-          <div className="space-y-1.5 text-xs text-slate-600">
-            <div className="flex justify-between"><span>Sent</span><strong className="text-slate-900">2,418</strong></div>
-            <div className="flex justify-between"><span>Delivered</span><strong className="text-emerald-600">98.4%</strong></div>
-            <div className="flex justify-between"><span>Bounces</span><strong className="text-rose-600">12</strong></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DemoCampaignBuilder() {
-  return (
-    <div className="grid md:grid-cols-[1.1fr_1fr] gap-6">
-      <div className="space-y-3">
-        <Field label="Campaign Name" value="Q1 Outreach 2026" />
-        <Field label="From Name" value="Maya at RouteMail" />
-        <Field label="Email List" value="Founders – 4,582 contacts" />
-        <Field label="Subject Line" value='"{{first_name}}, quick question about {{company}}"' />
-        <div>
-          <Label>Variables</Label>
-          <div className="flex flex-wrap gap-2 mt-1">
-            {["{{first_name}}", "{{company}}", "{{role}}", "{{city}}"].map((v) => (
-              <span key={v} className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-mono">
-                {v}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="text-xs font-semibold text-slate-700 mb-3">Preview</div>
-        <div className="rounded-lg bg-white border border-slate-200 p-4 text-sm text-slate-700 leading-relaxed">
-          <p>Hi <span className="bg-amber-100 px-0.5 rounded">Sara</span>,</p>
-          <p className="mt-2">
-            Quick question about <span className="bg-amber-100 px-0.5 rounded">Acme Corp</span> — we help founders like you keep deliverability high while scaling outreach. Worth a look?
-          </p>
-          <p className="mt-2 text-slate-400">— Maya at RouteMail</p>
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-          <Check size={14} className="text-emerald-500" />
-          Suppression list checked · 0 conflicts
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DemoDripCampaigns() {
-  const steps = [
-    { n: 1, label: "Intro", delay: "Day 0", color: "blue" },
-    { n: 2, label: "Soft follow-up", delay: "+ 3 days", color: "violet" },
-    { n: 3, label: "Case study", delay: "+ 7 days", color: "fuchsia" },
-    { n: 4, label: "Final nudge", delay: "+ 14 days", color: "rose" },
-  ];
-  return (
-    <div className="grid md:grid-cols-[1fr_300px] gap-6">
-      <div className="relative">
-        <div className="space-y-3">
-          {steps.map((s, i) => (
-            <motion.div
-              key={s.n}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className="relative rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-3"
-            >
-              <div className={`w-9 h-9 rounded-lg bg-${s.color}-100 text-${s.color}-700 flex items-center justify-center font-bold text-sm`}>
-                {s.n}
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-slate-900">{s.label}</div>
-                <div className="text-xs text-slate-500">{s.delay} after enrollment</div>
-              </div>
-              <Clock size={14} className="text-slate-400" />
-            </motion.div>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-3">
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-xs font-semibold text-slate-700 mb-2">Schedule</div>
-          <div className="text-xs text-slate-600">Mon–Fri · 09:00 – 17:00</div>
-          <div className="text-xs text-slate-500">Timezone: America/New_York</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-xs font-semibold text-slate-700 mb-1">Randomize send time</div>
-          <div className="flex items-center gap-2 text-xs text-emerald-600">
-            <Check size={12} /> Enabled · ±42 min jitter
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DemoWarmup() {
-  const accounts = [
-    { e: "maya@routemail.co",   sent: 26, replies: 18, score: 92 },
-    { e: "sales@routemail.co",  sent: 31, replies: 22, score: 88 },
-    { e: "alex@routemail.co",   sent: 18, replies: 11, score: 76 },
-  ];
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Active warmup</div>
-          <div className="text-xl font-bold text-slate-900">3 inboxes</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Reply rate</div>
-          <div className="text-xl font-bold text-emerald-600">71%</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">RTM label hit</div>
-          <div className="text-xl font-bold text-slate-900">0.8%</div>
-        </div>
-      </div>
-      <div className="rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-700">
-          Warmup pool
-        </div>
-        <div className="divide-y divide-slate-100">
-          {accounts.map((a) => (
-            <div key={a.e} className="px-4 py-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                {a.e[0].toUpperCase()}
-              </div>
-              <div className="flex-1 text-sm text-slate-800">{a.e}</div>
-              <div className="text-xs text-slate-500">Sent {a.sent}</div>
-              <div className="text-xs text-slate-500">Replies {a.replies}</div>
-              <div className="flex items-center gap-2">
-                <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full bg-emerald-500" style={{ width: `${a.score}%` }} />
-                </div>
-                <span className="text-xs font-bold text-slate-900">{a.score}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DemoAnalytics() {
-  const bars = [38, 52, 41, 67, 73, 58, 81, 92, 64, 70, 88, 95];
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { l: "Total sent", v: "84,212", t: "blue" },
-          { l: "Delivered", v: "98.4%", t: "emerald" },
-          { l: "Open rate", v: "44.2%", t: "violet" },
-          { l: "Reply rate", v: "11.6%", t: "fuchsia" },
-        ].map((s) => (
-          <div key={s.l} className="rounded-xl border border-slate-200 p-4">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">{s.l}</div>
-            <div className={`text-xl font-bold text-${s.t}-700`}>{s.v}</div>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-xl border border-slate-200 p-5">
-        <div className="text-xs font-semibold text-slate-700 mb-4">Sends — last 12 weeks</div>
-        <div className="flex items-end gap-2 h-32">
-          {bars.map((b, i) => (
-            <motion.div
-              key={i}
-              initial={{ height: 0 }}
-              whileInView={{ height: `${b}%` }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.04, duration: 0.4 }}
-              className="flex-1 bg-gradient-to-t from-blue-500 to-violet-500 rounded-t-md"
-              style={{ height: `${b}%` }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const Field = ({ label, value }) => (
-  <div>
-    <Label>{label}</Label>
-    <div className="mt-1 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm text-slate-800">
-      {value}
-    </div>
-  </div>
-);
-const Label = ({ children }) => (
-  <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{children}</div>
-);
 
 // ────────────────────────────────────────────────────────────────────────────
 // Feature Sections
@@ -1227,10 +1041,11 @@ function Footer() {
         <div className="grid md:grid-cols-[2fr_1fr_1fr] gap-8">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center">
-                <Mail className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold text-slate-900">RouteMail</span>
+              <img
+                src="/routemail-logo.png"
+                alt="RouteMail"
+                className="h-10 w-auto object-contain"
+              />
             </Link>
             <p className="mt-3 text-sm text-slate-500 max-w-sm leading-relaxed">
               Send bulk email safely from multiple accounts — built for SMEs, agencies, recruiters, and consultants.

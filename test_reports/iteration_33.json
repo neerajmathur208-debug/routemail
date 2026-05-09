@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only verification of LandingPage logo restoration + real-screenshot Interactive Demo. Verified header & footer use <img src='/routemail-logo.png'> (200 OK, naturalWidth=784); all 6 demo tabs (dashboard/campaign/drip/accounts/warmup/analytics) render with testids and swap demo-panel-{id} containing real <img> from /landing/{file}.png. All 7 static PNGs reachable (200 OK) with naturalWidth=1440. Browser-chrome frame (3 colored dots + 'app.routemail.co/...' URL bar) present and URL bar updates per tab. demo-caption updates per tab (6 unique strings). No old mock labels ('Sara'/'Acme Corp'/'Q1 Outreach 2026') present. Tesseract OCR run on the 6 screenshots: only emails detected are 'maya@routemail.co' (safe-list); 'drip.tester@example.com' / 'Drip Tester' do NOT appear. Regression testids (hero-section, hero-headline, hero-start-trial-btn, pricing-grid, pricing-card-starter, pricing-card-growth, custom-plan-card, faq-accordion, landing-footer, footer-support-email) all present. Custom-plan dropdown updates custom-plan-price ($199 -> $349 for 30k slab). Mobile @ 390x844: scrollWidth=clientWidth=390 (no horizontal overflow), demo image scales to 356px (fits within viewport), demo tabs wrap cleanly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/tmp/ocr_check.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LandingPage.jsx is now ~1122 lines (previously ~1300). Still above the recommended 700-line threshold; consider extracting Header, Footer, InteractiveDemo, FeatureSections, PricingSection, FAQ into their own files for maintainability.",
+    "Demo screenshots are large (warmup.png = 365 kB, dashboard.png = 183 kB). Consider serving WebP/AVIF or adding loading='lazy' for non-active tabs to improve initial LCP — currently all 7 are eager, but only the active one renders. Right now only `current.image` is rendered, so the impact is small, but a sequence of clicks will fetch each PNG fresh; an <link rel='preload'> for the dashboard image only would be cleaner.",
+    "URL-bar text inside the chrome frame uses a small hard-coded mapping (`active === 'dashboard' ? '/dashboard' : `/${active}``) — wrap this into the DEMO_TABS array (e.g. `t.path`) so the data is collocated with the rest of the tab metadata."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (29/29 desktop assertions + mobile regression passed)"},
+  "test_credentials": "Not used this iteration; drip.tester@example.com / DripTest123! is preserved per main agent.",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 6 real screenshots are now under /app/frontend/public/landing/*.png and a 7th drip-detail.png exists but is not currently wired (DEMO_TABS uses drip-list.png). PII-masked: only safe-list email maya@routemail.co appears in screenshots (verified via tesseract OCR on each PNG). Header & footer are back to <img src='/routemail-logo.png'> (naturalWidth=784, 65 kB). InteractiveDemo testids: demo-tabs, demo-tab-{dashboard,campaign,drip,accounts,warmup,analytics}, demo-panel-{id}, demo-caption. The browser-chrome URL bar text format is `app.routemail.co/dashboard` for the dashboard tab and `app.routemail.co/{id}` for the others. CustomPlanCard pricing-custom-select still updates custom-plan-price live. No backend changes — /api/subscription/prices regression was already validated in iteration_32 and unchanged here.",
+  "rca of the issue": "n/a — all features in scope work as specified."
+}
