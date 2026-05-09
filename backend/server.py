@@ -1785,6 +1785,7 @@ class Campaign(BaseModel):
     send_range_mode: str = "all"  # 'all' | 'range'
     send_range_start: Optional[int] = None  # 1-based inclusive
     send_range_end: Optional[int] = None    # 1-based inclusive
+    add_unsubscribe_footer: bool = False  # If True, append a default unsubscribe footer at send-time
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
@@ -4057,6 +4058,7 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         send_range_mode=request.send_range_mode or "all",
         send_range_start=request.send_range_start,
         send_range_end=request.send_range_end,
+        add_unsubscribe_footer=bool(request.add_unsubscribe_footer),
     )
     
     camp_dict = campaign.model_dump()
@@ -4127,6 +4129,8 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
         update_data["send_range_start"] = request.send_range_start
     if request.send_range_end is not None:
         update_data["send_range_end"] = request.send_range_end
+    if request.add_unsubscribe_footer is not None:
+        update_data["add_unsubscribe_footer"] = bool(request.add_unsubscribe_footer)
     
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},

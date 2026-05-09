@@ -557,6 +557,21 @@ Build a simple SaaS web application for small businesses to automatically send e
 - [x] **Open/Click tracking** — INTENTIONALLY SKIPPED per user choice (option `c`).
 - [x] Tested: 11/11 new backend + 59/59 regression (iteration_30). Drip step duplicate, tab order, accent colors, back-btn, drip-step-test-dialog all verified live.
 
+### ✅ 15-Feature Batch — Drip UX, Subscription overhaul, Custom Plan, Admin Overrides (Feb 2026)
+- [x] **Drip tabs UI** — rounded pill buttons with per-tab accent (emerald/amber/violet/blue/slate), active state has white bg + ring + shadow, hover transitions; default opens "Select List".
+- [x] **"Sequence" → "Compose Emails"** — tab label, header subtitle, and section heading all renamed.
+- [x] **Unsubscribe footer OFF by default** — backend `Campaign.add_unsubscribe_footer` (default False); `send_email_smtp(...)` only appends the default footer when True. Per-campaign opt-in toggle in Campaign.jsx Settings (`add-unsubscribe-footer-toggle`). Manual `{{unsubscribe_url}}` insertion via the editor still works.
+- [x] **Drip start validation** — `validateDripBeforeStart()` blocks Start unless name + ≥1 connected account + enrolled contacts + ≥1 step with subject+body; auto-saves before starting; toasts the missing field and switches to the relevant tab.
+- [x] **Scrollable contacts list** — `drip-contacts-scroll` wrapper, max-height 250px, sticky header, overflow-y auto.
+- [x] **Auto-hyperlink in RichTextEditor** — `autoLinkText()` covers URLs, `www.`, and emails; runs on paste (insertHTML) and on blur (TreeWalker over text nodes, skips text already inside `<a>`).
+- [x] **Cancel/Downgrade buttons removed** — Subscription page now shows a friendly "email support@routemail.co" note in every plan card + a global note at the bottom.
+- [x] **Email Lists contact-count badge** — `list-contacts-badge-{id}` with formatted `valid_emails` per row.
+- [x] **Subscription logic clarified** — pricing already keyed off unique recipients/month; UI now puts a prominent "Contacts Used This Month" tracker (current/limit + progress bar + remaining + 0/80/95% color tiers) at the top of the page.
+- [x] **Custom Plan slabs** — 6 tiers (15k/$199, 20k/$249, 30k/$349, 50k/$499, 75k/$699, 100k/$899/yr). Stripe Price IDs set in env: `STRIPE_PRICE_CUSTOM_15K..100K`. Subscription card has a slab grid + dynamic upgrade button → `/api/subscription/create-checkout`. Backend `PLAN_LIMITS` includes all 6 slabs (max_accounts=25 by default, max_contacts=slab size).
+- [x] **Super-admin per-user limit overrides** — new `POST /api/admin/users/{id}/limit-override` (super-admin gated) sets `admin_override_max_accounts` and `admin_override_max_contacts`. `get_user_plan_limits()` applies these on top of plan limits. AdminDashboard exposes `manual-limit-overrides` form with save + clear actions, doesn't touch Stripe.
+- [x] **Open/Click tracking** — INTENTIONALLY SKIPPED per user choice (option `c`).
+- [x] Tested: pytest **20/20 PASSED** for new features (incl. add_unsubscribe_footer persistence after fix), 58/58 regression on iteration_30/drip/dne. Frontend Playwright: subscription card grid, monthly tracker, all forbidden testids absent (cancel-/downgrade-*).
+
 ### 🔄 In Progress
 - None currently
 
