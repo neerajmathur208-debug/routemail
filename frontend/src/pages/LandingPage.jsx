@@ -38,6 +38,7 @@ import {
   AccordionTrigger,
 } from "../components/ui/accordion";
 import CustomPlanCard from "../components/CustomPlanCard";
+import LiveDashboardDemo from "../components/landing/LiveDashboardDemo";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Animation tokens
@@ -371,63 +372,9 @@ function TrustStrip() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Interactive Demo (real platform screenshots in browser-chrome frames)
+// Interactive Demo (live React UI, sample data, no API calls)
 // ────────────────────────────────────────────────────────────────────────────
-const DEMO_TABS = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: Layers,
-    image: "/landing/dashboard.png",
-    caption:
-      "Your real-time mission control: campaign activity in the first fold, plan & monthly contact usage on the right.",
-  },
-  {
-    id: "campaign",
-    label: "Campaign Builder",
-    icon: Send,
-    image: "/landing/campaign.png",
-    caption:
-      "Create campaigns, schedule sends, pick lists, and monitor every campaign's status — all from one place.",
-  },
-  {
-    id: "drip",
-    label: "Drip Campaigns",
-    icon: Workflow,
-    image: "/landing/drip-list.png",
-    caption:
-      "Multi-step email sequences with delays, randomized timing, and timezone-aware scheduling.",
-  },
-  {
-    id: "accounts",
-    label: "Email Accounts",
-    icon: Mail,
-    image: "/landing/email-accounts.png",
-    caption:
-      "Connect any number of SMTP inboxes, set per-account daily limits, and let smart rotation spread the load.",
-  },
-  {
-    id: "warmup",
-    label: "Warmup",
-    icon: Activity,
-    image: "/landing/warmup.png",
-    caption:
-      "Automated warmup interactions and per-account health scores to grow sender reputation safely.",
-  },
-  {
-    id: "analytics",
-    label: "Analytics",
-    icon: BarChart3,
-    image: "/landing/analytics.png",
-    caption:
-      "Per-step send logs, delivery, replies, and suppression stats — exportable CSV for every campaign.",
-  },
-];
-
 function InteractiveDemo() {
-  const [active, setActive] = useState("dashboard");
-  const current = DEMO_TABS.find((t) => t.id === active) || DEMO_TABS[0];
-
   return (
     <section
       id="demo"
@@ -443,77 +390,10 @@ function InteractiveDemo() {
             Explore the actual RouteMail platform
           </h2>
           <p className="mt-3 text-base sm:text-lg text-slate-600 leading-relaxed">
-            Real screens. Real product. Click a tab to walk through the most-used corners.
+            A live, interactive preview built from the same UI. Click any tab — sample data only, nothing leaves your browser.
           </p>
         </motion.div>
-
-        {/* Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8" data-testid="demo-tabs">
-          {DEMO_TABS.map((t) => {
-            const Icon = t.icon;
-            const isActive = active === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setActive(t.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border ${
-                  isActive
-                    ? "bg-slate-900 text-white border-slate-900 shadow-lg"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
-                }`}
-                data-testid={`demo-tab-${t.id}`}
-              >
-                <Icon size={14} />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Browser-chrome screenshot frame */}
-        <div className="relative">
-          {/* Soft gradient glow behind the frame */}
-          <div
-            className="absolute inset-x-0 -top-6 -bottom-6 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.18),transparent_60%)] pointer-events-none"
-            aria-hidden
-          />
-          <div className="relative rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-blue-500/10 overflow-hidden">
-            {/* Browser chrome */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              </div>
-              <div className="ml-3 flex-1 max-w-md mx-auto px-3 py-1 rounded-md bg-white border border-slate-200 text-xs text-slate-500 font-mono text-center truncate">
-                app.routemail.co{active === "dashboard" ? "/dashboard" : `/${active}`}
-              </div>
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={current.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                className="bg-white"
-                data-testid={`demo-panel-${current.id}`}
-              >
-                <img
-                  src={current.image}
-                  alt={`RouteMail — ${current.label}`}
-                  className="block w-full h-auto select-none"
-                  loading="eager"
-                  draggable={false}
-                />
-              </motion.div>
-            </AnimatePresence>
-          </div>
-          {/* Caption */}
-          <p className="mt-4 text-center text-sm text-slate-600 max-w-2xl mx-auto" data-testid="demo-caption">
-            {current.caption}
-          </p>
-        </div>
+        <LiveDashboardDemo />
       </div>
     </section>
   );

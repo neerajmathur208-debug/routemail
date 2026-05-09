@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only verification of (1) Google auth removal from Login/Register/AuthCallback route and (2) new LiveDashboardDemo replacing screenshot-based Interactive Demo. 69/69 Playwright assertions passed. Login & Register pages no longer expose google-login-btn / google-register-btn testids, no 'Continue with Google' text, no 'or sign in with email' divider, and no Google brand SVG color paths (4285F4/34A853/FBBC05/EA4335). Email/password login still works (drip.tester@example.com -> /api/auth/login 200 -> redirected to /dashboard). Email/password registration still posts to /api/auth/register (201). Visiting / with #session_id=fake_xyz123 renders LandingPage (AuthCallback removed). LiveDashboardDemo renders with all 6 tabs (dashboard/campaign/drip/accounts/warmup/usage), each panel shows expected sample data: Dashboard KPIs (Campaigns Sent 12, Contacts 4,235/10,000, 18 accounts, Warmup 9), all 4 campaigns, all 5 sample emails, all 3 drip sequences. Clicking any action button in a panel fires sonner toast 'This is a preview. Start your free trial to use RouteMail.' Captured ZERO requests to /api/* during a 5s click sequence across tabs and 6+ buttons inside panels. Regression testids (hero-headline, hero-subhead, pricing-card-starter, pricing-card-growth, custom-plan-card, faq-accordion, footer-support-email) all present; custom-plan-price renders ($199 default). Mobile @ 390x844: no horizontal overflow (scrollWidth=clientWidth=390), live-dashboard-demo remains visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "App.js still has a stale comment 'Skip if user passed from AuthCallback' on line 67 inside ProtectedRoute. AuthCallback is fully removed but the comment is misleading; consider rewording to 'Skip if user state was passed via navigate(state)'.",
+    "Recharts emits 6 console warnings ('width(-1) and height(-1) of chart should be greater than 0') on the dashboard page after login. Not part of this iteration's scope, but worth a follow-up: add minWidth/minHeight or set aspect on the ResponsiveContainer.",
+    "LandingPage.jsx remains large (>1000 lines). Now that the screenshot-based InteractiveDemo block has been replaced with <LiveDashboardDemo />, this is a good opportunity to also extract Header/Footer/Pricing/FAQ into separate files."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (69/69 assertions passed)"},
+  "test_credentials": "drip.tester@example.com / DripTest123! (verified login flow still works end-to-end).",
+  "seed_data_creation": "Throwaway register form was submitted with test.preview.<uuid>@example.com to confirm POST /api/auth/register still fires (201). No DB cleanup needed beyond standard test.* prefix purge if any.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Live demo is now /app/frontend/src/components/landing/LiveDashboardDemo.jsx (sample-data only; previewClick() fires sonner toast). Testids: live-dashboard-demo, demo-tabs, demo-tab-{dashboard,campaign,drip,accounts,warmup,usage}, demo-panel-{id}, demo-preview-note. Toast text: 'This is a preview. Start your free trial to use RouteMail.' with description 'Sign up free — no credit card required.' Login.jsx and Register.jsx are now email/password only — no Google paths. App.js routes no longer include AuthCallback or a useLocation hash fork; /#session_id=... just renders LandingPage. Old /landing/*.png screenshots remain on disk but unused.",
+  "rca of the issue": "n/a — all features in scope work as specified."
+}

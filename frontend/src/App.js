@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
 import axios from "axios";
@@ -56,49 +56,6 @@ const api = axios.create({
 // Auth Context
 export { api, API, BACKEND_URL };
 
-// Auth Callback Component
-const AuthCallback = () => {
-  const navigate = useNavigate();
-  const hasProcessed = useRef(false);
-
-  useEffect(() => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    if (hasProcessed.current) return;
-    hasProcessed.current = true;
-
-    const processAuth = async () => {
-      const hash = window.location.hash;
-      const sessionIdMatch = hash.match(/session_id=([^&]+)/);
-      
-      if (sessionIdMatch) {
-        const sessionId = sessionIdMatch[1];
-        
-        try {
-          const response = await api.post("/auth/session", { session_id: sessionId });
-          const userData = response.data;
-          
-          // Redirect based on user role
-          const redirectPath = userData.role === "super_admin" ? "/admin" : "/dashboard";
-          navigate(redirectPath, { state: { user: userData }, replace: true });
-        } catch (error) {
-          console.error("Auth error:", error);
-          navigate("/", { replace: true });
-        }
-      } else {
-        navigate("/", { replace: true });
-      }
-    };
-
-    processAuth();
-  }, [navigate]);
-
-  return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <div className="animate-pulse text-slate-600">Authenticating...</div>
-    </div>
-  );
-};
-
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
@@ -146,13 +103,6 @@ const ProtectedRoute = ({ children }) => {
 
 // App Router
 function AppRouter() {
-  const location = useLocation();
-
-  // Check URL fragment for session_id synchronously during render
-  if (location.hash?.includes("session_id=")) {
-    return <AuthCallback />;
-  }
-
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
