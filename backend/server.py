@@ -5969,6 +5969,22 @@ async def update_user_role(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
+        # Safety: prevent removing the last remaining super_admin
+        if user.get("role") == "super_admin" and new_role != "super_admin":
+            super_admin_count = await db.users.count_documents({"role": "super_admin"})
+            if super_admin_count <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot remove Super Admin access — at least one Super Admin must remain. Grant Super Admin to another user first."
+                )
+            # Extra guard: if the acting admin is demoting themselves and they are the ONLY one, block.
+            # (Already covered above, but explicit message when self-demoting.)
+            if user.get("user_id") == admin.get("user_id") and super_admin_count <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="You cannot remove your own Super Admin access while you are the only Super Admin."
+                )
+        
         await db.users.update_one(
             {"user_id": user_id},
             {"$set": {"role": new_role}}

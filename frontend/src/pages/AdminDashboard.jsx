@@ -86,6 +86,12 @@ export default function AdminDashboard({ user, setUser }) {
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [removeOverrideDialogOpen, setRemoveOverrideDialogOpen] = useState(false);
 
+  // Role change confirmation dialog state
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleTargetUser, setRoleTargetUser] = useState(null);
+  const [roleTargetNew, setRoleTargetNew] = useState(null);
+  const [roleLoading, setRoleLoading] = useState(false);
+
   const fetchStats = useCallback(async () => {
     try {
       const response = await api.get("/admin/stats");
@@ -169,13 +175,30 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
-  const handleRoleChange = async (userId, newRole) => {
+  const handleRoleChangeRequest = (u, newRole) => {
+    setRoleTargetUser(u);
+    setRoleTargetNew(newRole);
+    setRoleDialogOpen(true);
+  };
+
+  const handleRoleChangeConfirm = async () => {
+    if (!roleTargetUser || !roleTargetNew) return;
+    setRoleLoading(true);
     try {
-      await api.put(`/admin/users/${userId}/role`, { role: newRole });
-      toast.success(`Role updated to ${newRole}`);
+      await api.put(`/admin/users/${roleTargetUser.user_id}/role`, { role: roleTargetNew });
+      toast.success(
+        roleTargetNew === "super_admin"
+          ? `Granted Super Admin access to ${roleTargetUser.email}`
+          : `Removed Super Admin access from ${roleTargetUser.email}`
+      );
+      setRoleDialogOpen(false);
+      setRoleTargetUser(null);
+      setRoleTargetNew(null);
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update role");
+    } finally {
+      setRoleLoading(false);
     }
   };
 
@@ -521,19 +544,47 @@ export default function AdminDashboard({ user, setUser }) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={u.role}
-                      onValueChange={(value) => handleRoleChange(u.user_id, value)}
-                      disabled={u.role === "super_admin" && u.email === user?.email}
-                    >
-                      <SelectTrigger className="w-28 h-8" data-testid={`role-${u.user_id}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="super_admin">Super Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        data-testid={`role-badge-${u.user_id}`}
+                        className={
+                          u.role === "super_admin"
+                            ? "bg-violet-100 text-violet-700 border border-violet-200 hover:bg-violet-100"
+                            : "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-100"
+                        }
+                      >
+                        {u.role === "super_admin" ? (
+                          <span className="flex items-center gap-1">
+                            <Crown size={12} /> Super Admin
+                          </span>
+                        ) : (
+                          "User"
+                        )}
+                      </Badge>
+                      {u.role === "super_admin" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleRoleChangeRequest(u, "user")}
+                          data-testid={`revoke-superadmin-${u.user_id}`}
+                          title="Remove Super Admin access"
+                        >
+                          Revoke
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                          onClick={() => handleRoleChangeRequest(u, "super_admin")}
+                          data-testid={`grant-superadmin-${u.user_id}`}
+                          title="Grant Super Admin access"
+                        >
+                          Grant
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -665,6 +716,59 @@ export default function AdminDashboard({ user, setUser }) {
               data-testid="confirm-delete"
             >
               Delete User
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Role Change Confirmation */}
+      <AlertDialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading font-semibold flex items-center gap-2">
+              <Crown size={20} className={roleTargetNew === "super_admin" ? "text-violet-500" : "text-slate-400"} />
+              {roleTargetNew === "super_admin" ? "Grant Super Admin Access" : "Remove Super Admin Access"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {roleTargetNew === "super_admin" ? (
+                <>
+                  Are you sure you want to grant <span className="font-semibold">Super Admin</span> access
+                  to <span className="font-semibold">{roleTargetUser?.email}</span>? They will gain full
+                  control over the platform — including managing users, billing overrides, and other Super Admins.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to remove <span className="font-semibold">Super Admin</span> access
+                  from <span className="font-semibold">{roleTargetUser?.email}</span>? They will lose access
+                  to the admin panel and all super-admin actions.
+                  {roleTargetUser?.email === user?.email && (
+                    <span className="block mt-2 text-amber-600 font-medium">
+                      Warning: You are revoking your own Super Admin access. You will be logged out of admin features immediately after this action.
+                    </span>
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="cancel-role-change" disabled={roleLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRoleChangeConfirm}
+              disabled={roleLoading}
+              className={
+                roleTargetNew === "super_admin"
+                  ? "bg-violet-600 hover:bg-violet-700"
+                  : "bg-red-600 hover:bg-red-700"
+              }
+              data-testid="confirm-role-change"
+            >
+              {roleLoading ? (
+                <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Saving...</span>
+              ) : roleTargetNew === "super_admin" ? (
+                "Grant Super Admin"
+              ) : (
+                "Remove Super Admin"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
