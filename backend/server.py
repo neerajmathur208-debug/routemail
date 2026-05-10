@@ -285,7 +285,6 @@ WARMUP_REPLIES = [
 
 def build_warmup_body() -> str:
     """Build a conversational, varied warmup email body (2–5 lines)."""
-    import random
     greeting = random.choice(WARMUP_GREETINGS)
     opener = random.choice(WARMUP_OPENERS)
     # 1-2 middle body lines
