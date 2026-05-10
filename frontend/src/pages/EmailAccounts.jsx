@@ -25,11 +25,14 @@ import {
   Download,
   Edit3,
   FileText,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -94,6 +97,18 @@ export default function EmailAccounts({ user, setUser }) {
   });
   const [warmupStatsModal, setWarmupStatsModal] = useState(false);
   const [warmupStats, setWarmupStats] = useState(null);
+
+  // Bulk selection + bulk warmup state
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkSettingsOpen, setBulkSettingsOpen] = useState(false);
+  const [bulkSettings, setBulkSettings] = useState({
+    starting_emails_per_day: 5,
+    max_emails_per_day: 50,
+    daily_increment: 5,
+    reply_rate: 40,
+  });
+  const [bulkSettingsMode, setBulkSettingsMode] = useState("start"); // "start" | "update"
 
   const [formData, setFormData] = useState({
     preset: "custom",
@@ -432,6 +447,133 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
+  // ===== Bulk warmup handlers =====
+  const toggleSelect = (accountId) => {
+    setSelectedIds((prev) =>
+      prev.includes(accountId) ? prev.filter((x) => x !== accountId) : [...prev, accountId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === accounts.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(accounts.map((a) => a.account_id));
+    }
+  };
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const openBulkStart = () => {
+    // Pre-fill from first selected account that already has settings, else defaults
+    const first = accounts.find((a) => selectedIds.includes(a.account_id) && a.warmup_settings);
+    setBulkSettings(
+      first?.warmup_settings || {
+        starting_emails_per_day: 5,
+        max_emails_per_day: 50,
+        daily_increment: 5,
+        reply_rate: 40,
+      }
+    );
+    setBulkSettingsMode("start");
+    setBulkSettingsOpen(true);
+  };
+
+  const openBulkUpdateSettings = () => {
+    const first = accounts.find((a) => selectedIds.includes(a.account_id) && a.warmup_settings);
+    setBulkSettings(
+      first?.warmup_settings || {
+        starting_emails_per_day: 5,
+        max_emails_per_day: 50,
+        daily_increment: 5,
+        reply_rate: 40,
+      }
+    );
+    setBulkSettingsMode("update");
+    setBulkSettingsOpen(true);
+  };
+
+  const submitBulkSettings = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const url =
+        bulkSettingsMode === "start"
+          ? "/accounts/warmup/bulk-enable"
+          : "/accounts/warmup/bulk-settings";
+      const method = bulkSettingsMode === "start" ? "post" : "put";
+      const res = await api[method](url, {
+        account_ids: selectedIds,
+        ...bulkSettings,
+      });
+      toast.success(
+        bulkSettingsMode === "start"
+          ? `Started warmup on ${res.data.modified} account${res.data.modified === 1 ? "" : "s"}`
+          : `Updated settings on ${res.data.modified} account${res.data.modified === 1 ? "" : "s"}`
+      );
+      setBulkSettingsOpen(false);
+      await fetchAccounts();
+      if (bulkSettingsMode === "start") clearSelection();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Bulk action failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkPause = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/accounts/warmup/bulk-pause", { account_ids: selectedIds });
+      toast.success(`Paused warmup on ${res.data.modified} account${res.data.modified === 1 ? "" : "s"}`);
+      await fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to pause warmup");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkResume = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/accounts/warmup/bulk-resume", { account_ids: selectedIds });
+      toast.success(`Resumed warmup on ${res.data.modified} account${res.data.modified === 1 ? "" : "s"}`);
+      await fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to resume warmup");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkDisable = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/accounts/warmup/bulk-disable", { account_ids: selectedIds });
+      toast.success(`Disabled warmup on ${res.data.modified} account${res.data.modified === 1 ? "" : "s"}`);
+      await fetchAccounts();
+      clearSelection();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to disable warmup");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Aggregated stats for selected accounts
+  const selectedAccounts = accounts.filter((a) => selectedIds.includes(a.account_id));
+  const selectedActiveCount = selectedAccounts.filter(
+    (a) => a.warmup_enabled && a.warmup_status === "active"
+  ).length;
+  const selectedSentToday = selectedAccounts.reduce(
+    (sum, a) => sum + (a.warmup_emails_sent_today || 0),
+    0
+  );
+
   const resetForm = () => {
     setFormData({
       preset: "custom",
@@ -523,10 +665,108 @@ export default function EmailAccounts({ user, setUser }) {
           </div>
 
           {/* Accounts List — independent scroll */}
+          {/* Bulk Actions Toolbar */}
+          {accounts.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-md p-3" data-testid="bulk-toolbar">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSelectAll}
+                className="text-slate-600"
+                data-testid="select-all-btn"
+              >
+                {selectedIds.length === accounts.length && accounts.length > 0 ? (
+                  <CheckSquare size={16} className="mr-2 text-blue-600" />
+                ) : (
+                  <Square size={16} className="mr-2" />
+                )}
+                {selectedIds.length === accounts.length && accounts.length > 0 ? "Deselect all" : "Select all"}
+              </Button>
+              <span className="text-sm text-slate-500" data-testid="selected-count">
+                {selectedIds.length} of {accounts.length} selected
+              </span>
+              {selectedIds.length > 0 && (
+                <>
+                  <span className="hidden sm:inline-block text-slate-300">•</span>
+                  <span className="text-xs text-slate-600" data-testid="combined-stats">
+                    <span className="font-semibold text-emerald-600">{selectedActiveCount}</span> active
+                    <span className="mx-1.5 text-slate-300">|</span>
+                    <span className="font-semibold text-blue-600">{selectedSentToday}</span> warmup emails sent today
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    <Button
+                      size="sm"
+                      onClick={openBulkStart}
+                      disabled={bulkBusy}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      data-testid="bulk-start-warmup"
+                    >
+                      <Play size={14} className="mr-1" />
+                      Start Warmup
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleBulkPause}
+                      disabled={bulkBusy}
+                      className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                      data-testid="bulk-pause-warmup"
+                    >
+                      <Pause size={14} className="mr-1" />
+                      Pause
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleBulkResume}
+                      disabled={bulkBusy}
+                      className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                      data-testid="bulk-resume-warmup"
+                    >
+                      <Play size={14} className="mr-1" />
+                      Resume
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={openBulkUpdateSettings}
+                      disabled={bulkBusy}
+                      data-testid="bulk-update-settings"
+                    >
+                      <Settings size={14} className="mr-1" />
+                      Update Settings
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleBulkDisable}
+                      disabled={bulkBusy}
+                      className="text-red-600 hover:bg-red-50"
+                      data-testid="bulk-disable-warmup"
+                    >
+                      Disable
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                      className="text-slate-500"
+                      data-testid="bulk-clear-selection"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Accounts List — independent scroll */}
           {accounts.length > 0 ? (
             <div
               className="email-accounts-list-container space-y-4 pr-2"
-              style={{ maxHeight: "calc(100vh - 260px)", overflowY: "auto" }}
+              style={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}
               data-testid="email-accounts-list"
             >
               {accounts.map((account, index) => (
@@ -535,10 +775,20 @@ export default function EmailAccounts({ user, setUser }) {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(index, 6) * 0.05 }}
-                  className="bg-white border border-slate-200 rounded-md p-6"
+                  className={`bg-white border rounded-md p-6 transition-colors ${
+                    selectedIds.includes(account.account_id)
+                      ? "border-blue-300 ring-1 ring-blue-200"
+                      : "border-slate-200"
+                  }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-4">
+                      <Checkbox
+                        checked={selectedIds.includes(account.account_id)}
+                        onCheckedChange={() => toggleSelect(account.account_id)}
+                        data-testid={`select-account-${account.account_id}`}
+                        aria-label={`Select ${account.email}`}
+                      />
                       <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
                         <Mail size={24} className="text-slate-500" />
                       </div>
@@ -1112,6 +1362,89 @@ export default function EmailAccounts({ user, setUser }) {
                 <Flame size={16} className="mr-2" />
               )}
               {warmupAccount?.warmup_enabled ? "Update Settings" : "Enable Warmup"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Warmup Settings Modal */}
+      <Dialog open={bulkSettingsOpen} onOpenChange={setBulkSettingsOpen}>
+        <DialogContent className="sm:max-w-lg" data-testid="bulk-settings-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flame className="text-orange-500" />
+              {bulkSettingsMode === "start" ? "Start Warmup — Bulk" : "Update Warmup Settings — Bulk"}
+            </DialogTitle>
+            <DialogDescription>
+              These settings will apply to all <span className="font-semibold">{selectedIds.length}</span> selected account{selectedIds.length === 1 ? "" : "s"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div>
+              <Label className="text-xs text-slate-500">Starting emails/day</Label>
+              <Input
+                type="number"
+                min="1"
+                max="20"
+                value={bulkSettings.starting_emails_per_day}
+                onChange={(e) =>
+                  setBulkSettings({ ...bulkSettings, starting_emails_per_day: parseInt(e.target.value) || 1 })
+                }
+                data-testid="bulk-starting"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500">Max emails/day</Label>
+              <Input
+                type="number"
+                min="10"
+                max="100"
+                value={bulkSettings.max_emails_per_day}
+                onChange={(e) =>
+                  setBulkSettings({ ...bulkSettings, max_emails_per_day: parseInt(e.target.value) || 10 })
+                }
+                data-testid="bulk-max"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500">Daily increment</Label>
+              <Input
+                type="number"
+                min="1"
+                max="10"
+                value={bulkSettings.daily_increment}
+                onChange={(e) =>
+                  setBulkSettings({ ...bulkSettings, daily_increment: parseInt(e.target.value) || 1 })
+                }
+                data-testid="bulk-increment"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500">Reply rate (%)</Label>
+              <Input
+                type="number"
+                min="30"
+                max="50"
+                value={bulkSettings.reply_rate}
+                onChange={(e) =>
+                  setBulkSettings({ ...bulkSettings, reply_rate: parseInt(e.target.value) || 30 })
+                }
+                data-testid="bulk-reply-rate"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkSettingsOpen(false)} disabled={bulkBusy} data-testid="bulk-settings-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={submitBulkSettings}
+              disabled={bulkBusy || selectedIds.length === 0}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+              data-testid="bulk-settings-confirm"
+            >
+              {bulkBusy ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+              {bulkSettingsMode === "start" ? "Start Warmup" : "Save Settings"}
             </Button>
           </DialogFooter>
         </DialogContent>

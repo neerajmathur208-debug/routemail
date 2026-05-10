@@ -152,7 +152,7 @@ scheduler_task = None
 warmup_task = None
 warmup_running = False
 
-# Warmup email subjects with (RTM) marker
+# Warmup email subjects with (RTM) marker — varied, conversational
 WARMUP_SUBJECTS = [
     "Quick question (RTM)",
     "Following up (RTM)",
@@ -174,33 +174,128 @@ WARMUP_SUBJECTS = [
     "Brief update (RTM)",
     "Re: Action items (RTM)",
     "Quick feedback request (RTM)",
+    "Hope you're doing well (RTM)",
+    "Got a minute? (RTM)",
+    "Following up from earlier today (RTM)",
+    "Re: That thing we discussed (RTM)",
+    "A quick favor (RTM)",
+    "Wanted to share something (RTM)",
+    "Quick heads up (RTM)",
+    "Re: Yesterday's chat (RTM)",
+    "Need your input (RTM)",
+    "Touching base (RTM)",
+    "Catching up (RTM)",
+    "Re: Our thread (RTM)",
+    "Looping back (RTM)",
+    "When you get a chance (RTM)",
+    "A small update (RTM)",
+    "Just a thought (RTM)",
+    "Wrapping up (RTM)",
+    "Going over notes (RTM)",
+    "Quick FYI (RTM)",
+    "Re: Earlier conversation (RTM)",
 ]
 
-# Warmup email body templates (human-like content)
+# Warmup body building blocks for randomized, conversational content
+WARMUP_GREETINGS = [
+    "Hi", "Hey", "Hello", "Hi there", "Hey there", "Morning", "Good morning",
+    "Hope all's well", "Hey friend", "Hi again", "Quick one",
+]
+
+WARMUP_OPENERS = [
+    "Hope you're having a good week so far.",
+    "Hope you're doing well.",
+    "Hope this finds you well.",
+    "Just wanted to follow up on this from earlier today.",
+    "Thanks again for the update earlier.",
+    "Quick one for you.",
+    "Wanted to circle back on what we discussed.",
+    "Following up on our last chat.",
+    "Just checking in on this — no rush.",
+    "Wanted to make sure this didn't get buried.",
+    "Hope you had a good weekend.",
+    "Thanks for getting back to me earlier.",
+    "Just touching base on this.",
+    "Picking up where we left off.",
+    "Hope your week is going smoothly.",
+]
+
+WARMUP_BODY_LINES = [
+    "Let me know your thoughts when you get a chance.",
+    "I'll review this and get back to you shortly.",
+    "Happy to jump on a quick call if that's easier.",
+    "No rush at all — whenever it works for you.",
+    "Just wanted to keep you in the loop.",
+    "Curious what you think.",
+    "Let me know if anything needs adjusting.",
+    "I think we're on the same page, but want to confirm.",
+    "Let me know if you'd like more detail.",
+    "If anything looks off, ping me back.",
+    "Happy to help with whatever you need on this.",
+    "I'll wait to hear from you before moving forward.",
+    "Just wanted to say thanks for the help yesterday.",
+    "Will keep things moving on my end in the meantime.",
+    "Drop a line whenever — no pressure.",
+    "Quick gut check would be helpful when you can.",
+    "Appreciate your time on this, as always.",
+    "Wanted to make sure we're aligned before next steps.",
+    "Let me know if I should hold off or proceed.",
+    "Anything I'm missing here?",
+]
+
+WARMUP_CLOSERS = [
+    "Thanks!", "Cheers,", "Best,", "Best regards,", "Talk soon,",
+    "Appreciate it,", "Thanks again,", "All the best,", "Cheers!",
+    "Catch you later,", "Have a good one,",
+]
+
+# Legacy templates kept for backwards compatibility (fallback only)
 WARMUP_BODIES = [
     "Hi there,\n\nJust wanted to touch base on this. Let me know your thoughts when you get a chance.\n\nBest regards",
     "Hey,\n\nHope you're doing well. Wanted to follow up on our previous conversation. Any updates?\n\nThanks",
     "Hi,\n\nQuick question - have you had a chance to look at this? No rush, just checking in.\n\nCheers",
     "Hello,\n\nJust a brief note to see how things are going. Let me know if you need anything from my end.\n\nBest",
     "Hi there,\n\nWanted to share a quick update. Things are progressing well on our end. Will keep you posted.\n\nThanks",
-    "Hey,\n\nCircling back on this topic. Would love to hear your feedback when you have a moment.\n\nRegards",
-    "Hi,\n\nJust following up to make sure this didn't get lost in your inbox. Let me know when you're free to chat.\n\nBest",
-    "Hello,\n\nHope all is well! Just wanted to check in and see if there's anything we need to discuss.\n\nThanks",
-    "Hi there,\n\nQuick sync - are we still on track for the timeline we discussed? Let me know.\n\nCheers",
-    "Hey,\n\nJust a friendly reminder about this. No pressure, but wanted to make sure it's on your radar.\n\nBest regards",
 ]
 
-# Warmup reply templates
+# Warmup reply templates — varied, natural acknowledgements
 WARMUP_REPLIES = [
     "Thanks for reaching out! I'll take a look and get back to you soon.",
     "Got it, thanks for the update. Will review and follow up.",
     "Appreciate you checking in. Everything looks good on my end.",
     "Thanks! Yes, I've been working on this. Will send an update shortly.",
     "Good to hear from you. Let me check on this and I'll respond in detail.",
-    "Thanks for following up. I'm still working through this - will update you soon.",
+    "Thanks for following up. I'm still working through this — will update you soon.",
     "Received, thank you! I'll review and get back to you.",
     "Thanks for the reminder. I'll prioritize this and respond soon.",
+    "Hey! Thanks for the nudge. Looking at this now.",
+    "All good on my side — appreciate the heads up.",
+    "Got it, thanks. I'll loop back once I've reviewed.",
+    "Thanks for circling back. Let me dig in and revert.",
+    "Noted, thanks! Will get to this today if I can.",
+    "Appreciate it — I'll have something for you by end of day.",
+    "Thanks for keeping me posted. Sounds good on my end.",
+    "Received, will reply with details shortly.",
+    "Thanks again — I'll take it from here.",
+    "Got your message. Confirming I'll handle this.",
+    "Cheers, makes sense. I'll come back to you with thoughts.",
+    "Thanks for the follow-up. All clear on my side.",
 ]
+
+
+def build_warmup_body() -> str:
+    """Build a conversational, varied warmup email body (2–5 lines)."""
+    import random
+    greeting = random.choice(WARMUP_GREETINGS)
+    opener = random.choice(WARMUP_OPENERS)
+    # 1-2 middle body lines
+    middle_count = random.choice([1, 1, 2])
+    middle = random.sample(WARMUP_BODY_LINES, k=middle_count)
+    closer = random.choice(WARMUP_CLOSERS)
+    parts = [f"{greeting},", "", opener]
+    parts.extend(middle)
+    parts.extend(["", closer])
+    return "\n".join(parts)
 
 async def run_warmup_worker():
     """Background worker for email warmup"""
@@ -308,13 +403,9 @@ async def process_warmup_for_account(account: dict):
     recipient_account = random.choice(other_accounts)
     recipient_email = recipient_account.get("email")
     
-    # Select random subject and body
+    # Select random subject and build a fresh, varied conversational body
     subject = random.choice(WARMUP_SUBJECTS)
-    body = random.choice(WARMUP_BODIES)
-    
-    # Add some randomization to body
-    greetings = ["Hi", "Hey", "Hello", "Hi there"]
-    body = body.replace("Hi there", random.choice(greetings))
+    body = build_warmup_body()
     
     try:
         # Send warmup email
@@ -2782,9 +2873,21 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
     ).to_list(100)
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Bulk-fetch today's warmup stats so the UI can show combined totals
+    account_ids = [acc.get("account_id") for acc in accounts]
+    warmup_stats_today = {
+        s["account_id"]: s
+        async for s in db.warmup_stats.find(
+            {"account_id": {"$in": account_ids}, "date": today},
+            {"_id": 0, "account_id": 1, "emails_sent": 1, "replies_sent": 1},
+        )
+    }
     for acc in accounts:
         if acc.get("last_send_date") != today:
             acc["daily_send_count"] = 0
+        ws = warmup_stats_today.get(acc.get("account_id"))
+        acc["warmup_emails_sent_today"] = ws.get("emails_sent", 0) if ws else 0
+        acc["warmup_replies_today"] = ws.get("replies_sent", 0) if ws else 0
     
     # Add limit info
     account_limit = await check_account_limit(user.user_id)
@@ -3164,6 +3267,101 @@ async def get_warmup_dashboard(user: User = Depends(get_current_user)):
         })
     
     return {"accounts": dashboard_data}
+
+# ==================== BULK WARMUP ENDPOINTS ====================
+
+class BulkWarmupRequest(BaseModel):
+    account_ids: list[str]
+
+class BulkWarmupSettingsRequest(BaseModel):
+    account_ids: list[str]
+    starting_emails_per_day: int = 5
+    max_emails_per_day: int = 50
+    daily_increment: int = 5
+    reply_rate: int = 40
+
+def _validate_warmup_settings(s: WarmupSettingsRequest | BulkWarmupSettingsRequest) -> dict:
+    return {
+        "starting_emails_per_day": max(1, min(20, s.starting_emails_per_day)),
+        "max_emails_per_day": max(10, min(100, s.max_emails_per_day)),
+        "daily_increment": max(1, min(10, s.daily_increment)),
+        "reply_rate": max(30, min(50, s.reply_rate)),
+    }
+
+@api_router.post("/accounts/warmup/bulk-enable")
+async def bulk_enable_warmup(req: BulkWarmupSettingsRequest, user: User = Depends(get_current_user)):
+    """Enable warmup for multiple accounts with shared settings."""
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+    settings = _validate_warmup_settings(req)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    result = await db.email_accounts.update_many(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id},
+        {"$set": {
+            "warmup_enabled": True,
+            "warmup_status": "active",
+            "warmup_day": 1,
+            "warmup_started_at": now_iso,
+            "warmup_settings": settings,
+        }},
+    )
+    logger.info(f"[WARMUP] Bulk enabled warmup for {result.modified_count} accounts by user {user.email}")
+    return {
+        "success": True,
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+        "settings": settings,
+    }
+
+@api_router.post("/accounts/warmup/bulk-pause")
+async def bulk_pause_warmup(req: BulkWarmupRequest, user: User = Depends(get_current_user)):
+    """Pause warmup for multiple accounts."""
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+    result = await db.email_accounts.update_many(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id, "warmup_enabled": True},
+        {"$set": {"warmup_status": "paused"}},
+    )
+    return {"success": True, "matched": result.matched_count, "modified": result.modified_count}
+
+@api_router.post("/accounts/warmup/bulk-resume")
+async def bulk_resume_warmup(req: BulkWarmupRequest, user: User = Depends(get_current_user)):
+    """Resume warmup for multiple accounts."""
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+    result = await db.email_accounts.update_many(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id, "warmup_enabled": True},
+        {"$set": {"warmup_status": "active"}},
+    )
+    return {"success": True, "matched": result.matched_count, "modified": result.modified_count}
+
+@api_router.post("/accounts/warmup/bulk-disable")
+async def bulk_disable_warmup(req: BulkWarmupRequest, user: User = Depends(get_current_user)):
+    """Disable warmup for multiple accounts."""
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+    result = await db.email_accounts.update_many(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id},
+        {"$set": {"warmup_enabled": False, "warmup_status": "disabled"}},
+    )
+    return {"success": True, "matched": result.matched_count, "modified": result.modified_count}
+
+@api_router.put("/accounts/warmup/bulk-settings")
+async def bulk_update_warmup_settings(req: BulkWarmupSettingsRequest, user: User = Depends(get_current_user)):
+    """Update warmup settings for multiple accounts at once (does not toggle status)."""
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+    settings = _validate_warmup_settings(req)
+    result = await db.email_accounts.update_many(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id},
+        {"$set": {"warmup_settings": settings}},
+    )
+    return {
+        "success": True,
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+        "settings": settings,
+    }
 
 @api_router.post("/accounts/test-smtp")
 async def test_smtp_endpoint(request: TestSMTPRequest, user: User = Depends(get_current_user)):
