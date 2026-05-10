@@ -76,21 +76,22 @@ function Header({ onCtaClick, navigate }) {
           <Link to="/blog" className="hover:text-slate-900 transition-colors">Blog</Link>
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="ghost"
             onClick={() => navigate("/login")}
-            className="hidden sm:inline-flex text-slate-600 hover:text-slate-900"
+            className="text-slate-600 hover:text-slate-900 px-2.5 sm:px-4 text-sm"
             data-testid="header-login-btn"
           >
             Sign in
           </Button>
           <Button
             onClick={onCtaClick}
-            className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white"
+            className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-3 sm:px-4 text-sm whitespace-nowrap"
             data-testid="header-start-trial-btn"
           >
-            Start Free Trial
+            <span className="sm:hidden">Get Started</span>
+            <span className="hidden sm:inline">Start Free Trial</span>
           </Button>
         </div>
       </div>
