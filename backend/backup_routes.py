@@ -632,8 +632,11 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             leads = payload.get("leads") or []
         stats = {"folders_imported": 0, "folders_skipped": 0, "folders_replaced": 0, "leads_imported": 0}
 
-        # Map old_folder_id -> new_folder_id so leads can be re-linked
+        # Map old_folder_id -> new_folder_id so leads can be re-linked.
+        # Folders that we SKIPPED must not be in this map — their standalone leads
+        # should fall through to the 'Imported Leads' fallback (or also be skipped).
         folder_id_map: Dict[str, str] = {}
+        skipped_old_ids: set = set()
 
         for f in folders:
             name = (f.get("name") or "").strip() or "Imported Folder"
@@ -646,7 +649,10 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             if existing:
                 if conflict == "skip":
                     stats["folders_skipped"] += 1
-                    new_folder_id = existing["folder_id"]
+                    # Mark the old id as skipped so standalone leads referencing it
+                    # are also not inserted (per spec: 'don't insert its leads').
+                    if old_id:
+                        skipped_old_ids.add(old_id)
                     skip_this_folder_leads = True
                 elif conflict == "replace":
                     new_folder_id = existing["folder_id"]
@@ -683,7 +689,7 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                     }
                 )
                 stats["folders_imported"] += 1
-            if old_id:
+            if old_id and new_folder_id:
                 folder_id_map[old_id] = new_folder_id
             # Inline leads support (if folder has embedded leads array)
             inline_leads = f.get("leads") or []
@@ -700,6 +706,9 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         # Now process standalone leads (with folder_id references)
         for lead in leads:
             old_folder_id = lead.get("folder_id")
+            # Honor the skip decision — drop leads whose folder was explicitly skipped
+            if old_folder_id and old_folder_id in skipped_old_ids:
+                continue
             new_folder_id = folder_id_map.get(old_folder_id)
             if not new_folder_id:
                 # Folder wasn't in the backup — drop into a fallback "Imported Leads" folder

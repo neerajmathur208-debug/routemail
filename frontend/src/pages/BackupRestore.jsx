@@ -328,7 +328,7 @@ export default function BackupRestore({ user, setUser }) {
             </div>
             <p className="text-sm text-slate-600 mb-4">
               Download a single ZIP containing all your campaigns, drip campaigns, email accounts, email lists,
-              unsubscribe lists, and metadata. Re-import anytime to restore.
+              do not email lists, responses/leads, and metadata. Re-import anytime to restore.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
