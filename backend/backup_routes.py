@@ -270,6 +270,35 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             f"routemail-dne-lists-{datetime.now(timezone.utc).strftime('%Y%m%d')}.json",
         )
 
+    # Spec alias: "Do Not Email Lists" — same payload as /export/dne-lists
+    @router.get("/export/do-not-email-lists")
+    async def export_do_not_email_lists(
+        format: str = Query("json"),
+        user=Depends(get_current_user),
+    ):
+        return await export_dne_lists(format=format, user=user)
+
+    @router.get("/export/responses-leads")
+    async def export_responses_leads(user=Depends(get_current_user)):
+        folders = await db.lead_folders.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(2000)
+        leads = await db.leads.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(20000)
+        return _stream_json(
+            {
+                "schema_version": BACKUP_SCHEMA_VERSION,
+                "exported_at": _now(),
+                "user_email": user.email,
+                "folder_count": len(folders),
+                "lead_count": len(leads),
+                "folders": folders,
+                "leads": leads,
+            },
+            f"routemail-responses-leads-{datetime.now(timezone.utc).strftime('%Y%m%d')}.json",
+        )
+
     # =====================================================================
     # EXPORT — full ZIP backup
     # =====================================================================
@@ -303,6 +332,15 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 {"_id": 0},
             ).to_list(100000)
 
+        # Responses / Leads — folders + leads
+        lead_folders = await db.lead_folders.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(2000)
+        leads_all = await db.leads.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(20000)
+        responses_leads = {"folders": lead_folders, "leads": leads_all}
+
         metadata = {
             "schema_version": BACKUP_SCHEMA_VERSION,
             "routemail_version": ROUTEMAIL_VERSION,
@@ -314,6 +352,10 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 "drip_campaigns": len(drips),
                 "email_accounts": len(accounts),
                 "email_lists": len(lists),
+                "do_not_email_lists": len(dne_lists),
+                "responses_leads_folders": len(lead_folders),
+                "responses_leads_items": len(leads_all),
+                # backward-compat alias
                 "unsubscribe_lists": len(dne_lists),
             },
         }
@@ -325,7 +367,10 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             zf.writestr("drip_campaigns.json", json.dumps(drips, indent=2, default=str))
             zf.writestr("email_accounts.json", json.dumps(accounts, indent=2, default=str))
             zf.writestr("email_lists.json", json.dumps(lists, indent=2, default=str))
+            # Canonical filename per spec + legacy alias kept for older readers
+            zf.writestr("do_not_email_lists.json", json.dumps(dne_lists, indent=2, default=str))
             zf.writestr("unsubscribe_lists.json", json.dumps(dne_lists, indent=2, default=str))
+            zf.writestr("responses_leads.json", json.dumps(responses_leads, indent=2, default=str))
         buf.seek(0)
         fname = f"routemail-backup-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
         return StreamingResponse(
@@ -479,70 +524,209 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         return stats
 
     async def _import_dne_lists(items: List[Dict[str, Any]], conflict: str, user) -> Dict[str, int]:
-        stats = {"imported": 0, "skipped": 0, "replaced": 0}
+        stats = {"imported": 0, "skipped": 0, "replaced": 0, "emails_added": 0}
         for item in items:
             name = (item.get("name") or "").strip() or "Imported DNE"
             emails = item.get("emails") or []
-            existing = await db.dne_lists.find_one(
-                {"user_id": user.user_id, "name": name}, {"_id": 0}
-            )
+            is_global = bool(item.get("is_global"))
+            # Global DNE in the source maps to the user's existing global list (regardless of name)
+            if is_global:
+                existing = await db.dne_lists.find_one(
+                    {"user_id": user.user_id, "is_global": True}, {"_id": 0}
+                )
+            else:
+                existing = await db.dne_lists.find_one(
+                    {"user_id": user.user_id, "name": name, "is_global": False}, {"_id": 0}
+                )
             target_list_id: Optional[str] = None
+            target_is_global = False
             if existing:
                 if conflict == "skip":
                     stats["skipped"] += 1
                     continue
                 if conflict == "replace":
                     target_list_id = existing["list_id"]
+                    target_is_global = bool(existing.get("is_global"))
                     await db.dne_emails.delete_many(
                         {"list_id": target_list_id, "user_id": user.user_id}
                     )
                     await db.dne_lists.update_one(
                         {"list_id": target_list_id, "user_id": user.user_id},
-                        {"$set": {"name": name, "is_global": False, "email_count": 0}},
+                        {"$set": {"name": existing.get("name") if target_is_global else name, "email_count": 0}},
                     )
                     stats["replaced"] += 1
                 else:
-                    name = f"{name} (Imported)"
+                    # copy: merge into existing if global (never duplicate the global list),
+                    # otherwise create a new list with " (Imported)" suffix
+                    if is_global:
+                        target_list_id = existing["list_id"]
+                        target_is_global = True
+                        # fall through — emails will be inserted with dedupe
+                    else:
+                        name = f"{name} (Imported)"
             if target_list_id is None:
                 target_list_id = _new_id("dne")
+                # Honor "is_global" only when the user doesn't already have a global list
+                make_global = bool(is_global and not existing)
+                target_is_global = make_global
                 await db.dne_lists.insert_one(
                     {
                         "list_id": target_list_id,
                         "user_id": user.user_id,
-                        "name": name,
-                        "is_global": False,  # Imported lists never become global
+                        "name": name if not make_global else "Global Do Not Email",
+                        "is_global": make_global,
                         "email_count": 0,
                         "created_at": _now(),
                     }
                 )
                 stats["imported"] += 1
-            # Insert emails (best-effort dedupe by email per list)
-            seen = set()
-            docs = []
+            # Insert emails — skip duplicates by (list_id,email) lookup
+            inserted = 0
             for e in emails:
                 addr = (e.get("email") if isinstance(e, dict) else str(e) or "").strip().lower()
-                if not addr or addr in seen:
+                if not addr:
                     continue
-                seen.add(addr)
-                docs.append(
-                    {
-                        "list_id": target_list_id,
-                        "user_id": user.user_id,
-                        "email": addr,
-                        "source": (e.get("source") if isinstance(e, dict) else None) or "imported",
-                        "added_at": _now(),
-                    }
+                exists = await db.dne_emails.find_one(
+                    {"list_id": target_list_id, "user_id": user.user_id, "email": addr},
+                    {"_id": 0, "email": 1},
                 )
-            if docs:
-                try:
-                    await db.dne_emails.insert_many(docs, ordered=False)
-                except Exception as exc:  # duplicate index — ignore
-                    logger.info(f"[BACKUP] dne_emails partial insert: {exc}")
+                if exists:
+                    continue
+                source = (e.get("source") if isinstance(e, dict) else None) or "imported"
+                added_at = (e.get("added_at") if isinstance(e, dict) else None) or _now()
+                notes = (e.get("notes") if isinstance(e, dict) else None)
+                doc = {
+                    "list_id": target_list_id,
+                    "user_id": user.user_id,
+                    "email": addr,
+                    "source": source,
+                    "added_at": added_at,
+                }
+                if notes:
+                    doc["notes"] = notes
+                await db.dne_emails.insert_one(doc)
+                inserted += 1
+            stats["emails_added"] += inserted
             count = await db.dne_emails.count_documents({"list_id": target_list_id})
             await db.dne_lists.update_one(
                 {"list_id": target_list_id, "user_id": user.user_id},
                 {"$set": {"email_count": count}},
             )
+        # Return only the standard keys for consistency (extra: emails_added)
+        return stats
+
+    async def _import_responses_leads(payload: Dict[str, Any], conflict: str, user) -> Dict[str, int]:
+        """Restore Responses/Leads folders + saved leads.
+
+        payload may be either {folders:[], leads:[]} OR a flat list of folders with embedded leads.
+        Conflict modes:
+            skip    — keep existing folder, do not insert ITS leads
+            replace — overwrite existing folder name + delete-and-reinsert its leads
+            copy    — create a new folder with " (Imported)" suffix (default)
+        """
+        if isinstance(payload, list):
+            folders = payload
+            leads = []
+        else:
+            folders = payload.get("folders") or []
+            leads = payload.get("leads") or []
+        stats = {"folders_imported": 0, "folders_skipped": 0, "folders_replaced": 0, "leads_imported": 0}
+
+        # Map old_folder_id -> new_folder_id so leads can be re-linked
+        folder_id_map: Dict[str, str] = {}
+
+        for f in folders:
+            name = (f.get("name") or "").strip() or "Imported Folder"
+            old_id = f.get("folder_id")
+            existing = await db.lead_folders.find_one(
+                {"user_id": user.user_id, "name": name}, {"_id": 0}
+            )
+            new_folder_id: Optional[str] = None
+            skip_this_folder_leads = False
+            if existing:
+                if conflict == "skip":
+                    stats["folders_skipped"] += 1
+                    new_folder_id = existing["folder_id"]
+                    skip_this_folder_leads = True
+                elif conflict == "replace":
+                    new_folder_id = existing["folder_id"]
+                    await db.lead_folders.update_one(
+                        {"folder_id": new_folder_id, "user_id": user.user_id},
+                        {"$set": {"name": name}},
+                    )
+                    # Wipe existing leads in this folder
+                    await db.leads.delete_many(
+                        {"user_id": user.user_id, "folder_id": new_folder_id}
+                    )
+                    stats["folders_replaced"] += 1
+                else:
+                    # copy
+                    name = f"{name} (Imported)"
+                    new_folder_id = _new_id("foldr")
+                    await db.lead_folders.insert_one(
+                        {
+                            "folder_id": new_folder_id,
+                            "user_id": user.user_id,
+                            "name": name,
+                            "created_at": f.get("created_at") or _now(),
+                        }
+                    )
+                    stats["folders_imported"] += 1
+            else:
+                new_folder_id = _new_id("foldr")
+                await db.lead_folders.insert_one(
+                    {
+                        "folder_id": new_folder_id,
+                        "user_id": user.user_id,
+                        "name": name,
+                        "created_at": f.get("created_at") or _now(),
+                    }
+                )
+                stats["folders_imported"] += 1
+            if old_id:
+                folder_id_map[old_id] = new_folder_id
+            # Inline leads support (if folder has embedded leads array)
+            inline_leads = f.get("leads") or []
+            if inline_leads and not skip_this_folder_leads:
+                for lead in inline_leads:
+                    doc = {k: v for k, v in lead.items() if k != "_id"}
+                    doc["lead_id"] = _new_id("lead")
+                    doc["user_id"] = user.user_id
+                    doc["folder_id"] = new_folder_id
+                    doc.setdefault("saved_at", _now())
+                    await db.leads.insert_one(doc)
+                    stats["leads_imported"] += 1
+
+        # Now process standalone leads (with folder_id references)
+        for lead in leads:
+            old_folder_id = lead.get("folder_id")
+            new_folder_id = folder_id_map.get(old_folder_id)
+            if not new_folder_id:
+                # Folder wasn't in the backup — drop into a fallback "Imported Leads" folder
+                fallback = await db.lead_folders.find_one(
+                    {"user_id": user.user_id, "name": "Imported Leads"}, {"_id": 0}
+                )
+                if fallback:
+                    new_folder_id = fallback["folder_id"]
+                else:
+                    new_folder_id = _new_id("foldr")
+                    await db.lead_folders.insert_one(
+                        {
+                            "folder_id": new_folder_id,
+                            "user_id": user.user_id,
+                            "name": "Imported Leads",
+                            "created_at": _now(),
+                        }
+                    )
+                    stats["folders_imported"] += 1
+                    folder_id_map[old_folder_id or "_orphan"] = new_folder_id
+            doc = {k: v for k, v in lead.items() if k != "_id"}
+            doc["lead_id"] = _new_id("lead")
+            doc["user_id"] = user.user_id
+            doc["folder_id"] = new_folder_id
+            doc.setdefault("saved_at", _now())
+            await db.leads.insert_one(doc)
+            stats["leads_imported"] += 1
         return stats
 
     # =====================================================================
@@ -573,6 +757,29 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
     async def import_dne_route(payload: ImportPayload, user=Depends(get_current_user)):
         conflict = _normalize_conflict(payload.conflict)
         return await _import_dne_lists(payload.items, conflict, user)
+
+    # Spec alias: do-not-email-lists
+    @router.post("/import/do-not-email-lists")
+    async def import_do_not_email_lists_route(payload: ImportPayload, user=Depends(get_current_user)):
+        conflict = _normalize_conflict(payload.conflict)
+        return await _import_dne_lists(payload.items, conflict, user)
+
+    @router.post("/import/responses-leads")
+    async def import_responses_leads_route(payload: ImportPayload, user=Depends(get_current_user)):
+        """Restore Responses/Leads folders + leads.
+
+        Accepts payload.items as either:
+        - A folders array (with optional embedded leads on each folder)
+        - The single object {folders:[], leads:[]} wrapped in items[0]
+        """
+        conflict = _normalize_conflict(payload.conflict)
+        if not payload.items:
+            return {"folders_imported": 0, "folders_skipped": 0, "folders_replaced": 0, "leads_imported": 0}
+        first = payload.items[0]
+        if isinstance(first, dict) and ("folders" in first or "leads" in first):
+            return await _import_responses_leads(first, conflict, user)
+        # treat items as folders directly
+        return await _import_responses_leads({"folders": payload.items, "leads": []}, conflict, user)
 
     # =====================================================================
     # IMPORT — full ZIP upload + preview
@@ -607,13 +814,33 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                         raise HTTPException(status_code=400, detail=f"Invalid JSON in {name}: {exc}")
                     return data if isinstance(data, list) else data.get("items", [])
 
+                def _read_obj(name: str) -> Dict[str, Any]:
+                    if name not in names:
+                        return {}
+                    raw = zf.read(name)
+                    if not raw:
+                        return {}
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise HTTPException(status_code=400, detail=f"Invalid JSON in {name}: {exc}")
+                    return data if isinstance(data, dict) else {"items": data}
+
+                # Prefer canonical names; fall back to legacy alias for DNE lists
+                dne = _read_list("do_not_email_lists.json")
+                if not dne:
+                    dne = _read_list("unsubscribe_lists.json")
+                responses_leads = _read_obj("responses_leads.json")
                 return {
                     "metadata": metadata,
                     "campaigns": _read_list("campaigns.json"),
                     "drip_campaigns": _read_list("drip_campaigns.json"),
                     "email_accounts": _read_list("email_accounts.json"),
                     "email_lists": _read_list("email_lists.json"),
-                    "unsubscribe_lists": _read_list("unsubscribe_lists.json"),
+                    "do_not_email_lists": dne,
+                    # legacy alias kept for callers/UI that still use the old key
+                    "unsubscribe_lists": dne,
+                    "responses_leads": responses_leads,
                 }
         except zipfile.BadZipFile:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive")
@@ -622,6 +849,7 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
     async def import_full_preview(file: UploadFile = File(...), user=Depends(get_current_user)):  # noqa: ARG001
         content = await file.read()
         parsed = _parse_zip(content)
+        rl = parsed.get("responses_leads") or {}
         return {
             "metadata": parsed["metadata"],
             "summary": {
@@ -629,6 +857,10 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 "drip_campaigns": len(parsed["drip_campaigns"]),
                 "email_accounts": len(parsed["email_accounts"]),
                 "email_lists": len(parsed["email_lists"]),
+                "do_not_email_lists": len(parsed["do_not_email_lists"]),
+                "responses_leads_folders": len(rl.get("folders", [])),
+                "responses_leads_items": len(rl.get("leads", [])),
+                # backward-compat alias
                 "unsubscribe_lists": len(parsed["unsubscribe_lists"]),
             },
         }
@@ -647,8 +879,11 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             "drip_campaigns": await _import_drips(parsed["drip_campaigns"], conflict, user),
             "email_accounts": await _import_email_accounts(parsed["email_accounts"], conflict, user),
             "email_lists": await _import_email_lists(parsed["email_lists"], conflict, user),
-            "unsubscribe_lists": await _import_dne_lists(parsed["unsubscribe_lists"], conflict, user),
+            "do_not_email_lists": await _import_dne_lists(parsed["do_not_email_lists"], conflict, user),
+            "responses_leads": await _import_responses_leads(parsed.get("responses_leads") or {}, conflict, user),
         }
+        # Backward-compat alias for older UI keys
+        results["unsubscribe_lists"] = results["do_not_email_lists"]
         return {
             "success": True,
             "metadata": parsed["metadata"],

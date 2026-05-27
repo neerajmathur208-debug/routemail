@@ -1,0 +1,45 @@
+{
+  "summary": "Verified Backup & Restore extensions for Responses/Leads + Do Not Email Lists. Added 12 new pytest cases (total 42 passing). Frontend e2e confirmed new module cards (dne-lists, responses-leads) and 7-row restore preview UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/backup/import/responses-leads",
+        "issue": "With conflict='skip' on an existing folder, standalone leads in payload (top-level items[].leads[]) referencing the skipped folder are still inserted into the EXISTING folder via folder_id_map. Spec says leads_imported should be 0 for the skipped folder's leads, but observed leads_imported=1. Inline leads (folders[].leads[]) are correctly skipped via skip_this_folder_leads flag (backup_routes.py:660-700). Likely a bug — standalone leads handling should also be guarded when the folder was skipped."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/backup - Full Account Backup card description",
+        "issues": ["Description text still says 'unsubscribe lists' — should be updated to 'do not email lists' to match the new canonical terminology and module card rename."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backup_restore.py",
+    "/app/test_reports/pytest/backup_restore_results.xml"
+  ],
+  "action_items": [
+    "Fix conflict='skip' standalone-leads handling in /import/responses-leads: when a folder is matched-and-skipped, do NOT add its old_id -> existing_folder_id into folder_id_map (or filter standalone leads against skipped folder ids) so leads_imported stays 0 per spec.",
+    "Update Full Account Backup card description copy in BackupRestore.jsx (replace 'unsubscribe lists' with 'do not email lists')."
+  ],
+  "critical_code_review_comments": [
+    "backup_routes.py: _import_responses_leads — skip-mode treats existing folder as a valid mapping target for standalone leads. Either skip those leads explicitly or scope folder_id_map to imported/replaced folders only.",
+    "backup_routes.py: file size approaching 940+ lines with many import branches; consider extracting _import_dne_lists / _import_responses_leads into a small helpers module for readability.",
+    "BackupRestore.jsx: 'Full Account Backup' card description text now stale ('unsubscribe lists'). Minor but inconsistent with the new module card rename."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backup_restore.py"
+  ],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "100% (cards + 7-row preview)"},
+  "test_credentials": "drip.tester@example.com / DripTest123! ; dhruvmathur208@gmail.com / Perfect2026!",
+  "seed_data_creation": "Tests create and self-clean TEST_RL_Copy / TEST_RL_Skip / TEST_RL_Replace folders and a TEST_global_merge_<uuid>@example.com global DNE email. Backward-compat test creates a 'TEST_Legacy_DNE' list and removes it.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: /app/backend/tests/test_backup_restore.py covers full ZIP shape (8 files + new metadata count keys), preview, full restore copy result keys (incl. responses_leads + do_not_email_lists + alias), backward-compat with legacy unsubscribe-only ZIP, new responses-leads export/import (copy/skip/replace), DNE global merge semantics, alias endpoints, and auth gating. drip.tester currently has 7 campaigns, 3 drips, 2 accounts, 4 lists, 3 DNE lists, plus accumulated lead folders/leads from prior test runs (full restore preview saw 18 folders / 32 saved leads at test time). Cross-user isolation test confirms dhruvmathur208 still has 0 folders/0 leads.",
+  "rca of the issue": "Skip-mode standalone-leads bug RCA: In backup_routes.py::_import_responses_leads, when a folder name collision is detected and conflict=='skip', the code sets skip_this_folder_leads=True (correctly bypasses inline leads), BUT it still inserts folder_id_map[old_folder_id] = existing_folder_id. The subsequent standalone-leads loop then uses this map to re-link top-level leads into the existing folder, causing leads_imported>0 for a 'skipped' folder. Fix: either omit the mapping entry for skipped folders (so those leads fall to the 'Imported Leads' fallback) or track a skipped_old_ids set and filter leads whose folder_id is in it. Reproduction is captured in test_import_responses_leads_skip_mode (asserts current behavior with an inline NOTE)."
+}

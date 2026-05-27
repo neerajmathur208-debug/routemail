@@ -68,10 +68,17 @@ const MODULES = [
   },
   {
     key: "dne-lists",
-    label: "Unsubscribe Lists",
+    label: "Do Not Email Lists",
     icon: FileText,
     formats: ["json", "csv"],
-    importHint: "Imports unsubscribe/DNE entries.",
+    importHint: "Imports Do Not Email / unsubscribe entries. Duplicate emails are skipped by default; existing entries are never removed.",
+  },
+  {
+    key: "responses-leads",
+    label: "Responses / Leads",
+    icon: FileJson,
+    formats: ["json"],
+    importHint: "Imports folders and saved responses. Notes and folder mappings are preserved.",
   },
 ];
 
@@ -531,7 +538,9 @@ export default function BackupRestore({ user, setUser }) {
                   <li><span className="font-semibold">{restorePreview.summary.drip_campaigns}</span> Drip Campaigns</li>
                   <li><span className="font-semibold">{restorePreview.summary.email_accounts}</span> Email Accounts</li>
                   <li><span className="font-semibold">{restorePreview.summary.email_lists}</span> Email Lists</li>
-                  <li><span className="font-semibold">{restorePreview.summary.unsubscribe_lists}</span> Unsubscribe Lists</li>
+                  <li><span className="font-semibold">{restorePreview.summary.do_not_email_lists ?? restorePreview.summary.unsubscribe_lists ?? 0}</span> Do Not Email Lists</li>
+                  <li><span className="font-semibold">{restorePreview.summary.responses_leads_folders ?? 0}</span> Lead Folders</li>
+                  <li><span className="font-semibold">{restorePreview.summary.responses_leads_items ?? 0}</span> Saved Leads</li>
                 </ul>
                 <p className="text-xs text-slate-500 mt-2">
                   Exported {restorePreview.metadata.exported_at?.slice(0, 19).replace("T", " ")} by{" "}
