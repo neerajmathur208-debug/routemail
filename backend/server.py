@@ -7104,6 +7104,8 @@ async def health():
     return {"status": "healthy"}
 
 # Include the router
+from backup_routes import build_backup_router
+api_router.include_router(build_backup_router(db, get_current_user))
 app.include_router(api_router)
 
 app.add_middleware(

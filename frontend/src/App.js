@@ -33,6 +33,7 @@ import AdminUserDetail from "./pages/AdminUserDetail";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
+import BackupRestore from "./pages/BackupRestore";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -233,6 +234,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <Subscription user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backup"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <BackupRestore user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />
