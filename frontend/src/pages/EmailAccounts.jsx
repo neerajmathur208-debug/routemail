@@ -114,11 +114,17 @@ export default function EmailAccounts({ user, setUser }) {
     preset: "custom",
     email: "",
     display_name: "",
+    from_name: "",
     smtp_host: "",
     smtp_port: 587,
     smtp_username: "",
     smtp_password: "",
     smtp_encryption: "tls",
+    imap_host: "",
+    imap_port: 993,
+    imap_username: "",
+    imap_password: "",
+    imap_encryption: "ssl",
     daily_limit: 50,
     send_delay: 30,
   });
@@ -220,11 +226,17 @@ export default function EmailAccounts({ user, setUser }) {
       await api.post("/accounts/smtp", {
         email: formData.email,
         display_name: formData.display_name,
+        from_name: formData.from_name || formData.display_name,
         smtp_host: formData.smtp_host,
         smtp_port: formData.smtp_port,
         smtp_username: formData.smtp_username,
         smtp_password: formData.smtp_password,
         smtp_encryption: formData.smtp_encryption,
+        imap_host: formData.imap_host || null,
+        imap_port: formData.imap_host ? formData.imap_port : null,
+        imap_username: formData.imap_host ? (formData.imap_username || formData.email) : null,
+        imap_password: formData.imap_host ? (formData.imap_password || formData.smtp_password) : null,
+        imap_encryption: formData.imap_host ? formData.imap_encryption : null,
         daily_limit: formData.daily_limit,
         send_delay: formData.send_delay,
       });
@@ -1128,6 +1140,15 @@ export default function EmailAccounts({ user, setUser }) {
                   onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                   className="mt-1.5" data-testid="display-name-input" />
               </div>
+              <div>
+                <Label htmlFor="from_name">Default From Name</Label>
+                <Input id="from_name" placeholder="e.g. Sales Team" value={formData.from_name}
+                  onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
+                  className="mt-1.5" data-testid="from-name-input" />
+                <p className="text-xs text-slate-500 mt-1">
+                  Used as the sender display name unless a campaign overrides it.
+                </p>
+              </div>
             </div>
 
             <div className="pt-4 border-t border-slate-200">
@@ -1206,6 +1227,59 @@ export default function EmailAccounts({ user, setUser }) {
                   <p className="text-xs text-slate-500 mt-1">
                     Time to wait between consecutive emails (10-300 seconds). Default: 30 seconds.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* IMAP / Receiving Settings */}
+            <div className="pt-4 border-t border-slate-200">
+              <p className="font-medium text-slate-900 mb-1 flex items-center gap-2">
+                <Server size={16} /> Receiving Settings (IMAP)
+              </p>
+              <p className="text-xs text-slate-500 mb-3">
+                Required for Unibox reply tracking and incoming email sync. Leave blank to skip — sending will still work.
+              </p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="imap_host">IMAP Host</Label>
+                    <Input id="imap_host" placeholder="imap.example.com" value={formData.imap_host}
+                      onChange={(e) => setFormData({ ...formData, imap_host: e.target.value })}
+                      className="mt-1.5" data-testid="imap-host-input" />
+                  </div>
+                  <div>
+                    <Label htmlFor="imap_port">IMAP Port</Label>
+                    <Input id="imap_port" type="number" placeholder="993" value={formData.imap_port}
+                      onChange={(e) => setFormData({ ...formData, imap_port: parseInt(e.target.value) || 993 })}
+                      className="mt-1.5" data-testid="imap-port-input" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="imap_username">IMAP Username</Label>
+                  <Input id="imap_username" placeholder="defaults to email if blank" value={formData.imap_username}
+                    onChange={(e) => setFormData({ ...formData, imap_username: e.target.value })}
+                    className="mt-1.5" data-testid="imap-username-input" />
+                </div>
+                <div>
+                  <Label htmlFor="imap_password">IMAP Password / App Password</Label>
+                  <Input id="imap_password" type="password" placeholder="leave blank to reuse SMTP password"
+                    value={formData.imap_password}
+                    onChange={(e) => setFormData({ ...formData, imap_password: e.target.value })}
+                    className="mt-1.5" data-testid="imap-password-input" />
+                </div>
+                <div>
+                  <Label>IMAP Encryption</Label>
+                  <Select value={formData.imap_encryption}
+                    onValueChange={(value) => setFormData({ ...formData, imap_encryption: value })}>
+                    <SelectTrigger className="mt-1.5" data-testid="imap-encryption-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ssl">SSL (Recommended for IMAP)</SelectItem>
+                      <SelectItem value="tls">STARTTLS</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

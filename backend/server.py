@@ -749,9 +749,23 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     
     # Send email
     try:
-        success = await send_drip_email(account, recipient_email, subject, body)
-        
+        send_result = await send_drip_email(account, recipient_email, subject, body, from_name_override=campaign.get("from_name"))
+        success = bool(send_result.get("success"))
+
         if success:
+            # Track outbound for Unibox reply matching
+            await register_sent_email(
+                db,
+                user_id=campaign.get("user_id", ""),
+                account_id=account.get("account_id", ""),
+                sender_email=account.get("email", ""),
+                recipient_email=recipient_email,
+                subject=subject,
+                message_id=send_result.get("message_id"),
+                drip_campaign_id=campaign.get("drip_id"),
+                drip_campaign_name=campaign.get("name"),
+                drip_step_number=current_step,
+            )
             # Update account send count
             await db.email_accounts.update_one(
                 {"account_id": account.get("account_id")},
@@ -831,7 +845,7 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             "sent_at": datetime.now(timezone.utc).isoformat()
         })
 
-async def send_drip_email(account: dict, recipient: str, subject: str, body: str) -> bool:
+async def send_drip_email(account: dict, recipient: str, subject: str, body: str, from_name_override: Optional[str] = None) -> bool:
     """Send a drip campaign email using SMTP"""
     import smtplib
     from email.mime.text import MIMEText
@@ -847,9 +861,19 @@ async def send_drip_email(account: dict, recipient: str, subject: str, body: str
         
         # Create message
         msg = MIMEMultipart("alternative")
-        msg['From'] = f"{account.get('display_name', '')} <{account.get('email')}>"
+        # Campaign/drip From Name override takes priority over account-level fields
+        effective_from_name = (
+            (from_name_override or "").strip()
+            or (account.get("from_name") or "").strip()
+            or account.get("display_name", "")
+        )
+        msg['From'] = f"{effective_from_name} <{account.get('email')}>" if effective_from_name else account.get('email')
         msg['To'] = recipient
         msg['Subject'] = subject
+        # Stable Message-ID for IMAP reply matching
+        from email.utils import make_msgid as _make_msgid
+        msg_id = _make_msgid(domain="routemail.app")
+        msg['Message-ID'] = msg_id
         
         # Add both plain text and HTML versions
         text_part = MIMEText(body.replace("<br>", "\n").replace("</p>", "\n"), 'plain')
@@ -875,11 +899,11 @@ async def send_drip_email(account: dict, recipient: str, subject: str, body: str
         server.sendmail(account.get("email"), recipient, msg.as_string())
         server.quit()
         
-        return True
+        return {"success": True, "message_id": msg_id}
         
     except Exception as e:
         logger.error(f"[DRIP] SMTP error: {e}")
-        return False
+        return {"success": False, "error": str(e)}
 
 async def check_scheduled_campaigns():
     """Check for scheduled campaigns that need to be started, AND
@@ -1096,6 +1120,10 @@ async def startup_event():
     drip_running = True
     drip_task = asyncio.create_task(run_drip_worker())
     logger.info("Background drip campaign worker started")
+
+    # Start IMAP receive worker (Unibox)
+    imap_task = asyncio.create_task(run_imap_worker(db, fernet))  # noqa: F841
+    logger.info("Background IMAP receive worker started")
     
     # Ensure DNE / suppression indexes exist for fast lookups
     try:
@@ -1828,11 +1856,21 @@ class EmailAccount(BaseModel):
     account_type: str = "smtp"
     email: str
     display_name: str
+    from_name: Optional[str] = None  # Default From Name for this account
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
     smtp_username: Optional[str] = None
     smtp_password_encrypted: Optional[str] = None
     smtp_encryption: Optional[str] = None
+    # IMAP (receiving) settings — optional, required for Unibox reply tracking
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_username: Optional[str] = None
+    imap_password_encrypted: Optional[str] = None
+    imap_encryption: Optional[str] = None  # "ssl" | "tls" | "none"
+    imap_last_sync_at: Optional[str] = None
+    imap_last_error: Optional[str] = None
+    imap_last_uid: Optional[int] = None  # highest IMAP UID seen, for incremental sync
     status: str = "connected"
     last_error: Optional[str] = None
     daily_limit: int = 50  # User-configurable (10-200)
@@ -1926,11 +1964,18 @@ class SendTestEmailRequest(BaseModel):
 class AddSMTPAccountRequest(BaseModel):
     email: str
     display_name: str
+    from_name: Optional[str] = None
     smtp_host: str
     smtp_port: int
     smtp_username: str
     smtp_password: str
     smtp_encryption: str = "tls"
+    # IMAP (optional — required for reply tracking via Unibox)
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_username: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_encryption: Optional[str] = None
     daily_limit: int = 50
     send_delay: int = 30  # Delay between emails in seconds (10-300)
 
@@ -1944,11 +1989,17 @@ class UpdateSMTPAccountRequest(BaseModel):
     """Patch an existing SMTP account. Password is optional — only updated if provided."""
     email: Optional[str] = None
     display_name: Optional[str] = None
+    from_name: Optional[str] = None
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
     smtp_username: Optional[str] = None
     smtp_password: Optional[str] = None  # only set if user wants to rotate credentials
     smtp_encryption: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_username: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_encryption: Optional[str] = None
     daily_limit: Optional[int] = None
     send_delay: Optional[int] = None
 
@@ -2868,7 +2919,7 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
     """Get all connected email accounts"""
     accounts = await db.email_accounts.find(
         {"user_id": user.user_id},
-        {"_id": 0, "smtp_password_encrypted": 0}
+        {"_id": 0, "smtp_password_encrypted": 0, "imap_password_encrypted": 0}
     ).to_list(100)
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -2938,17 +2989,24 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
     send_delay = max(10, min(300, request.send_delay))
     
     encrypted_password = encrypt_data(request.smtp_password)
+    encrypted_imap_password = encrypt_data(request.imap_password) if request.imap_password else None
     
     account = EmailAccount(
         user_id=user.user_id,
         account_type="smtp",
         email=request.email,
         display_name=request.display_name,
+        from_name=(request.from_name or request.display_name),
         smtp_host=request.smtp_host,
         smtp_port=request.smtp_port,
         smtp_username=request.smtp_username,
         smtp_password_encrypted=encrypted_password,
         smtp_encryption=request.smtp_encryption,
+        imap_host=request.imap_host,
+        imap_port=request.imap_port,
+        imap_username=request.imap_username,
+        imap_password_encrypted=encrypted_imap_password,
+        imap_encryption=request.imap_encryption,
         daily_limit=daily_limit,
         send_delay=send_delay,
         status="connected",
@@ -3493,6 +3551,20 @@ async def update_smtp_account(
         update_data["send_delay"] = max(10, min(300, request.send_delay))
     if request.smtp_password:
         update_data["smtp_password_encrypted"] = encrypt_data(request.smtp_password)
+    # From Name (campaign-level override still wins at send-time)
+    if request.from_name is not None:
+        update_data["from_name"] = request.from_name
+    # IMAP (receiving) fields — set whatever the user provides; password optional
+    if request.imap_host is not None:
+        update_data["imap_host"] = request.imap_host
+    if request.imap_port is not None:
+        update_data["imap_port"] = request.imap_port
+    if request.imap_username is not None:
+        update_data["imap_username"] = request.imap_username
+    if request.imap_encryption is not None:
+        update_data["imap_encryption"] = request.imap_encryption
+    if request.imap_password:
+        update_data["imap_password_encrypted"] = encrypt_data(request.imap_password)
     # Only mark 'connected' if we actually re-tested successfully above
     if creds_changed:
         update_data["status"] = "connected"
@@ -3510,16 +3582,19 @@ async def download_sample_accounts_csv(user: User = Depends(get_current_user)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "email", "password", "smtp_host", "smtp_port",
-        "imap_host", "imap_port", "use_ssl", "daily_limit", "delay_seconds"
+        "email", "from_name", "smtp_host", "smtp_port", "smtp_username", "smtp_password", "smtp_ssl",
+        "imap_host", "imap_port", "imap_username", "imap_password", "imap_ssl",
+        "daily_limit", "delay_seconds"
     ])
     writer.writerow([
-        "example@gmail.com", "your_app_password", "smtp.gmail.com", "587",
-        "imap.gmail.com", "993", "true", "50", "30"
+        "sales@example.com", "Sales Team", "smtp.gmail.com", "587", "sales@example.com", "your_app_password", "true",
+        "imap.gmail.com", "993", "sales@example.com", "your_app_password", "true",
+        "50", "30"
     ])
     writer.writerow([
-        "example@outlook.com", "your_password", "smtp.office365.com", "587",
-        "outlook.office365.com", "993", "true", "40", "30"
+        "outreach@example.com", "Outreach Team", "smtp.office365.com", "587", "outreach@example.com", "your_password", "true",
+        "outlook.office365.com", "993", "outreach@example.com", "your_password", "true",
+        "40", "30"
     ])
     output.seek(0)
     return StreamingResponse(
@@ -3583,8 +3658,9 @@ async def bulk_import_smtp_accounts(
     for raw in all_rows:
         row_num += 1
         normalized = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
-        email = normalized.get("email", "")
-        password = normalized.get("password", "")
+        email = normalized.get("email", "").strip().lower()
+        # Support both legacy "password" column and new explicit smtp_password column
+        password = (normalized.get("smtp_password") or normalized.get("password") or "").strip()
         smtp_host = normalized.get("smtp_host", "")
         smtp_port_raw = normalized.get("smtp_port", "")
         
@@ -3649,12 +3725,24 @@ async def bulk_import_smtp_accounts(
             user_id=user.user_id,
             account_type="smtp",
             email=email,
-            display_name=email.split("@")[0],
+            display_name=(normalized.get("from_name") or email.split("@")[0]),
+            from_name=normalized.get("from_name") or None,
             smtp_host=smtp_host,
             smtp_port=smtp_port,
-            smtp_username=email,
+            smtp_username=(normalized.get("smtp_username") or email),
             smtp_password_encrypted=encrypt_data(password),
             smtp_encryption=encryption,
+            imap_host=normalized.get("imap_host") or None,
+            imap_port=int(normalized["imap_port"]) if normalized.get("imap_port", "").isdigit() else None,
+            imap_username=normalized.get("imap_username") or (email if normalized.get("imap_host") else None),
+            imap_password_encrypted=(
+                encrypt_data(normalized.get("imap_password"))
+                if normalized.get("imap_password")
+                else (encrypt_data(password) if normalized.get("imap_host") else None)
+            ),
+            imap_encryption=(
+                "ssl" if normalized.get("imap_ssl", "true").lower() in ("ssl", "true", "1", "yes") else "tls"
+            ) if normalized.get("imap_host") else None,
             daily_limit=daily_limit,
             send_delay=send_delay,
             status="connected",
@@ -5694,6 +5782,10 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         msg['Subject'] = subject
         msg['From'] = f"{from_name} <{account['email']}>" if from_name else account['email']
         msg['To'] = to_email
+        # Stable Message-ID we can match against later when replies arrive via IMAP
+        from email.utils import make_msgid as _make_msgid
+        msg_id = _make_msgid(domain="routemail.app")
+        msg['Message-ID'] = msg_id
         
         frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
         unsubscribe_url = f"{frontend_url}/api/unsubscribe/{user_id}/{to_email}"
@@ -5733,8 +5825,8 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         server.login(account.get("smtp_username", ""), password)
         server.sendmail(account['email'], to_email, msg.as_string())
         server.quit()
-        
-        return {"success": True}
+
+        return {"success": True, "message_id": msg_id}
     except smtplib.SMTPAuthenticationError:
         return {"success": False, "error": "SMTP authentication failed"}
     except smtplib.SMTPRecipientsRefused:
@@ -5861,7 +5953,10 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
         subject = replace_variables(campaign["subject"], recipient_data)
         body_html = replace_variables(campaign["body"], recipient_data)
         body_text = replace_variables(campaign.get("body_text", ""), recipient_data) if campaign.get("body_text") else ""
-        from_name = campaign.get("from_name", account.get("display_name", ""))
+        # From Name resolution: campaign-level override takes priority over account-level
+        campaign_from_name = (campaign.get("from_name") or "").strip()
+        account_from_name = (account.get("from_name") or "").strip() or account.get("display_name", "")
+        from_name = campaign_from_name or account_from_name
         
         # Send email
         if account.get("account_type") == "smtp" and account.get("smtp_host"):
@@ -5884,6 +5979,18 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
         
         # Update queue item
         if result.get("success"):
+            # Track outbound for Unibox reply matching
+            await register_sent_email(
+                db,
+                user_id=user_id,
+                account_id=account["account_id"],
+                sender_email=account.get("email", ""),
+                recipient_email=queue_item["recipient_email"],
+                subject=subject,
+                message_id=result.get("message_id"),
+                campaign_id=campaign_id,
+                campaign_name=campaign.get("name"),
+            )
             await db.email_queue.update_one(
                 {"queue_id": queue_item["queue_id"]},
                 {"$set": {
@@ -7105,7 +7212,9 @@ async def health():
 
 # Include the router
 from backup_routes import build_backup_router
+from unibox_routes import build_unibox_router, run_imap_worker, register_sent_email
 api_router.include_router(build_backup_router(db, get_current_user))
+api_router.include_router(build_unibox_router(db, get_current_user, fernet))
 app.include_router(api_router)
 
 app.add_middleware(

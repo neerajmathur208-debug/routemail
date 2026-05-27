@@ -51,13 +51,18 @@ def _sanitize_account(acc: Dict[str, Any], include_credentials: bool) -> Dict[st
     out = {k: v for k, v in acc.items() if k != "_id"}
     if not include_credentials:
         out.pop("smtp_password_encrypted", None)
+        out.pop("imap_password_encrypted", None)
     # Never export plain text password fields if any sneaked in
     out.pop("smtp_password", None)
+    out.pop("imap_password", None)
     out.pop("password", None)
     # Reset live counters on export — restored accounts start clean
     out.pop("daily_send_count", None)
     out.pop("last_send_date", None)
     out.pop("last_reset_at", None)
+    out.pop("imap_last_sync_at", None)
+    out.pop("imap_last_error", None)
+    out.pop("imap_last_uid", None)
     return out
 
 

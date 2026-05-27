@@ -17,6 +17,8 @@ import {
   Crown,
   Zap,
   Archive,
+  Inbox,
+  Star,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -28,6 +30,8 @@ const navItems = [
   { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
   { path: "/drip-campaigns", label: "Drip Campaigns", icon: Workflow },
+  { path: "/unibox", label: "Unibox", icon: Inbox },
+  { path: "/leads", label: "Responses / Leads", icon: Star },
   { path: "/do-not-email", label: "Do Not Email", icon: ShieldOff },
   { path: "/backup", label: "Backup & Restore", icon: Archive },
   { path: "/subscription", label: "Subscription", icon: CreditCard },

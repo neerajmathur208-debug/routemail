@@ -754,7 +754,7 @@ export default function Campaign({ user, setUser }) {
                   data-testid="from-name-input"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Display name that recipients will see
+                  If provided, this From Name will override individual email account sender names for this campaign. Leave blank to use each account's default From Name.
                 </p>
               </div>
 

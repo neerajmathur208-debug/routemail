@@ -1034,6 +1034,9 @@ export default function DripCampaignView({ user, setUser }) {
                   data-testid="drip-from-name"
                   className="mt-1.5"
                 />
+                <p className="text-xs text-slate-500 mt-1">
+                  If provided, this From Name will override individual email account sender names for this drip. Leave blank to use each account's default From Name.
+                </p>
               </div>
 
               <div>

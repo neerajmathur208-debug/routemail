@@ -34,6 +34,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
 import BackupRestore from "./pages/BackupRestore";
+import Unibox from "./pages/Unibox";
+import Leads from "./pages/Leads";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -242,6 +244,22 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <BackupRestore user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/unibox"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <Unibox user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/leads"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <Leads user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />
