@@ -19,6 +19,7 @@ import {
   Archive,
   Inbox,
   Star,
+  Server,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -200,20 +201,40 @@ export default function Sidebar({ user, setUser }) {
           
           {/* Admin Panel Link - Only for super_admin */}
           {isSuperAdmin && (
-            <button
-              data-testid="nav-admin"
-              onClick={() => {
-                navigate("/admin");
-                setMobileOpen(false);
-              }}
-              className={`sidebar-link w-full mt-4 border-t border-slate-200 pt-4 ${
-                location.pathname.startsWith("/admin") ? "active" : ""
-              }`}
-            >
-              <Shield size={20} strokeWidth={1.5} className="text-violet-600" />
-              <span className="font-medium text-violet-600">Admin Panel</span>
-              {location.pathname.startsWith("/admin") && <ChevronRight size={16} className="ml-auto" />}
-            </button>
+            <>
+              <button
+                data-testid="nav-admin"
+                onClick={() => {
+                  navigate("/admin");
+                  setMobileOpen(false);
+                }}
+                className={`sidebar-link w-full mt-4 border-t border-slate-200 pt-4 ${
+                  location.pathname === "/admin" || location.pathname.startsWith("/admin/users") || location.pathname.startsWith("/admin/blogs") ? "active" : ""
+                }`}
+              >
+                <Shield size={20} strokeWidth={1.5} className="text-violet-600" />
+                <span className="font-medium text-violet-600">Admin Panel</span>
+                {(location.pathname === "/admin" || location.pathname.startsWith("/admin/users") || location.pathname.startsWith("/admin/blogs")) && (
+                  <ChevronRight size={16} className="ml-auto" />
+                )}
+              </button>
+              <button
+                data-testid="nav-system-backup"
+                onClick={() => {
+                  navigate("/admin/system-backup");
+                  setMobileOpen(false);
+                }}
+                className={`sidebar-link w-full ${
+                  location.pathname.startsWith("/admin/system-backup") ? "active" : ""
+                }`}
+              >
+                <Server size={20} strokeWidth={1.5} className="text-violet-600" />
+                <span className="font-medium text-violet-600">System Backup &amp; Restore</span>
+                {location.pathname.startsWith("/admin/system-backup") && (
+                  <ChevronRight size={16} className="ml-auto" />
+                )}
+              </button>
+            </>
           )}
         </nav>
 

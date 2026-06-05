@@ -568,7 +568,7 @@ async def process_drip_campaign(campaign: dict):
     import pytz
     
     drip_id = campaign.get("drip_id")
-    user_id = campaign.get("user_id")
+    _user_id = campaign.get("user_id")  # noqa: F841 - reserved for future filtering
     
     # Get campaign schedule settings
     schedule = campaign.get("schedule", {})
@@ -581,7 +581,7 @@ async def process_drip_campaign(campaign: dict):
     # Parse timezone
     try:
         tz = pytz.timezone(timezone_str)
-    except:
+    except Exception:
         tz = pytz.UTC
     
     # Get current time in campaign timezone
@@ -597,7 +597,7 @@ async def process_drip_campaign(campaign: dict):
     try:
         start_hour, start_min = map(int, start_time.split(":"))
         end_hour, end_min = map(int, end_time.split(":"))
-    except:
+    except Exception:
         start_hour, start_min = 9, 0
         end_hour, end_min = 18, 0
     
@@ -741,9 +741,10 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     recipient_email = contact.get("email")
     
     # Resolve {{unsubscribe_url}} (per-recipient) so that an Unsubscribe link inserted
-    # in the drip step body becomes a working URL.
+    # in the drip step body becomes a working URL. Uses a signed token (no internal IDs leaked).
     frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
-    unsubscribe_url = f"{frontend_url}/api/unsubscribe/{campaign.get('user_id')}/{recipient_email}"
+    unsubscribe_token_str = make_unsubscribe_token(campaign.get('user_id', ''), recipient_email)
+    unsubscribe_url = f"{frontend_url}/api/unsubscribe/u/{unsubscribe_token_str}"
     body = body.replace("{{unsubscribe_url}}", unsubscribe_url)
     subject = subject.replace("{{unsubscribe_url}}", unsubscribe_url)
     
@@ -1210,28 +1211,63 @@ async def ensure_global_dne_list(user_id: str) -> str:
     await db.dne_lists.insert_one(new_list)
     return new_list["list_id"]
 
+# --- Domain-level suppression helpers -----------------------------------
+
+_EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+_DOMAIN_PATTERN = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$")
+
+
+def extract_domain(email: str) -> str:
+    """Return lowercase domain part of an email, '' if invalid."""
+    if not email or "@" not in email:
+        return ""
+    return email.strip().lower().rsplit("@", 1)[-1].lstrip(".")
+
+
+def classify_dne_entry(raw: str) -> Optional[Dict[str, str]]:
+    """Classify a raw user input as either an email or a domain entry.
+    Returns {'type': 'email'|'domain', 'value': normalized_value} or None if invalid.
+    Accepts entries like 'john@example.com', 'example.com', '@example.com'.
+    """
+    if raw is None:
+        return None
+    val = str(raw).strip().lower()
+    if not val:
+        return None
+    # Treat leading "@" as a domain shortcut
+    if val.startswith("@"):
+        val = val[1:]
+    if "@" in val:
+        if _EMAIL_PATTERN.match(val):
+            return {"type": "email", "value": val}
+        return None
+    if _DOMAIN_PATTERN.match(val):
+        return {"type": "domain", "value": val}
+    return None
+
+
 async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Optional[List[str]] = None) -> bool:
     """Check whether `email` should be blocked from sending.
     
-    Checks:
-    - Legacy unsubscribe register (`suppression_list`) — ALWAYS applied. This is the
-      authoritative "permanent unsubscribed" register; it covers public unsubscribe-link
-      clicks and is non-negotiable.
+    Checks (in order):
+    - Legacy unsubscribe register (`suppression_list`) — ALWAYS applied for both
+      the email itself AND its domain (if a domain entry exists).
     - The DNE lists explicitly attached to the campaign via `suppression_list_ids`.
-      The Global DNE list is ONLY checked when the user has explicitly selected it
-      (it is no longer auto-applied).
+      Both email-level and domain-level entries are matched.
+    The Global DNE list is ONLY checked when the user has explicitly selected it.
     """
     if not email:
         return False
     email_norm = email.strip().lower()
     if not email_norm:
         return False
-    
-    # 1) Legacy unsubscribes — covers /api/unsubscribe/ link clicks. Always applied.
-    legacy = await db.suppression_list.find_one(
-        {"user_id": user_id, "email": email_norm},
-        {"email": 1}
-    )
+    domain = extract_domain(email_norm)
+
+    # 1) Legacy unsubscribes — email OR domain match. Always applied.
+    legacy_q: Dict[str, Any] = {"user_id": user_id, "$or": [{"email": email_norm}]}
+    if domain:
+        legacy_q["$or"].append({"email": domain, "type": "domain"})
+    legacy = await db.suppression_list.find_one(legacy_q, {"email": 1})
     if legacy:
         return True
     
@@ -1240,37 +1276,44 @@ async def is_email_suppressed(user_id: str, email: str, suppression_list_ids: Op
     if not list_ids:
         return False
     
+    or_clauses: List[Dict[str, Any]] = [{"email": email_norm}]
+    if domain:
+        or_clauses.append({"email": domain, "type": "domain"})
     hit = await db.dne_emails.find_one(
-        {"user_id": user_id, "email": email_norm, "list_id": {"$in": list_ids}},
+        {"user_id": user_id, "list_id": {"$in": list_ids}, "$or": or_clauses},
         {"email": 1}
     )
     return hit is not None
 
-async def add_email_to_global_dne(user_id: str, email: str) -> None:
-    """Add a single email to the user's Global DNE list (idempotent)."""
+async def add_email_to_global_dne(user_id: str, email: str, *, entry_type: str = "email", source: str = "unsubscribe") -> bool:
+    """Add a single email OR domain entry to the user's Global DNE list (idempotent).
+    Returns True if a new entry was added, False if it already existed.
+    """
     if not email:
-        return
-    email_norm = email.strip().lower()
-    if not email_norm:
-        return
+        return False
+    value = email.strip().lower().lstrip("@")
+    if not value:
+        return False
     global_id = await ensure_global_dne_list(user_id)
     existing = await db.dne_emails.find_one(
-        {"user_id": user_id, "list_id": global_id, "email": email_norm},
+        {"user_id": user_id, "list_id": global_id, "email": value},
         {"email": 1}
     )
     if existing:
-        return
+        return False
     await db.dne_emails.insert_one({
         "user_id": user_id,
         "list_id": global_id,
-        "email": email_norm,
-        "source": "unsubscribe",
+        "email": value,
+        "type": entry_type if entry_type in ("email", "domain") else "email",
+        "source": source,
         "added_at": datetime.now(timezone.utc).isoformat(),
     })
     await db.dne_lists.update_one(
         {"list_id": global_id},
         {"$inc": {"email_count": 1}}
     )
+    return True
 
 def parse_scheduled_at_in_timezone(scheduled_at_str: str, tz_name: Optional[str]) -> datetime:
     """Parse a scheduled_at string, honouring the user-selected timezone.
@@ -2164,10 +2207,13 @@ class CreateDNEListRequest(BaseModel):
     name: str
 
 class AddDNEEmailsRequest(BaseModel):
-    emails: List[str]
+    # Either a list of raw values (emails or domains, auto-detected)…
+    emails: List[str] = []
+    # …or a typed list of {type:'email'|'domain', value:'...'}
+    entries: Optional[List[Dict[str, str]]] = None
 
 class RemoveDNEEmailRequest(BaseModel):
-    email: str
+    email: str  # holds either the email address or the bare domain to remove
 
 # ==================== AUTH HELPERS ====================
 
@@ -5390,6 +5436,20 @@ async def resume_drip_campaign(drip_id: str, user: User = Depends(get_current_us
 
 # ==================== DO NOT EMAIL (DNE) ENDPOINTS ====================
 
+@api_router.get("/dne-stats")
+async def dne_stats(user: User = Depends(get_current_user)):
+    """Aggregate Do Not Email counters: emails blocked vs domains blocked across all lists."""
+    pipeline = [
+        {"$match": {"user_id": user.user_id}},
+        {"$group": {"_id": {"$ifNull": ["$type", "email"]}, "count": {"$sum": 1}}},
+    ]
+    by_type = {row["_id"]: row["count"] async for row in db.dne_emails.aggregate(pipeline)}
+    return {
+        "emails_blocked": int(by_type.get("email", 0)),
+        "domains_blocked": int(by_type.get("domain", 0)),
+        "total_blocked": int(by_type.get("email", 0)) + int(by_type.get("domain", 0)),
+    }
+
 @api_router.get("/dne-lists")
 async def list_dne_lists(user: User = Depends(get_current_user)):
     """List all Do Not Email lists for the current user (global first)."""
@@ -5452,7 +5512,14 @@ async def get_dne_list(
 
 @api_router.post("/dne-lists/{list_id}/emails")
 async def add_dne_emails(list_id: str, request: AddDNEEmailsRequest, user: User = Depends(get_current_user)):
-    """Add one or more emails (normalised + deduped) to a DNE list."""
+    """Add one or more entries (email OR domain, normalised + deduped) to a DNE list.
+    
+    Each entry in `emails` may be:
+      - A full email address (john@example.com)
+      - A bare domain (example.com)
+      - A leading-@ shortcut (@example.com)
+    Domain entries block ALL addresses at that domain.
+    """
     dne = await db.dne_lists.find_one(
         {"list_id": list_id, "user_id": user.user_id},
         {"_id": 0}
@@ -5460,36 +5527,53 @@ async def add_dne_emails(list_id: str, request: AddDNEEmailsRequest, user: User 
     if not dne:
         raise HTTPException(status_code=404, detail="DNE list not found")
     
-    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     seen = set()
-    cleaned = []
+    cleaned: List[Dict[str, str]] = []
     invalid = 0
-    for raw in request.emails:
-        e = (raw or "").strip().lower()
-        if not e or e in seen:
-            continue
-        seen.add(e)
-        if not email_pattern.match(e):
+    # Build queue from `entries` (typed) first, then `emails` (auto-detected)
+    queue: List[Any] = list(request.entries or []) + list(request.emails or [])
+    for raw in queue:
+        if isinstance(raw, dict):
+            val = (raw.get("value") or "").strip().lower().lstrip("@")
+            t = (raw.get("type") or "").strip().lower() or None
+            if not val:
+                invalid += 1
+                continue
+            if t == "email" and _EMAIL_PATTERN.match(val):
+                entry = {"type": "email", "value": val}
+            elif t == "domain" and _DOMAIN_PATTERN.match(val):
+                entry = {"type": "domain", "value": val}
+            else:
+                entry = classify_dne_entry(val)
+        else:
+            entry = classify_dne_entry(raw)
+        if not entry:
             invalid += 1
             continue
-        cleaned.append(e)
+        key = (entry["type"], entry["value"])
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(entry)
     
     if not cleaned:
         return {"added": 0, "skipped_duplicates": 0, "invalid": invalid, "total": dne.get("email_count", 0)}
     
+    values_only = [c["value"] for c in cleaned]
     existing = await db.dne_emails.find(
-        {"list_id": list_id, "email": {"$in": cleaned}},
+        {"list_id": list_id, "email": {"$in": values_only}},
         {"_id": 0, "email": 1}
-    ).to_list(len(cleaned))
+    ).to_list(len(values_only))
     already = {x["email"] for x in existing}
     
     new_docs = [{
         "user_id": user.user_id,
         "list_id": list_id,
-        "email": e,
+        "email": c["value"],
+        "type": c["type"],
         "source": "manual",
         "added_at": datetime.now(timezone.utc).isoformat(),
-    } for e in cleaned if e not in already]
+    } for c in cleaned if c["value"] not in already]
     
     if new_docs:
         try:
@@ -5545,33 +5629,49 @@ async def upload_dne_emails(
             if not rows:
                 raise HTTPException(status_code=400, detail="File is empty")
             header = [h.strip().lower() for h in rows[0]]
-            email_idx = None
+            value_idx = None
+            type_idx = header.index("type") if "type" in header else None
             start_row = 0
-            if "email" in header:
-                email_idx = header.index("email")
-                start_row = 1
-            elif len(header) == 1:
+            # Prefer explicit columns: 'value' or 'email' or 'domain'
+            for col_name in ("value", "email", "domain", "address"):
+                if col_name in header:
+                    value_idx = header.index(col_name)
+                    start_row = 1
+                    break
+            if value_idx is None and len(header) == 1:
                 # Single-column file — treat first row as data too
-                email_idx = 0
+                value_idx = 0
                 start_row = 0
-            else:
-                # Multi-column file without 'email' header — require header
-                raise HTTPException(status_code=400, detail="CSV must contain an 'email' column")
+            elif value_idx is None:
+                raise HTTPException(status_code=400, detail="CSV must contain an 'email', 'domain' or 'value' column")
             for r in rows[start_row:]:
-                if email_idx < len(r):
-                    emails_from_file.append(r[email_idx])
+                if value_idx >= len(r):
+                    continue
+                raw = (r[value_idx] or "").strip()
+                if not raw:
+                    continue
+                # If a 'type' column exists, honour it via @ shortcut for domains
+                if type_idx is not None and type_idx < len(r):
+                    t = (r[type_idx] or "").strip().lower()
+                    if t == "domain" and "@" not in raw:
+                        raw = raw.lstrip("@")
+                emails_from_file.append(raw)
         else:
             try:
                 df = pd.read_excel(io.BytesIO(content), engine='openpyxl' if file_ext == '.xlsx' else 'xlrd')
             except Exception:
                 df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
             df.columns = [str(c).strip().lower() for c in df.columns]
-            if "email" in df.columns:
-                emails_from_file = df["email"].fillna('').astype(str).tolist()
-            elif len(df.columns) == 1:
-                emails_from_file = df[df.columns[0]].fillna('').astype(str).tolist()
-            else:
-                raise HTTPException(status_code=400, detail="File must contain an 'email' column")
+            target_col = None
+            for col_name in ("value", "email", "domain", "address"):
+                if col_name in df.columns:
+                    target_col = col_name
+                    break
+            if target_col is None and len(df.columns) == 1:
+                target_col = df.columns[0]
+            if target_col is None:
+                raise HTTPException(status_code=400, detail="File must contain an 'email', 'domain' or 'value' column")
+            emails_from_file = df[target_col].fillna('').astype(str).tolist()
     except HTTPException:
         raise
     except Exception as e:
@@ -5591,7 +5691,7 @@ async def remove_dne_email(list_id: str, request: RemoveDNEEmailRequest, user: U
     if not dne:
         raise HTTPException(status_code=404, detail="DNE list not found")
     
-    email_norm = (request.email or "").strip().lower()
+    email_norm = (request.email or "").strip().lower().lstrip("@")
     res = await db.dne_emails.delete_one(
         {"list_id": list_id, "user_id": user.user_id, "email": email_norm}
     )
@@ -5807,43 +5907,93 @@ async def get_suppression_list(user: User = Depends(get_current_user)):
 
 @api_router.post("/suppression")
 async def add_to_suppression(request: AddToSuppressionRequest, user: User = Depends(get_current_user)):
+    """Add either an email or a domain entry to the suppression register + Global DNE."""
+    entry = classify_dne_entry(request.email)
+    if not entry:
+        raise HTTPException(status_code=400, detail="Invalid email or domain value")
+    value, entry_type = entry["value"], entry["type"]
+
     existing = await db.suppression_list.find_one(
-        {"user_id": user.user_id, "email": request.email.lower()}
+        {"user_id": user.user_id, "email": value}
     )
-    
     if not existing:
         await db.suppression_list.insert_one({
             "user_id": user.user_id,
-            "email": request.email.lower(),
-            "added_at": datetime.now(timezone.utc).isoformat()
+            "email": value,
+            "type": entry_type,
+            "added_at": datetime.now(timezone.utc).isoformat(),
         })
-    
     # Mirror into Global DNE list so it's visible in the UI
-    await add_email_to_global_dne(user.user_id, request.email)
-    
-    return {"message": "Added to suppression list"}
+    await add_email_to_global_dne(user.user_id, value, entry_type=entry_type, source="manual")
+    return {"message": "Added to suppression list", "type": entry_type, "value": value}
 
-@api_router.get("/unsubscribe/{user_id}/{email}")
-async def unsubscribe(user_id: str, email: str):
+
+def _unsubscribe_html_response(message: str, domain_hint: str = "") -> "Response":
+    """Render a clean, public-facing HTML confirmation page (no login required)."""
+    safe_msg = (message or "").replace("<", "&lt;").replace(">", "&gt;")
+    html = f"""<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta name=\"robots\" content=\"noindex,nofollow\" />
+  <title>You've been unsubscribed</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; min-height: 100vh; display:flex; align-items:center; justify-content:center;
+           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+           background: linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%); color:#0f172a; padding: 24px; }}
+    .card {{ background:#fff; border:1px solid #e2e8f0; border-radius: 18px; padding: 40px 36px;
+            max-width: 460px; width: 100%; box-shadow: 0 12px 40px rgba(15,23,42,0.08); text-align:center; }}
+    .badge {{ width:64px; height:64px; border-radius:50%; background:#dcfce7; color:#16a34a;
+              display:inline-flex; align-items:center; justify-content:center; margin-bottom:20px; }}
+    h1 {{ font-size: 22px; margin: 0 0 12px; color:#0f172a; }}
+    p {{ margin: 0 0 10px; color:#475569; line-height: 1.6; font-size: 15px; }}
+    .hint {{ margin-top: 18px; font-size: 12px; color:#94a3b8; }}
+  </style>
+</head>
+<body>
+  <main class=\"card\" role=\"main\">
+    <div class=\"badge\" aria-hidden=\"true\">
+      <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"none\"
+           stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\">
+        <polyline points=\"20 6 9 17 4 12\"></polyline>
+      </svg>
+    </div>
+    <h1>You have been successfully unsubscribed.</h1>
+    <p>{safe_msg}</p>
+    <p class=\"hint\">You can safely close this window.</p>
+  </main>
+</body>
+</html>"""
+    return Response(content=html, media_type="text/html", status_code=200)
+
+
+async def _process_unsubscribe(user_id: str, email: str) -> None:
+    """Shared logic: add to suppression + Global DNE + stop active drips for this email."""
+    if not email:
+        return
+    email_norm = email.strip().lower()
+    if not email_norm:
+        return
     existing = await db.suppression_list.find_one(
-        {"user_id": user_id, "email": email.lower()}
+        {"user_id": user_id, "email": email_norm}
     )
-    
     if not existing:
         await db.suppression_list.insert_one({
             "user_id": user_id,
-            "email": email.lower(),
-            "added_at": datetime.now(timezone.utc).isoformat()
+            "email": email_norm,
+            "type": "email",
+            "source": "unsubscribe",
+            "added_at": datetime.now(timezone.utc).isoformat(),
         })
-    
-    # Mirror into Global DNE list so the user sees it in the UI and it's applied everywhere
-    await add_email_to_global_dne(user_id, email)
-    
+    # Mirror into Global DNE list so the user sees it in the UI
+    await add_email_to_global_dne(user_id, email_norm, entry_type="email", source="unsubscribe")
     # Immediately stop any active drip sequences for this contact across all the user's drips
     await db.drip_contacts.update_many(
         {
             "user_id": user_id,
-            "email": email.lower(),
+            "email": email_norm,
             "status": {"$in": ["active", "paused"]},
         },
         {"$set": {
@@ -5851,8 +6001,65 @@ async def unsubscribe(user_id: str, email: str):
             "unsubscribed_at": datetime.now(timezone.utc).isoformat(),
         }}
     )
-    
-    return {"message": "You have been unsubscribed successfully"}
+
+
+def make_unsubscribe_token(user_id: str, email: str) -> str:
+    """Generate a signed unsubscribe token (HMAC-SHA256) — opaque, no internal IDs leaked.
+    Token format: b64url(payload).b64url(signature)
+    payload = JSON {u:user_id, e:email_lower}
+    """
+    import hmac
+    import hashlib
+    import base64
+    import json as _json
+    secret = (os.environ.get("UNSUBSCRIBE_SECRET") or os.environ.get("ENCRYPTION_KEY") or "routemail-default-secret").encode()
+    payload = _json.dumps({"u": user_id, "e": (email or "").strip().lower()}, separators=(",", ":")).encode()
+    sig = hmac.new(secret, payload, hashlib.sha256).digest()
+    return f"{base64.urlsafe_b64encode(payload).decode().rstrip('=')}.{base64.urlsafe_b64encode(sig).decode().rstrip('=')}"
+
+
+def verify_unsubscribe_token(token: str) -> Optional[Dict[str, str]]:
+    """Verify a signed token; returns {u, e} dict or None."""
+    import hmac
+    import hashlib
+    import base64
+    import json as _json
+    secret = (os.environ.get("UNSUBSCRIBE_SECRET") or os.environ.get("ENCRYPTION_KEY") or "routemail-default-secret").encode()
+    try:
+        p_b64, s_b64 = token.split(".", 1)
+        # Restore padding
+        p_pad = p_b64 + "=" * (-len(p_b64) % 4)
+        s_pad = s_b64 + "=" * (-len(s_b64) % 4)
+        payload = base64.urlsafe_b64decode(p_pad.encode())
+        sig = base64.urlsafe_b64decode(s_pad.encode())
+        expected = hmac.new(secret, payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        data = _json.loads(payload.decode())
+        if "u" not in data or "e" not in data:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+@api_router.get("/unsubscribe/u/{token}")
+async def unsubscribe_token(token: str):
+    """Public token-based unsubscribe endpoint. Returns a styled HTML confirmation page.
+    Does NOT expose internal user_id or email in the URL.
+    """
+    data = verify_unsubscribe_token(token)
+    if not data:
+        return _unsubscribe_html_response("This unsubscribe link is invalid or has expired.")
+    await _process_unsubscribe(data["u"], data["e"])
+    return _unsubscribe_html_response("You will no longer receive emails from this sender.")
+
+
+@api_router.get("/unsubscribe/{user_id}/{email}")
+async def unsubscribe(user_id: str, email: str):
+    """Legacy unsubscribe endpoint (kept for already-sent emails). Returns HTML confirmation."""
+    await _process_unsubscribe(user_id, email)
+    return _unsubscribe_html_response("You will no longer receive emails from this sender.")
 
 # ==================== DASHBOARD STATS ====================
 
@@ -5946,7 +6153,8 @@ async def send_email_smtp(account: dict, to_email: str, subject: str, body_html:
         msg['Message-ID'] = msg_id
         
         frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
-        unsubscribe_url = f"{frontend_url}/api/unsubscribe/{user_id}/{to_email}"
+        unsubscribe_token_str = make_unsubscribe_token(user_id, to_email)
+        unsubscribe_url = f"{frontend_url}/api/unsubscribe/u/{unsubscribe_token_str}"
         
         # Resolve {{unsubscribe_url}} token if the user inserted an Unsubscribe link in the editor
         body_html = (body_html or "").replace("{{unsubscribe_url}}", unsubscribe_url)
@@ -7371,8 +7579,10 @@ async def health():
 # Include the router
 from backup_routes import build_backup_router
 from unibox_routes import build_unibox_router, run_imap_worker, register_sent_email
+from admin_backup_routes import build_admin_backup_router
 api_router.include_router(build_backup_router(db, get_current_user))
 api_router.include_router(build_unibox_router(db, get_current_user, fernet))
+api_router.include_router(build_admin_backup_router(db, get_super_admin_user))
 app.include_router(api_router)
 
 app.add_middleware(

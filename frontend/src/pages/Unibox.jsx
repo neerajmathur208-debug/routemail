@@ -75,6 +75,7 @@ export default function Unibox({ user, setUser }) {
   const [newFolderName, setNewFolderName] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [dneDialogOpen, setDneDialogOpen] = useState(false);
+  const [dneScope, setDneScope] = useState("email"); // "email" | "domain"
   const [dneBusy, setDneBusy] = useState(false);
 
   const fetchReplies = useCallback(async () => {
@@ -150,8 +151,39 @@ export default function Unibox({ user, setUser }) {
     if (selectedIds.length === 0) return;
     setDneBusy(true);
     try {
-      const res = await api.post("/unibox/replies/add-to-dne", { reply_ids: selectedIds });
-      toast.success(`Added ${res.data.added} email${res.data.added === 1 ? "" : "s"} to Global Do Not Email`);
+      if (dneScope === "domain") {
+        // Resolve from_email per reply -> unique domains -> add directly to Global DNE
+        const selectedReplies = replies.filter((r) => selectedIds.includes(r.reply_id));
+        const domains = Array.from(
+          new Set(
+            selectedReplies
+              .map((r) => (r.from_email || "").split("@")[1])
+              .filter(Boolean)
+              .map((d) => d.toLowerCase())
+          )
+        );
+        if (domains.length === 0) {
+          toast.error("Could not derive any domain from selected replies");
+          setDneBusy(false);
+          return;
+        }
+        // Find global list
+        const listsRes = await api.get("/dne-lists");
+        const globalList = (listsRes.data || []).find((l) => l.is_global);
+        if (!globalList) {
+          toast.error("Global Do Not Email list not found");
+          setDneBusy(false);
+          return;
+        }
+        const entries = domains.map((d) => ({ type: "domain", value: d }));
+        const res = await api.post(`/dne-lists/${globalList.list_id}/emails`, { entries });
+        toast.success(
+          `Blocked ${res.data.added} domain${res.data.added === 1 ? "" : "s"} (${domains.length} unique)`
+        );
+      } else {
+        const res = await api.post("/unibox/replies/add-to-dne", { reply_ids: selectedIds });
+        toast.success(`Added ${res.data.added} email${res.data.added === 1 ? "" : "s"} to Global Do Not Email`);
+      }
       clearSel();
       setDneDialogOpen(false);
     } catch (err) {
@@ -516,29 +548,66 @@ export default function Unibox({ user, setUser }) {
       </Dialog>
 
       {/* DNE Confirm */}
-      <AlertDialog open={dneDialogOpen} onOpenChange={setDneDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <ShieldOff className="text-red-500" /> Add to Global Do Not Email
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              The sender{selectedIds.length === 1 ? "" : "s"} of {selectedIds.length} selected repl{selectedIds.length === 1 ? "y" : "ies"} will be added to your Global Do Not Email list, stopping all future campaigns and drip steps to those addresses.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={dneBusy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+      <Dialog open={dneDialogOpen} onOpenChange={setDneDialogOpen}>
+        <DialogContent data-testid="dne-bulk-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldOff className="text-red-500" /> Add to Global Do Not Email List
+            </DialogTitle>
+            <DialogDescription>
+              Choose whether to block only the sender's email address or every recipient on that
+              sender's domain.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 mt-2" data-testid="dne-scope-selector">
+            <button
+              type="button"
+              onClick={() => setDneScope("email")}
+              className={`flex-1 py-3 px-3 rounded-lg border text-sm font-medium transition text-left ${
+                dneScope === "email"
+                  ? "border-sky-500 bg-sky-50 text-sky-700 ring-2 ring-sky-200"
+                  : "border-slate-200 text-slate-500 hover:bg-slate-50"
+              }`}
+              data-testid="dne-scope-email-btn"
+            >
+              <div>Email Only</div>
+              <div className="text-[11px] font-normal text-slate-500 mt-0.5">
+                Block this specific email address
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDneScope("domain")}
+              className={`flex-1 py-3 px-3 rounded-lg border text-sm font-medium transition text-left ${
+                dneScope === "domain"
+                  ? "border-violet-500 bg-violet-50 text-violet-700 ring-2 ring-violet-200"
+                  : "border-slate-200 text-slate-500 hover:bg-slate-50"
+              }`}
+              data-testid="dne-scope-domain-btn"
+            >
+              <div>Entire Domain</div>
+              <div className="text-[11px] font-normal text-slate-500 mt-0.5">
+                Block every recipient on this domain
+              </div>
+            </button>
+          </div>
+
+          <DialogFooter className="mt-3">
+            <Button variant="outline" onClick={() => setDneDialogOpen(false)} disabled={dneBusy}>
+              Cancel
+            </Button>
+            <Button
               onClick={bulkAddToDne}
               disabled={dneBusy}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 text-white"
               data-testid="confirm-add-dne"
             >
-              Add to Global DNE
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              {dneBusy ? "Adding…" : `Block ${dneScope === "domain" ? "domain(s)" : "email(s)"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

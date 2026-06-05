@@ -41,6 +41,7 @@ export default function DoNotEmailDetail({ user, setUser }) {
 
   const [addOpen, setAddOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [entryType, setEntryType] = useState("email"); // "email" | "domain"
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -69,14 +70,17 @@ export default function DoNotEmailDetail({ user, setUser }) {
       .map((x) => x.trim())
       .filter(Boolean);
     if (lines.length === 0) {
-      toast.error("Enter at least one email");
+      toast.error("Enter at least one entry");
       return;
     }
     setAdding(true);
     try {
-      const res = await api.post(`/dne-lists/${listId}/emails`, { emails: lines });
+      // Send typed entries so the backend uses the user's selected type for validation.
+      const entries = lines.map((v) => ({ type: entryType, value: v.replace(/^@/, "") }));
+      const res = await api.post(`/dne-lists/${listId}/emails`, { entries });
+      const label = entryType === "domain" ? "domain" : "email";
       toast.success(
-        `Added ${res.data.added}${
+        `Added ${res.data.added} ${label}${res.data.added === 1 ? "" : "s"}${
           res.data.invalid ? ` (${res.data.invalid} invalid skipped)` : ""
         }${res.data.skipped_duplicates ? `, ${res.data.skipped_duplicates} dupes` : ""}`
       );
@@ -228,21 +232,36 @@ export default function DoNotEmailDetail({ user, setUser }) {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50">
                     <tr className="text-left text-slate-500">
-                      <th className="py-2 px-3">Email</th>
+                      <th className="py-2 px-3">Type</th>
+                      <th className="py-2 px-3">Value</th>
                       <th className="py-2 px-3">Source</th>
                       <th className="py-2 px-3">Added</th>
                       <th className="py-2 px-3 w-12"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {emails.map((e) => (
+                    {emails.map((e) => {
+                      const t = e.type || (e.email && e.email.includes("@") ? "email" : "domain");
+                      return (
                       <tr
                         key={`${e.list_id}:${e.email}`}
                         className="border-t border-slate-100 hover:bg-slate-50"
                         data-testid={`dne-row-${e.email}`}
                       >
+                        <td className="py-2 px-3">
+                          <span
+                            className={`inline-block px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-full ${
+                              t === "domain"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-sky-100 text-sky-700"
+                            }`}
+                            data-testid={`dne-type-${t}-${e.email}`}
+                          >
+                            {t}
+                          </span>
+                        </td>
                         <td className="py-2 px-3 text-slate-900 font-mono text-xs">
-                          {e.email}
+                          {t === "domain" ? `@${e.email}` : e.email}
                         </td>
                         <td className="py-2 px-3 text-slate-500 text-xs">
                           {e.source || "manual"}
@@ -261,7 +280,8 @@ export default function DoNotEmailDetail({ user, setUser }) {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -300,20 +320,62 @@ export default function DoNotEmailDetail({ user, setUser }) {
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogContent data-testid="dne-add-dialog">
             <DialogHeader>
-              <DialogTitle>Add emails to Do Not Email</DialogTitle>
+              <DialogTitle>Add entries to Do Not Email</DialogTitle>
               <DialogDescription>
-                Paste one email per line, or comma-separated. Duplicates and invalid addresses
-                are ignored automatically.
+                Add individual <span className="font-semibold text-slate-700">email addresses</span> or
+                entire <span className="font-semibold text-slate-700">domains</span>. Domain entries
+                block <em>every</em> recipient on that domain. Duplicates and invalid entries are
+                ignored automatically.
               </DialogDescription>
             </DialogHeader>
+
+            {/* Type selector */}
+            <div className="flex gap-2 mb-2" data-testid="dne-type-selector">
+              <button
+                type="button"
+                onClick={() => setEntryType("email")}
+                className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition ${
+                  entryType === "email"
+                    ? "border-sky-500 bg-sky-50 text-sky-700 ring-2 ring-sky-200"
+                    : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                }`}
+                data-testid="dne-type-email-btn"
+              >
+                Email Address
+                <div className="text-[11px] font-normal text-slate-500 mt-0.5">john@example.com</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryType("domain")}
+                className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition ${
+                  entryType === "domain"
+                    ? "border-violet-500 bg-violet-50 text-violet-700 ring-2 ring-violet-200"
+                    : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                }`}
+                data-testid="dne-type-domain-btn"
+              >
+                Domain
+                <div className="text-[11px] font-normal text-slate-500 mt-0.5">example.com</div>
+              </button>
+            </div>
+
             <Textarea
-              rows={8}
-              placeholder={"someone@example.com\nanother@example.com"}
+              rows={6}
+              placeholder={
+                entryType === "domain"
+                  ? "example.com\ncompetitor.io"
+                  : "someone@example.com\nanother@example.com"
+              }
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
               data-testid="dne-bulk-textarea"
               className="font-mono text-sm"
             />
+            <p className="text-xs text-slate-500 mt-1">
+              {entryType === "domain"
+                ? "All recipients on these domains will be blocked across every campaign and drip step."
+                : "These email addresses will never be sent to again."}
+            </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddOpen(false)}>
                 Cancel
@@ -324,7 +386,7 @@ export default function DoNotEmailDetail({ user, setUser }) {
                 className="bg-rose-600 hover:bg-rose-700 text-white"
                 data-testid="dne-add-confirm-btn"
               >
-                {adding ? "Adding…" : "Add to list"}
+                {adding ? "Adding…" : `Add ${entryType === "domain" ? "domains" : "emails"}`}
               </Button>
             </DialogFooter>
           </DialogContent>

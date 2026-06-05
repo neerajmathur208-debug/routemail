@@ -22,6 +22,7 @@ import {
   Loader2,
   Crown,
   UserCog,
+  Database,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -393,6 +394,14 @@ export default function AdminDashboard({ user, setUser }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/admin/system-backup")}
+              data-testid="admin-nav-system-backup-btn"
+            >
+              <Database size={14} className="mr-1.5" /> System Backup
+            </Button>
             <Button
               variant="outline"
               size="sm"

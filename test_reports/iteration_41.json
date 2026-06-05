@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 41 — Tested unsubscribe + domain-DNE + super-admin platform backup/restore. Created /app/backend/tests/test_iteration_41_unsubscribe_admin_backup.py with 21 pytest cases — ALL 21 PASS. Backend coverage: (1) legacy /api/unsubscribe/{uid}/{email} returns text/html 200 + adds entry to Global DNE (verified via GET), (2) calling twice does NOT duplicate, (3) invalid signed token returns 200 HTML with 'invalid/expired' message, (4) POST /api/dne-lists/{id}/emails accepts mixed email+domain+'@domain' entries, classifies type='email' vs type='domain', rejects invalid, (5) typed entries payload {entries:[{type,value}]} works with dedupe + invalid filter, (6) /api/dne-stats returns {emails_blocked, domains_blocked, total_blocked} (sums match), (7) GET /api/dne-lists/{id} returns `type` field, (8) /api/backup/export/dne-lists?format=csv has columns list_name,type,value, (9) /api/backup/export/full ZIP contains do_not_email_lists.json with `type` preserved and responses_leads.json, (10) /api/admin/backup/export/full returns application/zip with all 13 expected JSON files; users.json scrubs password_hash/verification_token/reset_token/session_token/password; email_accounts.json scrubs plain smtp_password/imap_password; metadata.backup_type=='platform_full' with counts, (11) /api/admin/backup/export/users?user_ids=[...] returns selected-users ZIP with backup_type=='selected_users', (12) /api/admin/backup/import/preview returns metadata+summary, (13) /api/admin/backup/import?conflict=merge returns success+user_results, (14) /api/admin/backup/history returns items with backup_id+backup_type+file_size (history entries created automatically on each export), (15) Regular user gets 403 on /api/admin/backup/{export/full,history,export/users}, (16) regression smoke: /api/campaigns, /api/drip-campaigns, /api/dne-lists, /api/unibox/replies, /api/leads/folders, /api/backup/export/full ALL 200. Frontend Playwright: super_admin sidebar shows 'System Backup & Restore' link with testid `nav-system-backup`; /admin/system-backup page renders sys-backup-export-full-btn, sys-backup-export-users-section (user-list checkboxes), sys-backup-history-section, sys-backup-import-dialog with sys-backup-conflict-select + sys-backup-import-file; Regular user CANNOT see nav-system-backup AND is redirected from /admin/system-backup to /dashboard; /do-not-email shows dne-stat-emails-blocked (value 5) + dne-stat-domains-blocked (value 2) banner; DoNotEmailDetail Add dialog (dne-add-manual-btn → dne-add-dialog) has dne-type-email-btn + dne-type-domain-btn and placeholder TEXT CHANGES between 'someone@example.com\\nanother@example.com' and 'example.com\\ncompetitor.io' — confirms mode toggle wires correctly. Domain entries display as 'DOMAIN' badge in the entries table. Unibox bulk DNE scope buttons live only inside the bulk-dialog which requires reply selection; code-reviewed Unibox.jsx — testids dne-scope-email-btn + dne-scope-domain-btn are present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard (/admin) — Users Management table", "issues": ["React hydration warning: <span> rendered as child of <tbody> / <span> as child of <tr>. Console error: 'In HTML, %s cannot be a child of <%s>... <tr> span ... <span> tbody'. Likely a stray whitespace/Fragment-rendered <span> inside the users table. Not a functional bug but causes a hydration warning on every render."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_41_unsubscribe_admin_backup.py",
+    "/app/test_reports/pytest/iter41_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL — clean up the stray <span> inside the AdminDashboard users-management <tbody>/<tr> to silence the React hydration warning. Search AdminDashboard.jsx for spans rendered as direct table children."
+  ],
+  "critical_code_review_comments": [
+    "admin_backup_routes.py _scrub_user removes password_hash, verification_token, reset_token, session_token, password — verified empirically in the exported users.json. _scrub_account also resets daily_send_count/last_send_date which is correct (restored accounts start clean). Good defense-in-depth.",
+    "admin_backup_routes.py _restore_user with conflict=merge regenerates id_field for every collection — prevents PK collision on existing user. For conflict=replace it wipes per-user collections BEFORE inserting — destructive but correct per spec. NOTE: replace does NOT delete subscriptions/system_settings/blogs for safety; documented behaviour.",
+    "admin_backup_routes.py /import endpoint does NOT call _record_backup_history — only EXPORT actions are logged. Not a bug per spec (history is for exports) but worth noting if you ever want an audit trail of imports.",
+    "server.py unsubscribe_token (signed token format ts.payload.sig) uses HMAC-SHA256 — does NOT contain user_id/email in plain text. ✓ matches spec.",
+    "server.py _process_unsubscribe correctly stops drip_contacts (status='unsubscribed' + unsubscribed_at) for the user_id+email pair. NOT tested end-to-end here because no active drip with the test email exists; logic is straightforward and covered by code-review.",
+    "DoNotEmailDetail.jsx Add dialog correctly sends typed `entries: [{type,value}]` payload and the type-selector pill UI is intuitive. Placeholder differentiation confirmed.",
+    "SystemBackupRestore.jsx admin route protection — the route renders the page but the backend gates with get_super_admin_user (403). The frontend should ideally redirect non-admin users on the /admin/system-backup page itself; currently the redirect happens by the page failing to load admin data and React-router falling back. Verified empirically: regular user lands at /dashboard. Good enough."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_41_unsubscribe_admin_backup.py"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% — all required testids + behaviour verified"},
+  "test_credentials": "dhruvmathur208@gmail.com / Perfect2026# (super_admin) and drip.tester@example.com / DripTest123! (regular user) — both work.",
+  "seed_data_creation": "Tests create transient TEST_dne_* lists, TEST_unsub_*@example.com unsubscribe entries (added to drip-tester's global DNE), and one TEST-zipdomain.com domain entry. Transient lists are deleted in fixture teardown. The TEST_unsub_* DNE entries persist (acceptable — they're test data with TEST_ prefix and live in drip.tester's global list).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New backend suite at /app/backend/tests/test_iteration_41_unsubscribe_admin_backup.py (21 tests, all passing). Covers unsubscribe HTML responses, DNE domain support, /api/dne-stats, full+selected admin backup ZIPs, import preview/merge, history, 403 enforcement, regression smoke. Frontend testids confirmed live: nav-system-backup (sidebar), sys-backup-{export-full-btn,export-users-section,export-users-btn,user-checkbox-{uid},history-section,open-import-btn,import-dialog,import-file,import-preview,conflict-select,import-confirm-btn,import-cancel}, dne-stat-emails-blocked, dne-stat-domains-blocked, dne-add-manual-btn → dne-add-dialog → dne-type-email-btn / dne-type-domain-btn / dne-bulk-textarea (placeholder changes per mode), dne-add-confirm-btn. The Unibox bulk-DNE scope testids (dne-scope-email-btn / dne-scope-domain-btn) live in the bulk DNE dialog — not visible until at least one reply is selected (drip.tester currently has 0 replies because no IMAP-configured accounts). One non-blocking React hydration warning exists in AdminDashboard users-table — flagged in design_issues.",
+  "rca of the issue": "No new bugs found. Hydration warning in AdminDashboard is a pre-existing minor issue (not in the iteration-41 feature surface)."
+}

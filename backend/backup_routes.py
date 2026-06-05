@@ -244,15 +244,17 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             lst["emails"] = emails
         if format.lower() == "csv":
             rows = []
-            headers = ["list_name", "email", "source", "added_at"]
+            headers = ["list_name", "type", "value", "source", "added_at", "notes"]
             for lst in lists:
                 for e in lst.get("emails", []):
                     rows.append(
                         {
                             "list_name": lst.get("name", ""),
-                            "email": e.get("email", ""),
+                            "type": e.get("type") or ("domain" if "@" not in (e.get("email") or "") and "." in (e.get("email") or "") else "email"),
+                            "value": e.get("email", ""),
                             "source": e.get("source", "manual"),
                             "added_at": e.get("added_at", ""),
+                            "notes": e.get("notes", "") or "",
                         }
                     )
             return _stream_csv(
@@ -583,9 +585,18 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             # Insert emails — skip duplicates by (list_id,email) lookup
             inserted = 0
             for e in emails:
-                addr = (e.get("email") if isinstance(e, dict) else str(e) or "").strip().lower()
+                if isinstance(e, dict):
+                    raw_val = e.get("email") or e.get("value") or ""
+                    entry_type = (e.get("type") or "").strip().lower() or None
+                else:
+                    raw_val = str(e)
+                    entry_type = None
+                addr = (raw_val or "").strip().lower().lstrip("@")
                 if not addr:
                     continue
+                # Auto-infer type if missing
+                if entry_type not in ("email", "domain"):
+                    entry_type = "domain" if ("@" not in addr and "." in addr) else "email"
                 exists = await db.dne_emails.find_one(
                     {"list_id": target_list_id, "user_id": user.user_id, "email": addr},
                     {"_id": 0, "email": 1},
@@ -599,6 +610,7 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                     "list_id": target_list_id,
                     "user_id": user.user_id,
                     "email": addr,
+                    "type": entry_type,
                     "source": source,
                     "added_at": added_at,
                 }
@@ -936,15 +948,41 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         conflict = _normalize_conflict(conflict)
         text = (await file.read()).decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(text))
-        emails: List[Dict[str, Any]] = []
-        # Accept either a single "email" column or rows where the only column is the email
+        entries: List[Dict[str, Any]] = []
+        # Accept either:
+        #   - 'type' + 'value' columns
+        #   - a single 'email' or 'domain' column
+        #   - rows where the only column is the entry
         for row in reader:
-            email = (row.get("email") or row.get("Email") or "").strip().lower()
-            if not email and len(row) == 1:
-                email = list(row.values())[0].strip().lower()
-            if email and re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-                emails.append({"email": email, "source": (row.get("source") or "imported")})
-        item = {"name": list_name.strip() or "Imported DNE", "emails": emails}
+            raw_type = (row.get("type") or row.get("Type") or "").strip().lower()
+            value = (row.get("value") or row.get("Value")
+                     or row.get("email") or row.get("Email")
+                     or row.get("domain") or row.get("Domain") or "").strip().lower().lstrip("@")
+            if not value and len(row) == 1:
+                value = list(row.values())[0].strip().lower().lstrip("@")
+            if not value:
+                continue
+            # Determine type
+            if raw_type in ("email", "domain"):
+                entry_type = raw_type
+            elif "@" in value:
+                entry_type = "email"
+            elif "." in value:
+                entry_type = "domain"
+            else:
+                continue
+            # Validate
+            if entry_type == "email" and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value):
+                continue
+            if entry_type == "domain" and not re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", value):
+                continue
+            entries.append({
+                "email": value,
+                "type": entry_type,
+                "source": (row.get("source") or "imported"),
+                "notes": row.get("notes") or row.get("Notes") or None,
+            })
+        item = {"name": list_name.strip() or "Imported DNE", "emails": entries}
         return await _import_dne_lists([item], conflict, user)
 
     return router

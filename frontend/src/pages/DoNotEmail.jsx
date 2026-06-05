@@ -38,6 +38,7 @@ export default function DoNotEmail({ user, setUser }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [lists, setLists] = useState([]);
+  const [stats, setStats] = useState({ emails_blocked: 0, domains_blocked: 0 });
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -45,8 +46,12 @@ export default function DoNotEmail({ user, setUser }) {
 
   const fetchLists = useCallback(async () => {
     try {
-      const res = await api.get("/dne-lists");
-      setLists(res.data || []);
+      const [listsRes, statsRes] = await Promise.all([
+        api.get("/dne-lists"),
+        api.get("/dne-stats").catch(() => ({ data: { emails_blocked: 0, domains_blocked: 0 } })),
+      ]);
+      setLists(listsRes.data || []);
+      setStats(statsRes.data || { emails_blocked: 0, domains_blocked: 0 });
     } catch (e) {
       console.error(e);
       toast.error("Failed to load Do Not Email lists");
@@ -120,7 +125,38 @@ export default function DoNotEmail({ user, setUser }) {
 
         {loading ? (
           <div className="text-slate-500">Loading…</div>
-        ) : lists.length === 0 ? (
+        ) : (
+          <>
+            {/* Stats banner */}
+            <div
+              className="grid grid-cols-2 gap-4 mb-6"
+              data-testid="dne-stats-banner"
+            >
+              <div className="bg-white border border-sky-200 rounded-2xl p-5">
+                <div className="text-xs uppercase tracking-wide text-sky-600 font-semibold mb-1">
+                  Emails Blocked
+                </div>
+                <div
+                  className="text-3xl font-bold text-slate-900"
+                  data-testid="dne-stat-emails-blocked"
+                >
+                  {stats.emails_blocked || 0}
+                </div>
+              </div>
+              <div className="bg-white border border-violet-200 rounded-2xl p-5">
+                <div className="text-xs uppercase tracking-wide text-violet-600 font-semibold mb-1">
+                  Domains Blocked
+                </div>
+                <div
+                  className="text-3xl font-bold text-slate-900"
+                  data-testid="dne-stat-domains-blocked"
+                >
+                  {stats.domains_blocked || 0}
+                </div>
+              </div>
+            </div>
+
+            {lists.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-16 text-center">
             <Shield className="mx-auto text-slate-400 mb-4" size={48} strokeWidth={1.2} />
             <h3 className="text-xl font-semibold text-slate-900 mb-2">
@@ -202,6 +238,8 @@ export default function DoNotEmail({ user, setUser }) {
               </motion.div>
             ))}
           </div>
+        )}
+          </>
         )}
 
         {/* Create dialog */}
