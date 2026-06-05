@@ -261,11 +261,13 @@ function DashboardMockup() {
           </div>
           {[
             { label: "Dashboard", active: true },
-            { label: "Email Accounts" },
-            { label: "Email Lists" },
-            { label: "Campaign" },
+            { label: "Campaigns" },
             { label: "Drip Campaigns" },
-            { label: "Warmup" },
+            { label: "Email Accounts" },
+            { label: "Unibox" },
+            { label: "Responses / Leads" },
+            { label: "Do Not Email" },
+            { label: "Subscription" },
           ].map((item) => (
             <div
               key={item.label}
@@ -285,9 +287,9 @@ function DashboardMockup() {
           {/* Stat strip */}
           <div className="grid grid-cols-3 gap-3 mb-5">
             {[
-              { label: "Sent today", value: "2,418", color: "blue" },
-              { label: "Delivered", value: "98.4%", color: "emerald" },
-              { label: "Replies", value: "164", color: "violet" },
+              { label: "Total Contacts", value: "12,450", color: "blue" },
+              { label: "Open Rate", value: "42%", color: "emerald" },
+              { label: "Replies (mo)", value: "186", color: "violet" },
             ].map((s) => (
               <div
                 key={s.label}
@@ -311,14 +313,14 @@ function DashboardMockup() {
             </div>
             <div className="divide-y divide-slate-100">
               {[
-                { name: "Q1 Outreach", status: "running", color: "blue", pct: 62 },
-                { name: "Founder Intro", status: "scheduled", color: "violet", pct: 0 },
-                { name: "Re-engagement", status: "completed", color: "emerald", pct: 100 },
-                { name: "VC partners", status: "draft", color: "slate", pct: 0 },
+                { name: "UK Law Firms Outreach", status: "running",   color: "blue",    pct: 78 },
+                { name: "SaaS Outreach Q3",       status: "running",   color: "violet",  pct: 64 },
+                { name: "Real Estate Ireland",   status: "scheduled", color: "amber",   pct: 0  },
+                { name: "Recruitment Campaign",  status: "completed", color: "emerald", pct: 100 },
               ].map((c) => (
                 <div key={c.name} className="px-4 py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="text-xs font-medium text-slate-900 truncate w-28">
+                    <div className="text-xs font-medium text-slate-900 truncate w-40">
                       {c.name}
                     </div>
                     <span
