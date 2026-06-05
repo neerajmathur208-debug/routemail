@@ -12,6 +12,9 @@ import {
   Send,
   ArrowRight,
   Clock,
+  Copy,
+  Edit2,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -40,6 +43,7 @@ import { toast } from "sonner";
 
 const STATUS_STYLES = {
   draft: "bg-slate-100 text-slate-700",
+  scheduled: "bg-violet-100 text-violet-700",
   running: "bg-emerald-100 text-emerald-700",
   paused: "bg-amber-100 text-amber-700",
   completed: "bg-blue-100 text-blue-700",
@@ -53,6 +57,44 @@ export default function DripCampaigns({ user, setUser }) {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [duplicateBusy, setDuplicateBusy] = useState(null); // drip_id currently duplicating
+
+  const handleRename = async () => {
+    if (!renameTarget) return;
+    const name = renameValue.trim();
+    if (!name) {
+      toast.error("Name cannot be blank");
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      await api.post(`/drip-campaigns/${renameTarget.drip_id}/rename`, { name });
+      toast.success("Drip campaign renamed");
+      setRenameTarget(null);
+      setRenameValue("");
+      fetchCampaigns();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to rename");
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const handleDuplicate = async (camp) => {
+    setDuplicateBusy(camp.drip_id);
+    try {
+      const res = await api.post(`/drip-campaigns/${camp.drip_id}/duplicate`);
+      toast.success(`Duplicated as "${res.data.name}"`);
+      fetchCampaigns();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to duplicate");
+    } finally {
+      setDuplicateBusy(null);
+    }
+  };
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -225,15 +267,40 @@ export default function DripCampaigns({ user, setUser }) {
                   {camp.schedule?.start_time || "09:00"}–{camp.schedule?.end_time || "18:00"}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1"
+                    className="flex-1 min-w-[80px]"
                     onClick={() => navigate(`/drip-campaigns/${camp.drip_id}`)}
                     data-testid={`drip-view-${camp.drip_id}`}
                   >
                     <Eye size={14} className="mr-1.5" /> Open
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRenameTarget(camp);
+                      setRenameValue(camp.name || "");
+                    }}
+                    data-testid={`drip-rename-${camp.drip_id}`}
+                  >
+                    <Edit2 size={14} className="mr-1.5" /> Rename
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicate(camp)}
+                    disabled={duplicateBusy === camp.drip_id}
+                    data-testid={`drip-duplicate-${camp.drip_id}`}
+                  >
+                    {duplicateBusy === camp.drip_id ? (
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Copy size={14} className="mr-1.5" />
+                    )}
+                    Duplicate
                   </Button>
                   {(camp.status === "running" || camp.status === "paused") && (
                     <Button
@@ -325,6 +392,39 @@ export default function DripCampaigns({ user, setUser }) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {/* Rename dialog */}
+        <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
+          <DialogContent data-testid="drip-rename-dialog">
+            <DialogHeader>
+              <DialogTitle>Rename drip campaign</DialogTitle>
+              <DialogDescription>
+                Only the campaign name changes. Schedule, steps, contacts, logs, and analytics stay
+                exactly as they are.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="rename-input">Campaign name</Label>
+              <Input
+                id="rename-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRename()}
+                data-testid="drip-rename-input"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRenameTarget(null)} disabled={renameBusy}>
+                Cancel
+              </Button>
+              <Button onClick={handleRename} disabled={renameBusy || !renameValue.trim()} data-testid="drip-rename-confirm">
+                {renameBusy ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </main>
     </div>
   );

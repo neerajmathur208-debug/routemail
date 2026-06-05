@@ -4985,6 +4985,78 @@ async def update_drip_campaign(drip_id: str, request: UpdateDripCampaignRequest,
     await db.drip_campaigns.update_one({"drip_id": drip_id}, {"$set": update_data})
     return {"message": "Drip campaign updated", "drip_id": drip_id}
 
+
+class RenameDripCampaignRequest(BaseModel):
+    name: str
+
+
+@api_router.post("/drip-campaigns/{drip_id}/rename")
+async def rename_drip_campaign(drip_id: str, request: RenameDripCampaignRequest, user: User = Depends(get_current_user)):
+    """Rename a drip campaign. Only updates the name — never the sequence, schedule, logs, analytics, or campaign_id."""
+    new_name = (request.name or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Campaign name cannot be blank")
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    # Uniqueness within the user's drip campaigns
+    clash = await db.drip_campaigns.find_one(
+        {
+            "user_id": user.user_id,
+            "name": new_name,
+            "drip_id": {"$ne": drip_id},
+        },
+        {"_id": 0, "drip_id": 1},
+    )
+    if clash:
+        raise HTTPException(status_code=400, detail="A drip campaign with this name already exists")
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"$set": {"name": new_name, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"drip_id": drip_id, "name": new_name}
+
+
+@api_router.post("/drip-campaigns/{drip_id}/duplicate")
+async def duplicate_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Duplicate an existing drip campaign as a fresh draft. Never copies analytics, logs, or recipient progress."""
+    campaign = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    new_drip_id = f"drip_{uuid.uuid4().hex[:12]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    new_doc = {
+        "drip_id": new_drip_id,
+        "user_id": user.user_id,
+        "name": f"{campaign.get('name', 'Untitled')} (Copy)",
+        "from_name": campaign.get("from_name"),
+        "account_ids": list(campaign.get("account_ids") or []),
+        "steps": [dict(s) for s in (campaign.get("steps") or [])],
+        "schedule": dict(campaign.get("schedule") or {}),
+        "stop_on_reply": campaign.get("stop_on_reply", True),
+        "stop_on_bounce": campaign.get("stop_on_bounce", True),
+        "suppression_list_ids": list(campaign.get("suppression_list_ids") or []),
+        "tracking_opens": campaign.get("tracking_opens", True),
+        "tracking_clicks": campaign.get("tracking_clicks", True),
+        "add_unsubscribe_footer": campaign.get("add_unsubscribe_footer", False),
+        # Reset everything operational
+        "status": "draft",
+        "total_sent": 0,
+        "total_contacts": 0,
+        "started_at": None,
+        "completed_at": None,
+        "paused_at": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await db.drip_campaigns.insert_one(new_doc)
+    return {"drip_id": new_drip_id, "status": "draft", "name": new_doc["name"]}
+
+
 @api_router.delete("/drip-campaigns/{drip_id}")
 async def delete_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
     """Delete drip campaign plus its contacts and logs"""

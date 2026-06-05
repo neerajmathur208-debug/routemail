@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -51,6 +51,7 @@ import {
 import Sidebar from "../components/Sidebar";
 import { api, API } from "../App";
 import { toast } from "sonner";
+import useAutoSaveDraft from "../hooks/useAutoSaveDraft";
 
 const COMMON_TIMEZONES = [
   "UTC",
@@ -352,6 +353,10 @@ export default function DripCampaignView({ user, setUser }) {
     });
   };
 
+  // Refs used by auto-save + manual save to track unsaved changes
+  const dirtyRef = useRef(false);
+  const lastSavedFormRef = useRef(null);
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast.error("Name is required");
@@ -367,6 +372,8 @@ export default function DripCampaignView({ user, setUser }) {
     setSaving(true);
     try {
       await api.put(`/drip-campaigns/${dripId}`, form);
+      lastSavedFormRef.current = JSON.stringify(form);
+      dirtyRef.current = false;
       toast.success("Saved");
       loadAll();
     } catch (e) {
@@ -377,8 +384,21 @@ export default function DripCampaignView({ user, setUser }) {
   };
 
   // Silent auto-save on back/leave. Only runs when editing is allowed AND there's a name.
+
+  // Mark dirty whenever form changes after the initial load
+  useEffect(() => {
+    if (!campaign) return;
+    if (lastSavedFormRef.current === null) {
+      // First snapshot after load — establishes the "clean" baseline
+      lastSavedFormRef.current = JSON.stringify(form);
+      return;
+    }
+    dirtyRef.current = JSON.stringify(form) !== lastSavedFormRef.current;
+  }, [form, campaign]);
+
   const autoSaveDraft = useCallback(async () => {
     if (!campaign || !canEdit) return;
+    if (!dirtyRef.current) return;
     if (!form.name?.trim()) return;
     // Skip if any step is missing required fields — backend will reject.
     for (const s of form.steps || []) {
@@ -386,12 +406,17 @@ export default function DripCampaignView({ user, setUser }) {
     }
     try {
       await api.put(`/drip-campaigns/${dripId}`, form);
+      lastSavedFormRef.current = JSON.stringify(form);
+      dirtyRef.current = false;
       toast.success("Draft saved automatically");
     } catch (err) {
       // Non-fatal — user can manually save later
       console.error("Drip auto-save failed:", err);
     }
   }, [campaign, canEdit, form, dripId]);
+
+  // Save the draft on browser back / tab close / route change away from this view
+  useAutoSaveDraft(autoSaveDraft, !!campaign && canEdit);
 
   const validateDripBeforeStart = () => {
     // 1. Campaign Name

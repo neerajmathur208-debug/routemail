@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -63,6 +63,7 @@ import RichTextEditor from "../components/RichTextEditor";
 import AccountMultiSelect from "../components/AccountMultiSelect";
 import { api } from "../App";
 import { toast } from "sonner";
+import useAutoSaveDraft from "../hooks/useAutoSaveDraft";
 
 export default function Campaign({ user, setUser }) {
   const navigate = useNavigate();
@@ -348,6 +349,25 @@ export default function Campaign({ user, setUser }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData, selectedTimezone, editId]);
+
+  // Trigger silent auto-save when the user navigates away (back button / route change / tab close)
+  // while in create or edit view AND there are unsaved changes.
+  const inEditor = view === "create" || view === "edit";
+  const initialFormSnapshotRef = useRef(null);
+  useEffect(() => {
+    if (!inEditor) {
+      initialFormSnapshotRef.current = null;
+      return;
+    }
+    if (initialFormSnapshotRef.current === null) {
+      initialFormSnapshotRef.current = JSON.stringify(formData);
+    }
+  }, [inEditor, formData]);
+  const isDirtyForAutosave =
+    inEditor &&
+    initialFormSnapshotRef.current !== null &&
+    JSON.stringify(formData) !== initialFormSnapshotRef.current;
+  useAutoSaveDraft(() => autoSaveDraft({ silent: true }), isDirtyForAutosave);
 
   // Send Now - auto-save campaign first, then immediately start
   const handleSendNow = async (campaignId) => {
