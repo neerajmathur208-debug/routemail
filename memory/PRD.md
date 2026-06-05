@@ -1,5 +1,33 @@
 # RouteMail - Email Rotation SaaS Platform
 
+
+## Changelog — Iteration 41 (June 2026)
+
+### Unsubscribe + Domain Suppression + Super Admin Backup
+- **Signed-token unsubscribe**: New `/api/unsubscribe/u/{token}` endpoint (HMAC-SHA256 signed, no internal IDs in URL). Legacy `/api/unsubscribe/{user_id}/{email}` retained for already-sent emails. Both return a styled HTML confirmation page.
+- Unsubscribe pipeline now mirrors entries into the user's Global DNE list **and** stops any active/paused drip sequences for that contact in one transaction.
+- **Domain-based suppression**: DNE lists now accept full emails (`john@example.com`) AND bare domains (`example.com`, `@example.com`). Each entry carries a `type` field (`email`|`domain`). Domain entries block every recipient on that domain across campaigns, drip campaigns, scheduled campaigns and warmup test sends.
+- New endpoint `GET /api/dne-stats` reports `{ emails_blocked, domains_blocked, total_blocked }` — surfaced as a banner on the Do Not Email page.
+- DoNotEmailDetail Add dialog has an Email Address / Domain pill selector with mode-specific placeholders.
+- Unibox bulk "Add to Global DNE" dialog now offers Email Only vs Entire Domain scope.
+- DNE CSV import/export now uses columns: `list_name, type, value, source, added_at, notes` (was `list_name, email, source, added_at`).
+- Backup export `do_not_email_lists.json` preserves the `type` field on every entry.
+
+### Super Admin System Backup & Restore (NEW)
+- New module `/app/backend/admin_backup_routes.py` mounted at `/api/admin/backup/*`. Visible/usable only by `super_admin`.
+- Endpoints:
+  - `GET  /api/admin/backup/export/full` — ZIP of EVERY user + all their data (users.json, campaigns.json, drip_campaigns.json, email_accounts.json, email_lists.json, do_not_email_lists.json, responses_leads.json, subscriptions.json, plans.json, blogs.json, system_settings.json, per_user_data.json, metadata.json).
+  - `POST /api/admin/backup/export/users` — ZIP for selected user_ids only.
+  - `POST /api/admin/backup/import/preview` — Returns metadata + summary counts.
+  - `POST /api/admin/backup/import?conflict={skip|merge|replace}` — Restores backup. Existing user passwords are NEVER overwritten. `merge` regenerates per-user record IDs to avoid collisions; `replace` wipes per-user collections first.
+  - `GET  /api/admin/backup/history` — Auto-logged backup history (date, type, file size, user count).
+- Security: `password_hash`, `verification_token`, `reset_token`, `session_token`, `captcha_secret`, `stripe_webhook_secret`, plain `smtp_password`/`imap_password` and plain `password` fields are STRIPPED from every export. Fernet-encrypted SMTP/IMAP blobs are preserved as-is.
+- New page `/app/frontend/src/pages/SystemBackupRestore.jsx` mounted at `/admin/system-backup`. New sidebar link (`nav-system-backup`) visible only to super_admin.
+
+### Verification
+- Backend pytest suite `/app/backend/tests/test_iteration_41_unsubscribe_admin_backup.py` — 21/21 passing.
+- Frontend Playwright run — all required testids confirmed live, admin gate enforced.
+
 ## Original Problem Statement
 Build a simple SaaS web application for small businesses to automatically send emails in rotation across multiple connected email accounts with daily sending limits.
 
