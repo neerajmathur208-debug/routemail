@@ -2,11 +2,12 @@ import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
-import { 
+import {
   Bold, Italic, Underline, Link, List, ListOrdered, 
   AlignLeft, AlignCenter, AlignRight, 
-  Image, ChevronDown, Type, Palette, ShieldOff
+  Image, ChevronDown, Type, Palette, ShieldOff, Code
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +42,56 @@ export default function RichTextEditor({
   const [unsubPopoverOpen, setUnsubPopoverOpen] = useState(false);
   const [unsubText, setUnsubText] = useState('Unsubscribe');
   const resizeStartData = useRef(null);
+
+  // HTML edit mode
+  const [htmlMode, setHtmlMode] = useState(false);
+  const [htmlDraft, setHtmlDraft] = useState('');
+
+  // Sanitize HTML for email use: allow common email tags + style/href, preserve {{vars}},
+  // strip <script>, on* event handlers, javascript: URLs, etc.
+  const sanitizeForEmail = useCallback((dirty) => {
+    if (!dirty) return '';
+    return DOMPurify.sanitize(dirty, {
+      // Allow inline styles + safe email-friendly tags. DOMPurify removes <script>
+      // and on* event handler attributes by default.
+      ALLOWED_TAGS: [
+        'a', 'b', 'i', 'em', 'strong', 'u', 'br', 'p', 'div', 'span',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'blockquote', 'hr',
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+        'img', 'figure', 'figcaption',
+        'pre', 'code', 'small', 'sub', 'sup',
+      ],
+      ALLOWED_ATTR: [
+        'href', 'src', 'alt', 'title', 'class', 'style', 'width', 'height',
+        'target', 'rel', 'align', 'valign', 'colspan', 'rowspan',
+        'cellpadding', 'cellspacing', 'border', 'bgcolor',
+        'data-unsubscribe',
+      ],
+      ALLOW_DATA_ATTR: false,
+      // Block javascript:/vbscript:/data: protocols in URLs
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    });
+  }, []);
+
+  // Toggle visual <-> HTML mode. Going to HTML pulls current HTML from the editor;
+  // coming back, sanitize and push it back into the contentEditable + onChange.
+  const toggleHtmlMode = useCallback(() => {
+    if (!htmlMode) {
+      // Switching INTO HTML view — capture current value
+      const current = editorRef.current?.innerHTML || value || '';
+      setHtmlDraft(current);
+      setHtmlMode(true);
+    } else {
+      // Switching BACK to visual — sanitize and apply
+      const cleaned = sanitizeForEmail(htmlDraft);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = cleaned;
+      }
+      onChange(cleaned);
+      setHtmlMode(false);
+    }
+  }, [htmlMode, htmlDraft, sanitizeForEmail, onChange, value]);
 
   const fontSizes = [
     { label: 'Small', value: '12px' },
@@ -790,30 +841,57 @@ export default function RichTextEditor({
                 </div>
               </PopoverContent>
             </Popover>
+
+            {/* HTML mode toggle */}
+            <div className="ml-auto flex items-center">
+              <Button
+                type="button"
+                size="sm"
+                variant={htmlMode ? "default" : "ghost"}
+                onClick={toggleHtmlMode}
+                className={`flex items-center gap-1 ${htmlMode ? "bg-slate-800 hover:bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-200"}`}
+                data-testid="editor-html-mode-toggle"
+                title={htmlMode ? "Back to visual editor" : "Edit as HTML"}
+              >
+                <Code size={14} />
+                {htmlMode ? "Visual" : "HTML"}
+              </Button>
+            </div>
           </div>
           
           {/* Editable Area with Resize Handles */}
           <div className="relative">
-            <div
-              ref={editorRef}
-              contentEditable
-              onInput={handleInput}
-              onPaste={handlePaste}
-              onBlur={handleEditorBlur}
-              onClick={handleImageClick}
-              onBlur={saveCursorPosition}
-              onKeyUp={saveCursorPosition}
-              className="min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none prose prose-sm max-w-none"
-              style={{ 
-                fontFamily: "'Public Sans', sans-serif",
-                lineHeight: 1.6
-              }}
-              data-placeholder={placeholder}
-              data-testid="rich-text-editor"
-              suppressContentEditableWarning={true}
-            />
+            {htmlMode ? (
+              <textarea
+                value={htmlDraft}
+                onChange={(e) => setHtmlDraft(e.target.value)}
+                spellCheck={false}
+                className="w-full min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none font-mono text-xs bg-slate-900 text-slate-100 leading-relaxed"
+                placeholder="<!-- Paste or write raw HTML here. Switch back to Visual to render it. -->"
+                data-testid="rich-text-editor-html"
+              />
+            ) : (
+              <div
+                ref={editorRef}
+                contentEditable
+                onInput={handleInput}
+                onPaste={handlePaste}
+                onBlur={handleEditorBlur}
+                onClick={handleImageClick}
+                onBlur={saveCursorPosition}
+                onKeyUp={saveCursorPosition}
+                className="min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none prose prose-sm max-w-none"
+                style={{ 
+                  fontFamily: "'Public Sans', sans-serif",
+                  lineHeight: 1.6
+                }}
+                data-placeholder={placeholder}
+                data-testid="rich-text-editor"
+                suppressContentEditableWarning={true}
+              />
+            )}
             {/* Image resize handles */}
-            {selectedImage && renderResizeHandles()}
+            {!htmlMode && selectedImage && renderResizeHandles()}
           </div>
           
           <style>{`

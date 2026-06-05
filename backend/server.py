@@ -3420,6 +3420,92 @@ async def bulk_update_warmup_settings(req: BulkWarmupSettingsRequest, user: User
         "settings": settings,
     }
 
+
+class BulkDeleteAccountsRequest(BaseModel):
+    account_ids: list[str]
+    force: bool = False
+
+
+@api_router.post("/accounts/bulk-delete")
+async def bulk_delete_accounts(req: BulkDeleteAccountsRequest, user: User = Depends(get_current_user)):
+    """Delete multiple email accounts. Refuses by default if any selected account is part of a
+    running campaign — caller can pass force=true to override after explicit user confirmation.
+
+    Never deletes campaigns, campaign logs, email_queue, drip_contacts, or replies (Unibox).
+    Only removes the email_account configuration row itself.
+    """
+    if not req.account_ids:
+        raise HTTPException(status_code=400, detail="No accounts selected")
+
+    owned = await db.email_accounts.find(
+        {"account_id": {"$in": req.account_ids}, "user_id": user.user_id},
+        {"_id": 0, "account_id": 1, "email": 1},
+    ).to_list(1000)
+    owned_ids = [a["account_id"] for a in owned]
+    if not owned_ids:
+        return {"deleted": 0, "blocked": 0, "blocked_accounts": [], "skipped": len(req.account_ids)}
+
+    if not req.force:
+        active_campaigns = await db.campaigns.find(
+            {
+                "user_id": user.user_id,
+                "account_ids": {"$in": owned_ids},
+                "status": {"$in": ["running", "scheduled", "sending"]},
+            },
+            {"_id": 0, "campaign_id": 1, "name": 1, "status": 1, "account_ids": 1},
+        ).to_list(1000)
+        active_drips = await db.drip_campaigns.find(
+            {
+                "user_id": user.user_id,
+                "account_ids": {"$in": owned_ids},
+                "status": {"$in": ["running", "scheduled"]},
+            },
+            {"_id": 0, "drip_id": 1, "name": 1, "status": 1, "account_ids": 1},
+        ).to_list(1000)
+        blocked_set = set()
+        for c in active_campaigns:
+            for aid in c.get("account_ids", []):
+                if aid in owned_ids:
+                    blocked_set.add(aid)
+        for c in active_drips:
+            for aid in c.get("account_ids", []):
+                if aid in owned_ids:
+                    blocked_set.add(aid)
+        if blocked_set:
+            blocked_accounts = [
+                {"account_id": a["account_id"], "email": a["email"]}
+                for a in owned if a["account_id"] in blocked_set
+            ]
+            return {
+                "deleted": 0,
+                "blocked": len(blocked_accounts),
+                "blocked_accounts": blocked_accounts,
+                "active_campaigns": [
+                    {"campaign_id": c.get("campaign_id"), "name": c.get("name"), "status": c.get("status")}
+                    for c in active_campaigns
+                ],
+                "active_drips": [
+                    {"drip_id": c.get("drip_id"), "name": c.get("name"), "status": c.get("status")}
+                    for c in active_drips
+                ],
+                "requires_force": True,
+            }
+
+    result = await db.email_accounts.delete_many(
+        {"account_id": {"$in": owned_ids}, "user_id": user.user_id}
+    )
+    logger.info(
+        f"[ACCOUNTS] User {user.email} bulk-deleted {result.deleted_count} account(s); force={req.force}"
+    )
+    return {
+        "deleted": result.deleted_count,
+        "blocked": 0,
+        "blocked_accounts": [],
+        "requires_force": False,
+    }
+
+
+
 @api_router.post("/accounts/test-smtp")
 async def test_smtp_endpoint(request: TestSMTPRequest, user: User = Depends(get_current_user)):
     """Test SMTP connection without saving"""

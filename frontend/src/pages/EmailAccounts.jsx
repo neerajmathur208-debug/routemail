@@ -576,6 +576,42 @@ export default function EmailAccounts({ user, setUser }) {
     }
   };
 
+  // Bulk delete state + handlers
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteBlocked, setBulkDeleteBlocked] = useState(null);
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
+
+  const handleBulkDeleteRequest = () => {
+    if (selectedIds.length === 0) return;
+    setBulkDeleteBlocked(null);
+    setBulkDeleteOpen(true);
+  };
+
+  const submitBulkDelete = async (force = false) => {
+    if (selectedIds.length === 0) return;
+    setBulkDeleteBusy(true);
+    try {
+      const res = await api.post("/accounts/bulk-delete", {
+        account_ids: selectedIds,
+        force,
+      });
+      if (res.data.requires_force) {
+        // Block path — show details to user, let them confirm-force
+        setBulkDeleteBlocked(res.data);
+      } else {
+        toast.success(`Deleted ${res.data.deleted} account${res.data.deleted === 1 ? "" : "s"}`);
+        setBulkDeleteOpen(false);
+        setBulkDeleteBlocked(null);
+        clearSelection();
+        await fetchAccounts();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete accounts");
+    } finally {
+      setBulkDeleteBusy(false);
+    }
+  };
+
   // Aggregated stats for selected accounts
   const selectedAccounts = accounts.filter((a) => selectedIds.includes(a.account_id));
   const selectedActiveCount = selectedAccounts.filter(
@@ -756,7 +792,18 @@ export default function EmailAccounts({ user, setUser }) {
                       className="text-red-600 hover:bg-red-50"
                       data-testid="bulk-disable-warmup"
                     >
-                      Disable
+                      Disable Warmup
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleBulkDeleteRequest}
+                      disabled={bulkBusy || bulkDeleteBusy}
+                      className="text-red-700 hover:bg-red-50 border border-red-200"
+                      data-testid="bulk-delete-accounts"
+                    >
+                      <Trash2 size={14} className="mr-1" />
+                      Delete Selected
                     </Button>
                     <Button
                       size="sm"
@@ -1440,6 +1487,63 @@ export default function EmailAccounts({ user, setUser }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o) { setBulkDeleteOpen(false); setBulkDeleteBlocked(null); } }}>
+        <AlertDialogContent data-testid="bulk-delete-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="text-red-600" />
+              {bulkDeleteBlocked ? "Some accounts are in use" : "Delete selected email accounts?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {!bulkDeleteBlocked ? (
+                <>
+                  Are you sure you want to delete the <span className="font-semibold">{selectedIds.length}</span>{" "}
+                  selected email account{selectedIds.length === 1 ? "" : "s"}? <span className="font-semibold">This action cannot be undone.</span>
+                  <span className="block mt-2 text-slate-600">
+                    Campaign history, sending logs, and Unibox replies will NOT be deleted — only the
+                    account configurations will be removed and they will no longer appear in campaign account selection.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block">
+                    {bulkDeleteBlocked.blocked_accounts.length} selected account
+                    {bulkDeleteBlocked.blocked_accounts.length === 1 ? " is" : "s are"} currently used by a running or scheduled campaign.
+                  </span>
+                  {bulkDeleteBlocked.active_campaigns?.length > 0 && (
+                    <span className="block mt-2 text-slate-700">
+                      Active campaigns: {bulkDeleteBlocked.active_campaigns.map((c) => c.name).join(", ")}
+                    </span>
+                  )}
+                  {bulkDeleteBlocked.active_drips?.length > 0 && (
+                    <span className="block text-slate-700">
+                      Active drips: {bulkDeleteBlocked.active_drips.map((c) => c.name).join(", ")}
+                    </span>
+                  )}
+                  <span className="block mt-2 text-amber-700 font-medium">
+                    Continuing will break those campaigns. Pause them first if you want to be safe.
+                  </span>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleteBusy} data-testid="cancel-bulk-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => submitBulkDelete(!!bulkDeleteBlocked)}
+              disabled={bulkDeleteBusy}
+              className="bg-red-600 hover:bg-red-700"
+              data-testid="confirm-bulk-delete"
+            >
+              {bulkDeleteBusy ? <Loader2 size={14} className="animate-spin mr-2" /> : <Trash2 size={14} className="mr-2" />}
+              {bulkDeleteBlocked ? "Delete Anyway" : "Delete Accounts"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       {/* Bulk Warmup Settings Modal */}
       <Dialog open={bulkSettingsOpen} onOpenChange={setBulkSettingsOpen}>
