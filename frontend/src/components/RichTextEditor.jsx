@@ -8,6 +8,7 @@ import {
   Image, ChevronDown, Type, Palette, ShieldOff, Code, Trash2
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -897,8 +898,38 @@ export default function RichTextEditor({
               </PopoverContent>
             </Popover>
 
-            {/* HTML mode toggle */}
-            <div className="ml-auto flex items-center">
+            {/* HTML mode toggle + Spellcheck verification */}
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Insert a known-misspelled word at the caret so the user can SEE
+                  // the browser's native red squiggle. Pure DOM mutation — no API.
+                  if (htmlMode) {
+                    setHtmlDraft((d) => (d || "") + " definately ");
+                    toast.success("Inserted 'definately' into HTML — switch to Visual mode to see the underline.");
+                    return;
+                  }
+                  if (!editorRef.current) return;
+                  editorRef.current.focus();
+                  // Try caret insert via execCommand; fall back to appending a text node.
+                  let inserted = false;
+                  try {
+                    inserted = document.execCommand("insertText", false, " definately ");
+                  } catch (e) { /* ignore */ }
+                  if (!inserted) {
+                    editorRef.current.appendChild(document.createTextNode(" definately "));
+                  }
+                  handleInput();
+                  toast.success("Inserted 'definately' — your browser should underline it in red.");
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                title="Insert the word 'definately' (misspelt) — the browser should underline it in red if spellcheck is working."
+                data-testid="editor-verify-spellcheck-btn"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Spellcheck: Active · Verify
+              </button>
               <Button
                 type="button"
                 size="sm"
@@ -920,7 +951,10 @@ export default function RichTextEditor({
               <textarea
                 value={htmlDraft}
                 onChange={(e) => setHtmlDraft(e.target.value)}
-                spellCheck={false}
+                spellCheck={true}
+                lang="en"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 className="w-full min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none font-mono text-xs bg-slate-900 text-slate-100 leading-relaxed"
                 placeholder="<!-- Paste or write raw HTML here. Switch back to Visual to render it. -->"
                 data-testid="rich-text-editor-html"
@@ -930,15 +964,20 @@ export default function RichTextEditor({
                 ref={editorRef}
                 contentEditable
                 spellCheck={true}
+                lang="en"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 onInput={handleInput}
                 onPaste={handlePaste}
                 onClick={handleImageClick}
                 onBlur={(e) => { handleEditorBlur(e); saveCursorPosition(); }}
                 onKeyUp={saveCursorPosition}
                 className="min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none prose prose-sm max-w-none"
-                style={{ 
+                style={{
                   fontFamily: "'Public Sans', sans-serif",
-                  lineHeight: 1.6
+                  lineHeight: 1.6,
+                  /* Force the browser to render its native spell-check decoration */
+                  textDecorationSkipInk: 'auto',
                 }}
                 data-placeholder={placeholder}
                 data-testid="rich-text-editor"
@@ -977,6 +1016,18 @@ export default function RichTextEditor({
               outline: 2px solid #3b82f6;
               outline-offset: 2px;
             }
+            /* Make sure native spell-check decoration is never suppressed by Tailwind/prose */
+            [contenteditable][spellcheck="true"] {
+              -webkit-user-modify: read-write;
+            }
+            [contenteditable][spellcheck="true"] ::spelling-error {
+              text-decoration: red wavy underline;
+              text-decoration-skip-ink: none;
+            }
+            [contenteditable][spellcheck="true"] ::grammar-error {
+              text-decoration: blue wavy underline;
+              text-decoration-skip-ink: none;
+            }
           `}</style>
         </div>
       ) : (
@@ -985,6 +1036,9 @@ export default function RichTextEditor({
           onChange={(e) => onPlainTextChange(e.target.value)}
           placeholder={placeholder}
           spellCheck={true}
+          lang="en"
+          autoCorrect="on"
+          autoCapitalize="sentences"
           className="w-full min-h-[300px] max-h-[400px] overflow-y-auto p-4 border border-slate-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           data-testid="plain-text-editor"
         />
