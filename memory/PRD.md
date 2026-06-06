@@ -1,6 +1,20 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 43 (June 2026)
+
+### Spellcheck visibility audit & fix
+- **`<style>` block** in RichTextEditor now ships explicit `::spelling-error { text-decoration: red wavy underline; text-decoration-skip-ink: none }` and `::grammar-error { text-decoration: blue wavy underline }` rules so Tailwind / prose can't suppress the browser's native squiggle.
+- **contentEditable** gains `lang="en"`, `autoCorrect="on"`, `autoCapitalize="sentences"` in addition to `spellCheck={true}` — Chrome / Edge / Safari require these to render the squiggle on a contentEditable surface.
+- **HTML-mode textarea** flipped from `spellCheck={false}` → `spellCheck={true}` + same `lang` / `autoCorrect` attributes.
+- **Plain-text fallback textarea** mirrored with the same set of attributes for parity.
+- **Toolbar indicator-button** (`data-testid=editor-verify-spellcheck-btn`) added: shows a pulsing emerald dot + the text `Spellcheck: Active · Verify`. Clicking it inserts `definately` into the editor at the caret (Visual mode uses execCommand with createTextNode fallback; HTML mode appends to `htmlDraft`). A sonner toast confirms the action.
+- All existing editor features (image insertion + resize + delete, unsubscribe-link popover, variable insertion, link insertion, HTML toggle) are unchanged.
+
+### Verification
+- Frontend Playwright run — every attribute / CSS rule / button behaviour confirmed in BOTH the Campaign editor and the Drip step composer. Backend skipped (no backend changes this iteration).
+
+
 ## Changelog — Iteration 42 (June 2026)
 
 ### Campaign editor & management upgrades
