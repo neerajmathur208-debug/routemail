@@ -1,6 +1,27 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 42 (June 2026)
+
+### Campaign editor & management upgrades
+- **Delete-image toolbar**: Selecting an `<img>` in the RichTextEditor now shows a floating "Delete Image" button (testid `delete-image-btn`) alongside the existing resize handles. Pressing `Delete` / `Backspace` while an image is selected also removes it. Surrounding text/content is preserved and `onChange` fires immediately. Fixed a pre-existing duplicate `onBlur` attribute that was masking `handleEditorBlur`.
+- **Spell check**: Native browser spell check enabled on both the contentEditable visual editor and the plain-text fallback (`spellCheck={true}`). Helper text added under the editor — *"Spell check uses your browser's built-in spell checker."*
+- **Export / Import for normal campaigns** — new endpoints:
+  - `GET  /api/campaigns/{id}/export` — returns JSON wrapper `{schema_version:1, type:'campaign', exported_at, campaign:{name, from_name, subject, body, body_text, list_name, account_emails, dne_list_names, send_range_*, schedule_*, add_unsubscribe_footer, tracking_opens, tracking_clicks, created_at}}`. Operational fields (sent logs, recipient progress, analytics, replies) NEVER exported.
+  - `POST /api/campaigns/import` — accepts the export payload, always saved as **draft**. Name uniqueness: `Name (Imported)` → `Name (Imported 2)` → …. Lists / accounts / DNE lists are resolved by name / email; missing matches silently fall back to empty.
+- **Export / Import for drip campaigns**:
+  - `GET  /api/drip-campaigns/{id}/export` — same wrapper for drips, includes every step with `delay_days` + `delay_hours`, schedule, stop conditions, tracking + unsubscribe footer.
+  - `POST /api/drip-campaigns/import` — always saved as **draft**, same name-uniqueness rule. Zero-step or wrong-type payloads return 400.
+- **Convert normal campaign → drip**:
+  - `POST /api/campaigns/{id}/convert-to-drip` creates a NEW drip in draft status. The source campaign's subject/body becomes Step 1, with `from_name`, `account_ids`, `suppression_list_ids`, `tracking_opens`, `tracking_clicks`, `add_unsubscribe_footer` all mapped over.
+  - Source campaign is **never** modified or deleted — verified end-to-end.
+  - UI: Campaigns list row now has icon buttons for Export, Convert-to-Drip (Workflow icon) and Duplicate; Campaigns + Drip pages have new `Import` buttons in headers.
+
+### Verification
+- Backend pytest `/app/backend/tests/test_iteration_42_export_import_convert.py` — 18/18 passing.
+- Frontend Playwright — every required testid + flow verified, convert-to-drip confirmed non-destructive.
+
+
 ## Changelog — Iteration 41 (June 2026)
 
 ### Unsubscribe + Domain Suppression + Super Admin Backup
