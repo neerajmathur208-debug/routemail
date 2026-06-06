@@ -1,6 +1,30 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 44 (June 2026)
+
+### Part 1 — Honest spell-check UI
+- Replaced the misleading green "Spellcheck: Active" pulse badge (which always claimed Active regardless of the browser's actual setting) with a neutral amber-dot **"Test spell-check"** button.
+- The button now opens a Popover (`editor-spellcheck-popover`) that:
+  - Explains we rely on the browser's native spell-checker (no paid API).
+  - Tells the user that if no red squiggle appears after testing, their browser's spell-check setting is off — and gives the exact path to enable it in Chrome / Edge / Safari / Firefox.
+  - Hosts the `editor-spellcheck-insert-btn` that inserts the word **definately** at the caret. No misleading success toast.
+- contentEditable still has `spellcheck="true"`, `lang="en"`, `autocorrect="on"`; HTML-mode textarea + plain-text fallback identical. `::spelling-error` CSS rule kept (renders custom red wavy underline when the browser flags a word).
+- Helper text below the editor now reads: *"Spell-check is handled by your browser — click Test spell-check if you don't see red underlines."*
+
+### Part 2 — LiveDashboardDemo mobile responsiveness
+- **Zero page-level horizontal overflow** at 360 / 390 / 430 / 1440 px (verified `scrollWidth == innerWidth` at all four widths).
+- **Tab strip**: now horizontally scrollable (`overflow-x-auto`, `snap-x`) on mobile and `flex-wrap` on desktop — all 11 demo tabs reachable on iPhone SE width.
+- **Mobile section header** (`md:hidden`) replaces the desktop sidebar at the top of the demo panel — shows current section icon + label + Growth-plan badge.
+- **Wide tables** (Campaigns, Email Accounts, Warmup, Leads, DNE entries) now sit inside `overflow-x-auto` wrappers with `min-w-[Xpx]` inner shells. Tables scroll internally; the page itself does not.
+- Dashboard's main 2-column rail switched from `md:grid-cols-[1fr_300px]` → `grid-cols-1 lg:grid-cols-[1fr_300px]` so the side rail stacks below stats on tablets too.
+- Panel padding now `p-3 sm:p-5 md:p-7` and panel wrapper has `overflow-x-hidden w-full max-w-full`.
+
+### Verification
+- Frontend Playwright run at 360 / 390 / 430 / 1440px — every responsive assertion passed, all 11 demo panels reachable at both extremes. Spellcheck Popover content + amber-dot button + insert flow + helper-text wording all confirmed.
+- Backend smoke skipped per task scope (no backend changes).
+
+
 ## Changelog — Iteration 43 (June 2026)
 
 ### Spellcheck visibility audit & fix
