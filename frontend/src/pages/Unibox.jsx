@@ -60,6 +60,73 @@ function formatTime(ts) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// Classify a single email account into a status bucket.
+// Returns { healthy: boolean, label: string, detail: string, severity: "healthy"|"warning"|"error" }
+function classifyAccountStatus(a) {
+  if (!a.receiving_configured) {
+    return {
+      healthy: false,
+      label: "Not Receiving",
+      detail: "IMAP receiving settings not configured for this account.",
+      severity: "error",
+    };
+  }
+  const err = (a.imap_last_error || "").toString();
+  if (err) {
+    const lower = err.toLowerCase();
+    if (
+      lower.includes("auth") ||
+      lower.includes("535") ||
+      lower.includes("invalid credentials") ||
+      lower.includes("password")
+    ) {
+      return {
+        healthy: false,
+        label: "IMAP Authentication Failed",
+        detail: err.slice(0, 220),
+        severity: "error",
+      };
+    }
+    if (
+      lower.includes("timeout") ||
+      lower.includes("timed out") ||
+      lower.includes("connection refused") ||
+      lower.includes("network is unreachable")
+    ) {
+      return {
+        healthy: false,
+        label: "Connection Timeout",
+        detail: err.slice(0, 220),
+        severity: "error",
+      };
+    }
+    return {
+      healthy: false,
+      label: "Error",
+      detail: err.slice(0, 220),
+      severity: "error",
+    };
+  }
+  if (a.imap_last_sync_at) {
+    const last = new Date(a.imap_last_sync_at).getTime();
+    const ageHrs = (Date.now() - last) / (1000 * 60 * 60);
+    if (ageHrs > 24) {
+      return {
+        healthy: false,
+        label: "Delayed Sync",
+        detail: `Last successful sync: ${formatTime(a.imap_last_sync_at)}.`,
+        severity: "warning",
+      };
+    }
+  }
+  return {
+    healthy: true,
+    label: "Receiving",
+    detail: a.imap_last_sync_at ? `Synced ${formatTime(a.imap_last_sync_at)}` : "Healthy",
+    severity: "healthy",
+  };
+}
+
 export default function Unibox({ user, setUser }) {
   const [replies, setReplies] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -77,6 +144,7 @@ export default function Unibox({ user, setUser }) {
   const [dneDialogOpen, setDneDialogOpen] = useState(false);
   const [dneScope, setDneScope] = useState("email"); // "email" | "domain"
   const [dneBusy, setDneBusy] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
 
   const fetchReplies = useCallback(async () => {
     setLoading(true);
@@ -113,9 +181,7 @@ export default function Unibox({ user, setUser }) {
   }, []);
 
   useEffect(() => {
-    fetchReplies();
-    fetchStatus();
-    fetchFolders();
+    Promise.all([fetchReplies(), fetchStatus(), fetchFolders()]);
   }, [fetchReplies, fetchStatus, fetchFolders]);
 
   const toggleSel = (id) => {
@@ -285,43 +351,77 @@ export default function Unibox({ user, setUser }) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={fetchReplies} disabled={loading} data-testid="refresh-unibox">
+              <Button
+                variant="outline"
+                onClick={() => { fetchReplies(); fetchStatus(); }}
+                disabled={loading}
+                data-testid="refresh-unibox"
+              >
                 <RefreshCw size={14} className={`mr-2 ${loading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
             </div>
           </div>
 
-          {/* Account status banner */}
-          {statusAccounts.length > 0 && (
-            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" data-testid="account-status-grid">
-              {statusAccounts.map((a) => (
-                <div
-                  key={a.account_id}
-                  className="bg-white border border-slate-200 rounded-md px-3 py-2 text-xs flex items-center gap-2"
-                  data-testid={`account-status-${a.account_id}`}
-                >
-                  <Mail size={14} className="text-slate-400" />
-                  <span className="truncate flex-1 text-slate-700">{a.email}</span>
-                  {a.receiving_configured ? (
-                    <span className="flex items-center gap-1 text-emerald-600">
-                      <CheckCircle2 size={12} /> receiving
+          {/* Compact account-health summary (replaces the per-account grid) */}
+          {statusAccounts.length > 0 && (() => {
+            const classified = statusAccounts.map((a) => ({
+              ...a,
+              _status: classifyAccountStatus(a),
+            }));
+            const healthy = classified.filter((a) => a._status.healthy);
+            const issues = classified.filter((a) => !a._status.healthy);
+            const total = classified.length;
+            const allHealthy = issues.length === 0;
+            return (
+              <div
+                className={`mb-4 rounded-xl border p-3 sm:p-4 flex flex-wrap items-center gap-3 ${
+                  allHealthy
+                    ? "border-emerald-200 bg-emerald-50/40"
+                    : "border-amber-200 bg-amber-50/40"
+                }`}
+                data-testid="unibox-status-card"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {allHealthy ? (
+                    <span className="inline-flex w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 items-center justify-center shrink-0">
+                      <CheckCircle2 size={16} />
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 text-amber-600" title="Add IMAP receiving settings to start tracking replies.">
-                      <AlertCircle size={12} /> no IMAP
+                    <span className="inline-flex w-8 h-8 rounded-full bg-amber-100 text-amber-700 items-center justify-center shrink-0">
+                      <AlertCircle size={16} />
                     </span>
                   )}
-                  {a.imap_last_sync_at && (
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <Clock size={11} />
-                      {formatTime(a.imap_last_sync_at)}
-                    </span>
-                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900" data-testid="receiving-count">
+                      Receiving Accounts: {healthy.length} / {total}
+                    </div>
+                    <div className="text-xs text-slate-600 truncate">
+                      {allHealthy ? (
+                        <>All connected inboxes are receiving successfully.</>
+                      ) : (
+                        <span data-testid="issues-summary">
+                          {issues.length} account{issues.length === 1 ? "" : "s"} require attention.
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+                {!allHealthy && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => setIssuesOpen(true)}
+                    data-testid="view-issues-btn"
+                  >
+                    <AlertCircle size={14} className="mr-1.5 text-amber-600" />
+                    View Issues
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Filters + search */}
           <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -555,8 +655,8 @@ export default function Unibox({ user, setUser }) {
               <ShieldOff className="text-red-500" /> Add to Global Do Not Email List
             </DialogTitle>
             <DialogDescription>
-              Choose whether to block only the sender's email address or every recipient on that
-              sender's domain.
+              Choose whether to block only the sender&apos;s email address or every recipient on that
+              sender&apos;s domain.
             </DialogDescription>
           </DialogHeader>
 
@@ -604,6 +704,85 @@ export default function Unibox({ user, setUser }) {
               data-testid="confirm-add-dne"
             >
               {dneBusy ? "Adding…" : `Block ${dneScope === "domain" ? "domain(s)" : "email(s)"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Issues dialog — only opens when user clicks "View Issues" */}
+      <Dialog open={issuesOpen} onOpenChange={setIssuesOpen}>
+        <DialogContent className="sm:max-w-[640px]" data-testid="issues-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="text-amber-600" /> Accounts requiring attention
+            </DialogTitle>
+            <DialogDescription>
+              Only the inboxes below have a sync issue. Healthy accounts are not listed here —
+              see the green count in the header instead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[460px] overflow-y-auto -mx-2 px-2 space-y-2" data-testid="issues-list">
+            {statusAccounts
+              .map((a) => ({ ...a, _status: classifyAccountStatus(a) }))
+              .filter((a) => !a._status.healthy)
+              .map((a) => {
+                const isErr = a._status.severity === "error";
+                return (
+                  <div
+                    key={a.account_id}
+                    className={`rounded-lg border p-3 ${
+                      isErr
+                        ? "border-rose-200 bg-rose-50/40"
+                        : "border-amber-200 bg-amber-50/40"
+                    }`}
+                    data-testid={`issue-account-${a.account_id}`}
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Mail size={14} className="text-slate-500 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-900 truncate">
+                            {a.email}
+                          </span>
+                        </div>
+                        <div
+                          className={`text-xs mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
+                            isErr
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {a._status.label}
+                        </div>
+                        <div className="text-xs text-slate-600 mt-1.5">
+                          {a._status.detail}
+                        </div>
+                        {a.imap_last_sync_at && a._status.label !== "Receiving" && (
+                          <div className="text-[11px] text-slate-400 mt-1 inline-flex items-center gap-1">
+                            <Clock size={10} />
+                            Last successful sync: {formatTime(a.imap_last_sync_at)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIssuesOpen(false)} data-testid="issues-close">
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setIssuesOpen(false);
+                fetchStatus();
+                fetchReplies();
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="issues-refresh"
+            >
+              <RefreshCw size={14} className="mr-1.5" /> Re-check
             </Button>
           </DialogFooter>
         </DialogContent>
