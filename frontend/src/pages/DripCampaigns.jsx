@@ -15,6 +15,8 @@ import {
   Copy,
   Edit2,
   Loader2,
+  Download,
+  Upload,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -93,6 +95,38 @@ export default function DripCampaigns({ user, setUser }) {
       toast.error(err.response?.data?.detail || "Failed to duplicate");
     } finally {
       setDuplicateBusy(null);
+    }
+  };
+
+  const handleExport = async (camp) => {
+    try {
+      const res = await api.get(`/drip-campaigns/${camp.drip_id}/export`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `routemail-drip-${(camp.name || "export").replace(/\s+/g, "_").slice(0, 48)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Drip campaign exported");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Export failed");
+    }
+  };
+
+  const handleImportFile = async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await api.post("/drip-campaigns/import", payload);
+      toast.success(`Imported "${res.data.name}" (${res.data.steps_imported} step(s))`);
+      fetchCampaigns();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || "Import failed");
     }
   };
 
@@ -193,13 +227,34 @@ export default function DripCampaigns({ user, setUser }) {
               Build multi-step email sequences with smart timezone scheduling and randomization
             </p>
           </div>
-          <Button
-            data-testid="drip-create-btn"
-            onClick={() => setCreateOpen(true)}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
-          >
-            <Plus size={18} className="mr-2" /> New Drip
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept=".json,application/json"
+              id="drip-import-file-input"
+              className="hidden"
+              data-testid="drip-import-file-input"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportFile(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => document.getElementById("drip-import-file-input").click()}
+              data-testid="drip-import-btn"
+            >
+              <Upload size={16} className="mr-1.5" /> Import
+            </Button>
+            <Button
+              data-testid="drip-create-btn"
+              onClick={() => setCreateOpen(true)}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <Plus size={18} className="mr-2" /> New Drip
+            </Button>
+          </div>
         </motion.div>
 
         {loading ? (
@@ -301,6 +356,15 @@ export default function DripCampaigns({ user, setUser }) {
                       <Copy size={14} className="mr-1.5" />
                     )}
                     Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExport(camp)}
+                    data-testid={`drip-export-${camp.drip_id}`}
+                    title="Export drip campaign as JSON"
+                  >
+                    <Download size={14} className="mr-1.5" /> Export
                   </Button>
                   {(camp.status === "running" || camp.status === "paused") && (
                     <Button

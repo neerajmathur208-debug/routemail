@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import {
   Bold, Italic, Underline, Link, List, ListOrdered, 
   AlignLeft, AlignCenter, AlignRight, 
-  Image, ChevronDown, Type, Palette, ShieldOff, Code
+  Image, ChevronDown, Type, Palette, ShieldOff, Code, Trash2
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import {
@@ -527,6 +527,40 @@ export default function RichTextEditor({
     handleInput(); // Trigger onChange to save the new dimensions
   }, [imageResizing, handleInput]);
 
+  // Delete the currently selected image (keeps surrounding text/content intact).
+  const handleDeleteImage = useCallback(() => {
+    if (!selectedImage) return;
+    // If the image is wrapped in a parent <a> with no other content, remove the anchor.
+    const parent = selectedImage.parentNode;
+    selectedImage.remove();
+    if (
+      parent &&
+      parent.tagName === 'A' &&
+      parent.childNodes.length === 0
+    ) {
+      parent.remove();
+    }
+    setSelectedImage(null);
+    handleInput();
+  }, [selectedImage, handleInput]);
+
+  // Press DEL / BACKSPACE while an image is selected → delete it.
+  useEffect(() => {
+    if (!selectedImage) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteImage();
+      } else if (e.key === 'Escape') {
+        // Deselect
+        selectedImage.classList.remove('image-selected');
+        setSelectedImage(null);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedImage, handleDeleteImage]);
+
   // Add mouse event listeners for resize
   useEffect(() => {
     if (imageResizing) {
@@ -539,7 +573,7 @@ export default function RichTextEditor({
     }
   }, [imageResizing, handleResizeMove, handleResizeEnd]);
 
-  // Render resize handles for selected image
+  // Render resize handles + floating Delete button for selected image
   const renderResizeHandles = () => {
     if (!selectedImage) return null;
     
@@ -582,6 +616,27 @@ export default function RichTextEditor({
           style={{ ...handleStyle, top: top + height - 5, left: left + width - 5, cursor: 'nwse-resize' }}
           onMouseDown={(e) => handleResizeStart(e, 'se')}
         />
+        {/* Floating action bar — appears just above the image */}
+        <div
+          style={{
+            position: 'absolute',
+            top: Math.max(top - 38, 4),
+            left: left,
+            zIndex: 20,
+          }}
+          onMouseDown={(e) => e.preventDefault()}  // Don't lose image selection
+          data-testid="image-floating-toolbar"
+        >
+          <button
+            type="button"
+            onClick={handleDeleteImage}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-red-200 rounded-md shadow-md text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
+            title="Delete image (Del / Backspace)"
+            data-testid="delete-image-btn"
+          >
+            <Trash2 size={12} /> Delete Image
+          </button>
+        </div>
       </>
     );
   };
@@ -874,11 +929,11 @@ export default function RichTextEditor({
               <div
                 ref={editorRef}
                 contentEditable
+                spellCheck={true}
                 onInput={handleInput}
                 onPaste={handlePaste}
-                onBlur={handleEditorBlur}
                 onClick={handleImageClick}
-                onBlur={saveCursorPosition}
+                onBlur={(e) => { handleEditorBlur(e); saveCursorPosition(); }}
                 onKeyUp={saveCursorPosition}
                 className="min-h-[300px] max-h-[400px] overflow-y-auto p-4 outline-none prose prose-sm max-w-none"
                 style={{ 
@@ -929,14 +984,17 @@ export default function RichTextEditor({
           value={plainTextValue}
           onChange={(e) => onPlainTextChange(e.target.value)}
           placeholder={placeholder}
+          spellCheck={true}
           className="w-full min-h-[300px] max-h-[400px] overflow-y-auto p-4 border border-slate-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           data-testid="plain-text-editor"
         />
       )}
       
-      {/* Variable hint */}
-      <p className="text-xs text-slate-500">
+      {/* Variable + spell check hint */}
+      <p className="text-xs text-slate-500" data-testid="editor-helper-text">
         Use {"{{variable_name}}"} syntax for personalization. Variables will be replaced with actual values when sending.
+        {" "}
+        <span className="text-slate-400">Spell check uses your browser&apos;s built-in spell checker.</span>
       </p>
     </div>
   );

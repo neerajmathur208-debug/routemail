@@ -25,6 +25,9 @@ import {
   CalendarClock,
   TestTube,
   Plus,
+  Download,
+  Upload,
+  Workflow,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -555,6 +558,48 @@ export default function Campaign({ user, setUser }) {
       fetchData();
     } catch (error) {
       toast.error("Failed to duplicate campaign");
+    }
+  };
+
+  const handleExportCampaign = async (campaign) => {
+    try {
+      const res = await api.get(`/campaigns/${campaign.campaign_id}/export`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `routemail-campaign-${(campaign.name || "export").replace(/\s+/g, "_").slice(0, 48)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Campaign exported");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Export failed");
+    }
+  };
+
+  const handleImportCampaign = async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await api.post("/campaigns/import", payload);
+      toast.success(`Imported "${res.data.name}" as draft`);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || "Import failed");
+    }
+  };
+
+  const handleConvertToDrip = async (campaign) => {
+    try {
+      const res = await api.post(`/campaigns/${campaign.campaign_id}/convert-to-drip`);
+      toast.success(`Created drip "${res.data.name}" — original campaign is unchanged`);
+      navigate(`/drip-campaigns/${res.data.drip_id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to convert to drip");
     }
   };
 
@@ -1437,17 +1482,39 @@ Best regards"
                 Create and manage your email campaigns
               </p>
             </div>
-            <Button
-              onClick={() => {
-                resetForm();
-                setView("create");
-              }}
-              className="bg-electric-blue hover:bg-blue-700"
-              data-testid="create-campaign-btn"
-            >
-              <Send size={16} className="mr-2" />
-              New Campaign
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept=".json,application/json"
+                id="campaign-import-file-input"
+                className="hidden"
+                data-testid="campaign-import-file-input"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportCampaign(f);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                onClick={() => document.getElementById("campaign-import-file-input").click()}
+                data-testid="campaign-import-btn"
+              >
+                <Upload size={16} className="mr-2" />
+                Import
+              </Button>
+              <Button
+                onClick={() => {
+                  resetForm();
+                  setView("create");
+                }}
+                className="bg-electric-blue hover:bg-blue-700"
+                data-testid="create-campaign-btn"
+              >
+                <Send size={16} className="mr-2" />
+                New Campaign
+              </Button>
+            </div>
           </div>
 
           {/* Active Campaign */}
@@ -1657,8 +1724,27 @@ Best regards"
                           size="icon"
                           onClick={() => handleDuplicateCampaign(campaign.campaign_id)}
                           data-testid={`duplicate-campaign-${campaign.campaign_id}`}
+                          title="Duplicate"
                         >
                           <Copy size={18} className="text-slate-400" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleExportCampaign(campaign)}
+                          data-testid={`export-campaign-${campaign.campaign_id}`}
+                          title="Export campaign as JSON"
+                        >
+                          <Download size={18} className="text-slate-400 hover:text-emerald-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleConvertToDrip(campaign)}
+                          data-testid={`convert-to-drip-${campaign.campaign_id}`}
+                          title="Convert to drip campaign"
+                        >
+                          <Workflow size={18} className="text-slate-400 hover:text-violet-600" />
                         </Button>
                         {(campaign.status === "completed" || campaign.status === "running" || campaign.status === "paused") && (
                           <>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Depends, Query, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, BackgroundTasks, Depends, Query, Header, Body
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -15,6 +15,7 @@ import asyncio
 import random
 import csv
 import io
+import json
 import re
 from cryptography.fernet import Fernet
 import smtplib
@@ -4587,6 +4588,387 @@ async def duplicate_campaign(campaign_id: str, user: User = Depends(get_current_
     await db.campaigns.insert_one(camp_dict)
     
     return {"campaign_id": new_campaign.campaign_id, "status": "draft", "message": "Campaign duplicated"}
+
+
+# ---------- Campaign export / import / convert ----------
+
+ROUTEMAIL_EXPORT_VERSION = 1
+
+async def _resolve_list_name(user_id: str, list_id: Optional[str]) -> Optional[str]:
+    if not list_id:
+        return None
+    doc = await db.email_lists.find_one(
+        {"list_id": list_id, "user_id": user_id}, {"_id": 0, "name": 1}
+    )
+    return (doc or {}).get("name")
+
+async def _resolve_account_emails(user_id: str, account_ids: List[str]) -> List[str]:
+    if not account_ids:
+        return []
+    docs = await db.email_accounts.find(
+        {"user_id": user_id, "account_id": {"$in": account_ids}},
+        {"_id": 0, "email": 1}
+    ).to_list(len(account_ids))
+    return [d["email"] for d in docs if d.get("email")]
+
+async def _resolve_dne_names(user_id: str, list_ids: List[str]) -> List[str]:
+    if not list_ids:
+        return []
+    docs = await db.dne_lists.find(
+        {"user_id": user_id, "list_id": {"$in": list_ids}},
+        {"_id": 0, "name": 1}
+    ).to_list(len(list_ids))
+    return [d["name"] for d in docs if d.get("name")]
+
+async def _unique_campaign_name(user_id: str, base: str) -> str:
+    """Append '(Imported)' if `base` is taken; if that is also taken, append numeric suffix."""
+    existing = await db.campaigns.find_one(
+        {"user_id": user_id, "name": base}, {"_id": 0, "name": 1}
+    )
+    if not existing:
+        return base
+    candidate = f"{base} (Imported)"
+    n = 2
+    while await db.campaigns.find_one(
+        {"user_id": user_id, "name": candidate}, {"_id": 0, "name": 1}
+    ):
+        candidate = f"{base} (Imported {n})"
+        n += 1
+    return candidate
+
+async def _unique_drip_name(user_id: str, base: str) -> str:
+    existing = await db.drip_campaigns.find_one(
+        {"user_id": user_id, "name": base}, {"_id": 0, "name": 1}
+    )
+    if not existing:
+        return base
+    candidate = f"{base} (Imported)"
+    n = 2
+    while await db.drip_campaigns.find_one(
+        {"user_id": user_id, "name": candidate}, {"_id": 0, "name": 1}
+    ):
+        candidate = f"{base} (Imported {n})"
+        n += 1
+    return candidate
+
+
+@api_router.get("/campaigns/{campaign_id}/export")
+async def export_campaign(campaign_id: str, user: User = Depends(get_current_user)):
+    """Export a single normal campaign as JSON. NEVER includes sent logs, recipient
+    progress, analytics or replies."""
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    payload = {
+        "schema_version": ROUTEMAIL_EXPORT_VERSION,
+        "type": "campaign",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "campaign": {
+            "name": campaign.get("name", "Untitled"),
+            "from_name": campaign.get("from_name"),
+            "subject": campaign.get("subject", ""),
+            "body": campaign.get("body", ""),
+            "body_text": campaign.get("body_text"),
+            "list_name": await _resolve_list_name(user.user_id, campaign.get("list_id")),
+            "account_emails": await _resolve_account_emails(user.user_id, campaign.get("account_ids") or []),
+            "dne_list_names": await _resolve_dne_names(user.user_id, campaign.get("suppression_list_ids") or []),
+            "send_range_mode": campaign.get("send_range_mode", "all"),
+            "send_range_start": campaign.get("send_range_start"),
+            "send_range_end": campaign.get("send_range_end"),
+            "scheduled_at": campaign.get("scheduled_at"),
+            "schedule_timezone": campaign.get("timezone"),
+            "add_unsubscribe_footer": bool(campaign.get("add_unsubscribe_footer", False)),
+            "tracking_opens": bool(campaign.get("tracking_opens", True)),
+            "tracking_clicks": bool(campaign.get("tracking_clicks", True)),
+            "created_at": campaign.get("created_at"),
+        },
+    }
+    fname = f"routemail-campaign-{(campaign.get('name') or 'export').replace(' ', '_')[:48]}.json"
+    return Response(
+        content=json.dumps(payload, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@api_router.post("/campaigns/import")
+async def import_campaign(payload: Dict[str, Any] = Body(...), user: User = Depends(get_current_user)):
+    """Import a campaign payload (produced by /campaigns/{id}/export). Always saved as DRAFT.
+    Operational fields (sent logs, recipient progress, analytics) are deliberately ignored even
+    if present in the payload. References to lists / accounts / DNE lists are resolved by NAME
+    or EMAIL when possible; missing references silently fall back to empty.
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    if payload.get("type") and payload.get("type") != "campaign":
+        raise HTTPException(status_code=400, detail="This file is not a campaign export")
+    data = payload.get("campaign") or payload  # accept either wrapper
+    name = (data.get("name") or "Imported Campaign").strip()[:140] or "Imported Campaign"
+    final_name = await _unique_campaign_name(user.user_id, name)
+
+    # Resolve list by name
+    list_id = None
+    list_name = data.get("list_name")
+    if list_name:
+        match = await db.email_lists.find_one(
+            {"user_id": user.user_id, "name": list_name}, {"_id": 0, "list_id": 1}
+        )
+        list_id = (match or {}).get("list_id")
+    # Resolve accounts by email
+    account_ids: List[str] = []
+    for em in (data.get("account_emails") or []):
+        acct = await db.email_accounts.find_one(
+            {"user_id": user.user_id, "email": (em or "").strip().lower()},
+            {"_id": 0, "account_id": 1},
+        )
+        if acct:
+            account_ids.append(acct["account_id"])
+    # Resolve DNE lists by name
+    dne_ids: List[str] = []
+    for nm in (data.get("dne_list_names") or []):
+        d = await db.dne_lists.find_one(
+            {"user_id": user.user_id, "name": nm}, {"_id": 0, "list_id": 1}
+        )
+        if d:
+            dne_ids.append(d["list_id"])
+
+    new_campaign = Campaign(
+        user_id=user.user_id,
+        name=final_name,
+        subject=str(data.get("subject") or "")[:300],
+        body=str(data.get("body") or ""),
+        body_text=data.get("body_text"),
+        from_name=data.get("from_name"),
+        list_id=list_id,
+        account_ids=account_ids,
+        suppression_list_ids=dne_ids,
+        send_range_mode=str(data.get("send_range_mode") or "all"),
+        send_range_start=data.get("send_range_start"),
+        send_range_end=data.get("send_range_end"),
+        add_unsubscribe_footer=bool(data.get("add_unsubscribe_footer", False)),
+        status="draft",
+    )
+    doc = new_campaign.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    # Preserve tracking flags if present
+    if "tracking_opens" in data:
+        doc["tracking_opens"] = bool(data["tracking_opens"])
+    if "tracking_clicks" in data:
+        doc["tracking_clicks"] = bool(data["tracking_clicks"])
+    await db.campaigns.insert_one(doc)
+    return {
+        "campaign_id": new_campaign.campaign_id,
+        "name": final_name,
+        "status": "draft",
+        "list_matched": bool(list_id),
+        "accounts_matched": len(account_ids),
+        "dne_lists_matched": len(dne_ids),
+    }
+
+
+@api_router.post("/campaigns/{campaign_id}/convert-to-drip")
+async def convert_campaign_to_drip(campaign_id: str, user: User = Depends(get_current_user)):
+    """Convert a normal campaign into a draft drip campaign. The original campaign is
+    NEVER modified or deleted. The new drip has one step (Step 1) carrying the original
+    subject/body, plus mapped from_name, account_ids, suppression_list_ids and tracking
+    flags. Schedule settings are seeded with sensible defaults.
+    """
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    base_name = campaign.get("name") or "Untitled"
+    new_name = await _unique_drip_name(user.user_id, f"{base_name} (Drip)")
+    new_drip_id = f"drip_{uuid.uuid4().hex[:12]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    step_one = {
+        "step_number": 1,
+        "subject": campaign.get("subject", ""),
+        "body": campaign.get("body", ""),
+        "body_text": campaign.get("body_text"),
+        "delay_days": 0,
+        "delay_hours": 0,
+    }
+    schedule = {
+        "timezone": campaign.get("timezone") or "UTC",
+        "sending_days": [0, 1, 2, 3, 4],
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "randomize_time": False,
+    }
+    new_doc = {
+        "drip_id": new_drip_id,
+        "user_id": user.user_id,
+        "name": new_name,
+        "from_name": campaign.get("from_name"),
+        "account_ids": list(campaign.get("account_ids") or []),
+        "steps": [step_one],
+        "schedule": schedule,
+        "stop_on_reply": True,
+        "stop_on_bounce": True,
+        "suppression_list_ids": list(campaign.get("suppression_list_ids") or []),
+        "tracking_opens": bool(campaign.get("tracking_opens", True)),
+        "tracking_clicks": bool(campaign.get("tracking_clicks", True)),
+        "add_unsubscribe_footer": bool(campaign.get("add_unsubscribe_footer", False)),
+        "status": "draft",
+        "total_sent": 0,
+        "total_contacts": 0,
+        "started_at": None,
+        "completed_at": None,
+        "paused_at": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "source_campaign_id": campaign_id,
+    }
+    await db.drip_campaigns.insert_one(new_doc)
+    return {
+        "drip_id": new_drip_id,
+        "name": new_name,
+        "status": "draft",
+        "source_campaign_id": campaign_id,
+    }
+
+
+@api_router.get("/drip-campaigns/{drip_id}/export")
+async def export_drip_campaign(drip_id: str, user: User = Depends(get_current_user)):
+    """Export a single drip campaign as JSON (no recipient progress, sent logs, analytics)."""
+    drip = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not drip:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    payload = {
+        "schema_version": ROUTEMAIL_EXPORT_VERSION,
+        "type": "drip_campaign",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "drip": {
+            "name": drip.get("name", "Untitled Drip"),
+            "from_name": drip.get("from_name"),
+            "list_name": await _resolve_list_name(user.user_id, drip.get("list_id")),
+            "account_emails": await _resolve_account_emails(user.user_id, drip.get("account_ids") or []),
+            "dne_list_names": await _resolve_dne_names(user.user_id, drip.get("suppression_list_ids") or []),
+            "steps": [
+                {
+                    "step_number": s.get("step_number"),
+                    "subject": s.get("subject", ""),
+                    "body": s.get("body", ""),
+                    "body_text": s.get("body_text"),
+                    "delay_days": int(s.get("delay_days", 0) or 0),
+                    "delay_hours": int(s.get("delay_hours", 0) or 0),
+                }
+                for s in (drip.get("steps") or [])
+            ],
+            "schedule": dict(drip.get("schedule") or {}),
+            "stop_on_reply": bool(drip.get("stop_on_reply", True)),
+            "stop_on_bounce": bool(drip.get("stop_on_bounce", True)),
+            "tracking_opens": bool(drip.get("tracking_opens", True)),
+            "tracking_clicks": bool(drip.get("tracking_clicks", True)),
+            "add_unsubscribe_footer": bool(drip.get("add_unsubscribe_footer", False)),
+            "created_at": drip.get("created_at"),
+        },
+    }
+    fname = f"routemail-drip-{(drip.get('name') or 'export').replace(' ', '_')[:48]}.json"
+    return Response(
+        content=json.dumps(payload, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@api_router.post("/drip-campaigns/import")
+async def import_drip_campaign(payload: Dict[str, Any] = Body(...), user: User = Depends(get_current_user)):
+    """Import a drip campaign payload. Always saved as DRAFT."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    if payload.get("type") and payload.get("type") != "drip_campaign":
+        raise HTTPException(status_code=400, detail="This file is not a drip campaign export")
+    data = payload.get("drip") or payload
+    name = (data.get("name") or "Imported Drip").strip()[:140] or "Imported Drip"
+    final_name = await _unique_drip_name(user.user_id, name)
+
+    # Resolve accounts by email
+    account_ids: List[str] = []
+    for em in (data.get("account_emails") or []):
+        acct = await db.email_accounts.find_one(
+            {"user_id": user.user_id, "email": (em or "").strip().lower()},
+            {"_id": 0, "account_id": 1},
+        )
+        if acct:
+            account_ids.append(acct["account_id"])
+    # Resolve DNE lists by name
+    dne_ids: List[str] = []
+    for nm in (data.get("dne_list_names") or []):
+        d = await db.dne_lists.find_one(
+            {"user_id": user.user_id, "name": nm}, {"_id": 0, "list_id": 1}
+        )
+        if d:
+            dne_ids.append(d["list_id"])
+
+    # Normalise steps
+    raw_steps = data.get("steps") or []
+    steps: List[Dict[str, Any]] = []
+    for i, s in enumerate(raw_steps, start=1):
+        if not isinstance(s, dict):
+            continue
+        steps.append({
+            "step_number": int(s.get("step_number") or i),
+            "subject": str(s.get("subject") or "")[:300],
+            "body": str(s.get("body") or ""),
+            "body_text": s.get("body_text"),
+            "delay_days": int(s.get("delay_days") or 0),
+            "delay_hours": int(s.get("delay_hours") or 0),
+        })
+    if not steps:
+        raise HTTPException(status_code=400, detail="Imported drip must have at least one step")
+
+    new_drip_id = f"drip_{uuid.uuid4().hex[:12]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    schedule = dict(data.get("schedule") or {})
+    # Defensive defaults
+    schedule.setdefault("timezone", "UTC")
+    schedule.setdefault("sending_days", [0, 1, 2, 3, 4])
+    schedule.setdefault("start_time", "09:00")
+    schedule.setdefault("end_time", "18:00")
+    schedule.setdefault("randomize_time", False)
+
+    doc = {
+        "drip_id": new_drip_id,
+        "user_id": user.user_id,
+        "name": final_name,
+        "from_name": data.get("from_name"),
+        "account_ids": account_ids,
+        "steps": steps,
+        "schedule": schedule,
+        "stop_on_reply": bool(data.get("stop_on_reply", True)),
+        "stop_on_bounce": bool(data.get("stop_on_bounce", True)),
+        "suppression_list_ids": dne_ids,
+        "tracking_opens": bool(data.get("tracking_opens", True)),
+        "tracking_clicks": bool(data.get("tracking_clicks", True)),
+        "add_unsubscribe_footer": bool(data.get("add_unsubscribe_footer", False)),
+        "status": "draft",
+        "total_sent": 0,
+        "total_contacts": 0,
+        "started_at": None,
+        "completed_at": None,
+        "paused_at": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await db.drip_campaigns.insert_one(doc)
+    return {
+        "drip_id": new_drip_id,
+        "name": final_name,
+        "status": "draft",
+        "steps_imported": len(steps),
+        "accounts_matched": len(account_ids),
+        "dne_lists_matched": len(dne_ids),
+    }
+
 
 @api_router.post("/campaigns/send-test")
 async def send_test_email(request: SendTestEmailRequest, user: User = Depends(get_current_user)):
