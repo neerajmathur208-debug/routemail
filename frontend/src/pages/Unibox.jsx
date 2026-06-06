@@ -401,7 +401,7 @@ export default function Unibox({ user, setUser }) {
                         <>All connected inboxes are receiving successfully.</>
                       ) : (
                         <span data-testid="issues-summary">
-                          {issues.length} account{issues.length === 1 ? "" : "s"} require attention.
+                          {issues.length} account{issues.length === 1 ? "" : "s"} require{issues.length === 1 ? "s" : ""} attention.
                         </span>
                       )}
                     </div>

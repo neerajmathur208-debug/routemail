@@ -1,6 +1,24 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 45 (June 2026)
+
+### Unibox status section — compact + scalable
+- **Removed** the per-account grid that listed every connected inbox (which made the page intolerably tall for users with 50–100+ accounts).
+- **Replaced** with a single compact `unibox-status-card` showing `Receiving Accounts: <healthy> / <total>` + a one-line health summary.
+- **Green / healthy state**: emerald border + check icon + "All connected inboxes are receiving successfully.".
+- **Amber / issues state**: amber border + warning icon + "N account(s) require(s) attention." + a `View Issues` button that opens a focused `issues-dialog` listing ONLY problematic accounts.
+- **Status classification** (`classifyAccountStatus(a)`): Receiving (healthy) / Delayed Sync (last sync > 24h) / Not Receiving (no IMAP) / IMAP Authentication Failed (error matches auth/535/credentials) / Connection Timeout (error matches timeout/connection refused) / Error (fallback). Each issue card shows the label + detail + last-successful-sync timestamp.
+- **Refresh** button now re-fetches both replies AND status (was only replies before).
+- Account-filter dropdown still lists every account (regression-safe).
+- Mobile responsive at 390px — no horizontal overflow.
+
+### Verification
+- Frontend Playwright run — 12/12 acceptance criteria pass on a test account with 3 IMAP-unconfigured inboxes (exercises the amber path).
+- DOM scan confirms old `account-status-grid` + `account-status-*` testids are fully removed.
+- Backend smoke skipped per scope (no backend changes).
+
+
 ## Changelog — Iteration 44 (June 2026)
 
 ### Part 1 — Honest spell-check UI
