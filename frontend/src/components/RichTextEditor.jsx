@@ -8,7 +8,6 @@ import {
   Image, ChevronDown, Type, Palette, ShieldOff, Code, Trash2
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
-import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -898,38 +897,65 @@ export default function RichTextEditor({
               </PopoverContent>
             </Popover>
 
-            {/* HTML mode toggle + Spellcheck verification */}
+            {/* HTML mode toggle + honest spell-check tester */}
             <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  // Insert a known-misspelled word at the caret so the user can SEE
-                  // the browser's native red squiggle. Pure DOM mutation — no API.
-                  if (htmlMode) {
-                    setHtmlDraft((d) => (d || "") + " definately ");
-                    toast.success("Inserted 'definately' into HTML — switch to Visual mode to see the underline.");
-                    return;
-                  }
-                  if (!editorRef.current) return;
-                  editorRef.current.focus();
-                  // Try caret insert via execCommand; fall back to appending a text node.
-                  let inserted = false;
-                  try {
-                    inserted = document.execCommand("insertText", false, " definately ");
-                  } catch (e) { /* ignore */ }
-                  if (!inserted) {
-                    editorRef.current.appendChild(document.createTextNode(" definately "));
-                  }
-                  handleInput();
-                  toast.success("Inserted 'definately' — your browser should underline it in red.");
-                }}
-                className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
-                title="Insert the word 'definately' (misspelt) — the browser should underline it in red if spellcheck is working."
-                data-testid="editor-verify-spellcheck-btn"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Spellcheck: Active · Verify
-              </button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors"
+                    title="Test your browser's spell-check"
+                    data-testid="editor-verify-spellcheck-btn"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    Test spell-check
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 text-xs space-y-2" data-testid="editor-spellcheck-popover">
+                  <div className="font-semibold text-slate-900 text-sm">Browser spell-check</div>
+                  <p className="text-slate-600 leading-relaxed">
+                    RouteMail uses your browser&apos;s built-in spell-check. We don&apos;t run our own spell-checker
+                    (so no paid API or data leaves your machine).
+                  </p>
+                  <p className="text-slate-600 leading-relaxed">
+                    Click <strong>Insert test word</strong> below. If you see a red wavy underline under
+                    <em> definately</em> your browser&apos;s spell-check is on.
+                  </p>
+                  <p className="text-slate-500 leading-relaxed text-[11px]">
+                    If you don&apos;t see a red underline, your browser&apos;s spell-check is off. Enable it
+                    here:
+                    <br />
+                    <span className="font-mono">Chrome / Edge:</span> Settings → Languages → <em>Check spelling</em>
+                    <br />
+                    <span className="font-mono">Safari:</span> Edit → Spelling and Grammar → <em>Check Spelling While Typing</em>
+                    <br />
+                    <span className="font-mono">Firefox:</span> Settings → General → <em>Check your spelling as you type</em>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (htmlMode) {
+                        setHtmlDraft((d) => (d || "") + " definately ");
+                        return;
+                      }
+                      if (!editorRef.current) return;
+                      editorRef.current.focus();
+                      let inserted = false;
+                      try {
+                        inserted = document.execCommand("insertText", false, " definately ");
+                      } catch (e) { /* ignore */ }
+                      if (!inserted) {
+                        editorRef.current.appendChild(document.createTextNode(" definately "));
+                      }
+                      handleInput();
+                    }}
+                    className="w-full mt-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold transition-colors"
+                    data-testid="editor-spellcheck-insert-btn"
+                  >
+                    Insert test word
+                  </button>
+                </PopoverContent>
+              </Popover>
               <Button
                 type="button"
                 size="sm"
@@ -1048,7 +1074,7 @@ export default function RichTextEditor({
       <p className="text-xs text-slate-500" data-testid="editor-helper-text">
         Use {"{{variable_name}}"} syntax for personalization. Variables will be replaced with actual values when sending.
         {" "}
-        <span className="text-slate-400">Spell check uses your browser&apos;s built-in spell checker.</span>
+        <span className="text-slate-400">Spell-check is handled by your browser — click <strong>Test spell-check</strong> if you don&apos;t see red underlines.</span>
       </p>
     </div>
   );

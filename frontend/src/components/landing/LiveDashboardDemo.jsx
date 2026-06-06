@@ -382,7 +382,7 @@ const FauxBtn = ({ children, variant = "ghost", className = "" }) => {
 function Panel_Dashboard() {
   const d = SAMPLE.dashboard;
   return (
-    <div className="grid md:grid-cols-[1fr_300px] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
       <div className="space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard icon={Mail}        label="Total Contacts"    value={d.total_contacts.toLocaleString()} accent="blue"    sub="across all lists" />
@@ -438,7 +438,7 @@ function Panel_Dashboard() {
           <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
             <div className="h-full bg-emerald-500" style={{ width: "82%" }} />
           </div>
-          <div className="mt-1 text-[10px] text-slate-500">82% used. Follow-ups don't count again.</div>
+          <div className="mt-1 text-[10px] text-slate-500">82% used. Follow-ups don&apos;t count again.</div>
         </div>
         <div className="rounded-xl border border-slate-200 p-4 bg-white">
           <div className="text-xs font-semibold text-slate-700 mb-2">Today</div>
@@ -472,30 +472,34 @@ function Panel_Campaigns() {
         <FauxBtn variant="primary"><Plus size={12} /> New Campaign</FauxBtn>
       </div>
       <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-          <span>Campaign</span><span>Status</span><span>Contacts</span><span>Opens</span><span>Replies</span><span>Accounts</span><span></span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {SAMPLE.campaigns.map((c) => (
-            <div key={c.id} className="px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-3 items-center">
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">ID: {c.id} · created Feb 2026</div>
-              </div>
-              <div><StatusPill status={c.status} /></div>
-              <span className="text-xs text-slate-700 font-medium">{c.contacts.toLocaleString()}</span>
-              <span className="text-xs text-slate-700">{c.opens.toLocaleString()}</span>
-              <span className="text-xs text-violet-700 font-semibold">{c.replies.toLocaleString()}</span>
-              <span className="text-xs text-slate-500">{c.accounts}</span>
-              <div className="flex gap-1">
-                {c.status === "draft" && <FauxBtn><Edit size={12} /></FauxBtn>}
-                {c.status === "running" && <FauxBtn><Pause size={12} /></FauxBtn>}
-                {c.status === "paused" && <FauxBtn><Play size={12} /></FauxBtn>}
-                {c.status === "scheduled" && <FauxBtn><Pause size={12} /></FauxBtn>}
-                <FauxBtn><Eye size={12} /></FauxBtn>
-              </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-[720px]">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+              <span>Campaign</span><span>Status</span><span>Contacts</span><span>Opens</span><span>Replies</span><span>Accounts</span><span></span>
             </div>
-          ))}
+            <div className="divide-y divide-slate-100">
+              {SAMPLE.campaigns.map((c) => (
+                <div key={c.id} className="px-4 py-3 grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-3 items-center">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">ID: {c.id} · created Feb 2026</div>
+                  </div>
+                  <div><StatusPill status={c.status} /></div>
+                  <span className="text-xs text-slate-700 font-medium">{c.contacts.toLocaleString()}</span>
+                  <span className="text-xs text-slate-700">{c.opens.toLocaleString()}</span>
+                  <span className="text-xs text-violet-700 font-semibold">{c.replies.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500">{c.accounts}</span>
+                  <div className="flex gap-1">
+                    {c.status === "draft" && <FauxBtn><Edit size={12} /></FauxBtn>}
+                    {c.status === "running" && <FauxBtn><Pause size={12} /></FauxBtn>}
+                    {c.status === "paused" && <FauxBtn><Play size={12} /></FauxBtn>}
+                    {c.status === "scheduled" && <FauxBtn><Pause size={12} /></FauxBtn>}
+                    <FauxBtn><Eye size={12} /></FauxBtn>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -508,7 +512,7 @@ function Panel_Campaigns() {
         <div className="space-y-2 text-sm">
           <div className="text-[10px] uppercase font-semibold text-slate-400">Subject</div>
           <div className="font-semibold text-slate-900">
-            "Quick question about <span className="bg-amber-100 px-0.5 rounded">{"{{firm_name}}"}</span>'s litigation pipeline"
+            &ldquo;Quick question about <span className="bg-amber-100 px-0.5 rounded">{"{{firm_name}}"}</span>&apos;s litigation pipeline&rdquo;
           </div>
           <div className="text-[10px] uppercase font-semibold text-slate-400 mt-2">Body</div>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-slate-700 leading-relaxed">
@@ -629,40 +633,44 @@ function Panel_Accounts() {
         </div>
       </div>
       <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_70px_90px_70px_70px_90px_80px] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-          <span>Account</span><span>Daily</span><span>Sent today</span><span>SMTP</span><span>IMAP</span><span>Warmup</span><span>Health</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {SAMPLE.accounts.map((a) => (
-            <div key={a.id} className="px-4 py-3 grid grid-cols-[2fr_70px_90px_70px_70px_90px_80px] gap-3 items-center">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                  {a.email[0].toUpperCase()}
-                </div>
-                <span className="text-sm text-slate-800 truncate">{a.email}</span>
-              </div>
-              <span className="text-xs text-slate-500">{a.daily_limit}</span>
-              <span className="text-xs text-slate-700 font-medium">{a.sent_today}</span>
-              <span className="text-xs">
-                {a.smtp ? <CheckCircle2 size={12} className="text-emerald-500 inline" /> : <span className="text-slate-300">—</span>}
-              </span>
-              <span className="text-xs">
-                {a.imap ? <CheckCircle2 size={12} className="text-emerald-500 inline" /> : <span className="text-slate-300">—</span>}
-              </span>
-              <span className={`text-xs ${a.warmup ? "text-emerald-600 font-medium" : "text-slate-400"}`}>
-                {a.warmup ? "Active" : "Off"}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <div className="w-10 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${a.health >= 80 ? "bg-emerald-500" : a.health >= 60 ? "bg-amber-500" : "bg-rose-500"}`}
-                    style={{ width: `${a.health}%` }}
-                  />
-                </div>
-                <span className="text-[10px] font-bold text-slate-900">{a.health}</span>
-              </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-[760px]">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_70px_90px_70px_70px_90px_80px] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+              <span>Account</span><span>Daily</span><span>Sent today</span><span>SMTP</span><span>IMAP</span><span>Warmup</span><span>Health</span>
             </div>
-          ))}
+            <div className="divide-y divide-slate-100">
+              {SAMPLE.accounts.map((a) => (
+                <div key={a.id} className="px-4 py-3 grid grid-cols-[2fr_70px_90px_70px_70px_90px_80px] gap-3 items-center">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+                      {a.email[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm text-slate-800 truncate">{a.email}</span>
+                  </div>
+                  <span className="text-xs text-slate-500">{a.daily_limit}</span>
+                  <span className="text-xs text-slate-700 font-medium">{a.sent_today}</span>
+                  <span className="text-xs">
+                    {a.smtp ? <CheckCircle2 size={12} className="text-emerald-500 inline" /> : <span className="text-slate-300">—</span>}
+                  </span>
+                  <span className="text-xs">
+                    {a.imap ? <CheckCircle2 size={12} className="text-emerald-500 inline" /> : <span className="text-slate-300">—</span>}
+                  </span>
+                  <span className={`text-xs ${a.warmup ? "text-emerald-600 font-medium" : "text-slate-400"}`}>
+                    {a.warmup ? "Active" : "Off"}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-10 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full ${a.health >= 80 ? "bg-emerald-500" : a.health >= 60 ? "bg-amber-500" : "bg-rose-500"}`}
+                        style={{ width: `${a.health}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-900">{a.health}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -684,29 +692,31 @@ function Panel_Warmup() {
           <div className="text-xs font-semibold text-slate-700">Warmup pool — health, conversational replies & deliverability</div>
           <FauxBtn variant="outline">Bulk settings</FauxBtn>
         </div>
-        <div className="divide-y divide-slate-100">
-          {SAMPLE.warmup_accounts.map((wa) => (
-            <div key={wa.email} className="px-4 py-3 grid grid-cols-[2fr_80px_90px_120px_90px] gap-3 items-center">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
-                  {wa.email[0].toUpperCase()}
+        <div className="overflow-x-auto">
+          <div className="min-w-[620px] divide-y divide-slate-100">
+            {SAMPLE.warmup_accounts.map((wa) => (
+              <div key={wa.email} className="px-4 py-3 grid grid-cols-[2fr_80px_90px_120px_90px] gap-3 items-center">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
+                    {wa.email[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm text-slate-800 truncate">{wa.email}</span>
                 </div>
-                <span className="text-sm text-slate-800 truncate">{wa.email}</span>
-              </div>
-              <span className="text-xs text-slate-500">Sent {wa.sent}</span>
-              <span className="text-xs text-slate-500">Replies {wa.replies}</span>
-              <div className="flex items-center gap-2">
-                <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${wa.score >= 80 ? "bg-emerald-500" : wa.score >= 60 ? "bg-amber-500" : "bg-rose-500"}`}
-                    style={{ width: `${wa.score}%` }}
-                  />
+                <span className="text-xs text-slate-500">Sent {wa.sent}</span>
+                <span className="text-xs text-slate-500">Replies {wa.replies}</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full ${wa.score >= 80 ? "bg-emerald-500" : wa.score >= 60 ? "bg-amber-500" : "bg-rose-500"}`}
+                      style={{ width: `${wa.score}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-900 w-6 text-right">{wa.score}</span>
                 </div>
-                <span className="text-[10px] font-bold text-slate-900 w-6 text-right">{wa.score}</span>
+                <StatusPill status={wa.status} />
               </div>
-              <StatusPill status={wa.status} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -780,19 +790,23 @@ function Panel_Leads() {
         ))}
       </div>
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_1.4fr_2fr_1fr_1fr] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-          <span>Contact</span><span>Campaign</span><span>Summary</span><span>Folder</span><span>Added</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {SAMPLE.leads_sample.map((l) => (
-            <div key={l.id} className="px-4 py-3 grid grid-cols-[2fr_1.4fr_2fr_1fr_1fr] gap-3 items-center text-xs">
-              <span className="text-slate-900 truncate font-medium">{l.email}</span>
-              <span className="text-slate-600 truncate">{l.campaign}</span>
-              <span className="text-slate-500 truncate">{l.summary}</span>
-              <span className="text-violet-700 font-medium">{l.folder}</span>
-              <span className="text-slate-400">{l.added}</span>
+        <div className="overflow-x-auto">
+          <div className="min-w-[680px]">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[2fr_1.4fr_2fr_1fr_1fr] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+              <span>Contact</span><span>Campaign</span><span>Summary</span><span>Folder</span><span>Added</span>
             </div>
-          ))}
+            <div className="divide-y divide-slate-100">
+              {SAMPLE.leads_sample.map((l) => (
+                <div key={l.id} className="px-4 py-3 grid grid-cols-[2fr_1.4fr_2fr_1fr_1fr] gap-3 items-center text-xs">
+                  <span className="text-slate-900 truncate font-medium">{l.email}</span>
+                  <span className="text-slate-600 truncate">{l.campaign}</span>
+                  <span className="text-slate-500 truncate">{l.summary}</span>
+                  <span className="text-violet-700 font-medium">{l.folder}</span>
+                  <span className="text-slate-400">{l.added}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -836,28 +850,32 @@ function Panel_DNE() {
         ))}
       </div>
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[80px_2fr_1fr_1fr] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-          <span>Type</span><span>Value</span><span>Source</span><span>Added</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {dne.sample_entries.map((e, i) => (
-            <div key={i} className="px-4 py-3 grid grid-cols-[80px_2fr_1fr_1fr] gap-3 items-center text-xs">
-              <span
-                className={`inline-block px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-full w-fit ${
-                  e.type === "domain"
-                    ? "bg-violet-100 text-violet-700"
-                    : "bg-sky-100 text-sky-700"
-                }`}
-              >
-                {e.type}
-              </span>
-              <span className="text-slate-900 font-mono">
-                {e.type === "domain" ? `@${e.value}` : e.value}
-              </span>
-              <span className="text-slate-500">{e.source}</span>
-              <span className="text-slate-400">{e.added}</span>
+        <div className="overflow-x-auto">
+          <div className="min-w-[520px]">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 grid grid-cols-[80px_2fr_1fr_1fr] gap-3 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+              <span>Type</span><span>Value</span><span>Source</span><span>Added</span>
             </div>
-          ))}
+            <div className="divide-y divide-slate-100">
+              {dne.sample_entries.map((e, i) => (
+                <div key={i} className="px-4 py-3 grid grid-cols-[80px_2fr_1fr_1fr] gap-3 items-center text-xs">
+                  <span
+                    className={`inline-block px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-full w-fit ${
+                      e.type === "domain"
+                        ? "bg-violet-100 text-violet-700"
+                        : "bg-sky-100 text-sky-700"
+                    }`}
+                  >
+                    {e.type}
+                  </span>
+                  <span className="text-slate-900 font-mono truncate">
+                    {e.type === "domain" ? `@${e.value}` : e.value}
+                  </span>
+                  <span className="text-slate-500">{e.source}</span>
+                  <span className="text-slate-400">{e.added}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1088,9 +1106,12 @@ export default function LiveDashboardDemo() {
   const ActivePanel = current.Panel;
 
   return (
-    <div data-testid="live-dashboard-demo">
-      {/* Tabs */}
-      <div className="flex flex-wrap justify-center gap-2 mb-8" data-testid="demo-tabs">
+    <div data-testid="live-dashboard-demo" className="w-full max-w-full overflow-x-hidden">
+      {/* Tabs — horizontal scroll on mobile to avoid stacking too tall */}
+      <div
+        className="flex md:flex-wrap md:justify-center gap-2 mb-6 md:mb-8 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0 -mx-3 px-3 md:mx-0 md:px-0 snap-x"
+        data-testid="demo-tabs"
+      >
         {DEMO_TABS.map((t) => {
           const Icon = t.icon;
           const isActive = active === t.id;
@@ -1099,7 +1120,7 @@ export default function LiveDashboardDemo() {
               key={t.id}
               type="button"
               onClick={() => setActive(t.id)}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-medium transition-all duration-200 border ${
+              className={`shrink-0 snap-start inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all duration-200 border ${
                 isActive
                   ? "bg-slate-900 text-white border-slate-900 shadow-lg"
                   : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
@@ -1107,7 +1128,7 @@ export default function LiveDashboardDemo() {
               data-testid={`demo-tab-${t.id}`}
             >
               <Icon size={13} />
-              {t.label}
+              <span className="whitespace-nowrap">{t.label}</span>
             </button>
           );
         })}
@@ -1132,7 +1153,7 @@ export default function LiveDashboardDemo() {
             </div>
             <div className="text-[10px] text-slate-400 hidden md:block">Live preview · sample data</div>
           </div>
-          {/* App shell: faux sidebar + active panel */}
+          {/* App shell: faux sidebar (desktop) + active panel */}
           <div className="grid md:grid-cols-[220px_1fr] bg-white">
             <div className="hidden md:flex flex-col bg-slate-50 border-r border-slate-200 p-3">
               <div className="flex items-center gap-2 px-2 py-2 mb-3">
@@ -1167,6 +1188,21 @@ export default function LiveDashboardDemo() {
                 </div>
               </div>
             </div>
+            {/* Mobile section header — replaces the desktop sidebar */}
+            <div className="md:hidden px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                {(() => {
+                  const Icon = current.icon;
+                  return <Icon size={14} className="text-blue-600 shrink-0" />;
+                })()}
+                <span className="text-xs font-semibold text-slate-900 truncate">
+                  {current.label}
+                </span>
+              </div>
+              <span className="text-[10px] text-amber-600 font-semibold inline-flex items-center gap-1 shrink-0">
+                <Crown size={10} /> Growth
+              </span>
+            </div>
             <AnimatePresence mode="wait">
               <motion.div
                 key={current.id}
@@ -1174,7 +1210,7 @@ export default function LiveDashboardDemo() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                className="p-5 md:p-7 min-h-[480px] max-h-[640px] overflow-y-auto"
+                className="p-3 sm:p-5 md:p-7 min-h-[480px] max-h-[640px] overflow-y-auto overflow-x-hidden w-full max-w-full"
                 data-testid={`demo-panel-${current.id}`}
               >
                 <ActivePanel />
