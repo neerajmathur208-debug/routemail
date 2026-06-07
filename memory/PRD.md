@@ -1,6 +1,37 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 47 (June 2026)
+
+### Free Forever Plan replaces 14-day trial
+- **Concept removed**: no more 14-day trial, no `trialing` status for new users, no `trial_ends_at` expiry checks. New users land on a permanent Free Plan.
+- **Limits**: 500 monthly unique recipients + 3 email accounts (same numbers the old trial used).
+- **Backend** — `check_subscription_active()` rewritten:
+  - Free Plan returns `{active:True, plan:'free', status:'active'}` — never expires.
+  - Legacy users stored with `subscription_status='trialing'` or `'expired'` are auto-migrated on read.
+  - Paid plan `past_due` + grace_period_end passed → `_downgrade_to_free_plan(reason='grace_expired')`.
+  - Paid plan `canceled` + billing_cycle_end passed → `_downgrade_to_free_plan(reason='canceled_cycle_ended')`.
+  - Stripe webhook `customer.subscription.deleted` keeps the user on their paid plan until cycle end, then downgrades lazily.
+- **New helper `_downgrade_to_free_plan(user_id, reason)`**: idempotent; clears stripe_subscription_id + grace fields, records `downgraded_to_free_at` + `downgrade_reason`.
+- **Admin `/assign-plan` extended**: accepts `free` plus all custom_* slugs. Assigning `free` to a user who was already on free does NOT record a downgrade event (avoids false downgrade banner).
+- **Email + Google registration paths** now set `plan_type='free'`, `subscription_status='active'`, `trial_ends_at=null`.
+- **Welcome email + admin signup notification** wording updated — no more "14-day trial".
+- **`/api/auth/me`** now returns `downgraded_to_free_at` + `downgrade_reason`.
+- **`/api/subscription/prices`** `free_plan` now: `{name:'Free', free_forever:true, price_usd:0, ...}` — `trial_days` key removed.
+
+### Frontend
+- **Landing pricing grid** is now 4 cards (Free / Starter / Growth / Custom). New `pricing-card-free` shows `$0/year` + "Free forever — no credit card" footnote. CTA testids renamed `header-start-free-btn` + `hero-start-free-btn`. FAQ updated.
+- **Subscription page**: replaced Trial-Expired alert with a `downgrade-notice` banner (only shown to users actually downgraded). Free card has disabled `free-plan-current-btn` with text "Current Plan" for free users.
+- **Dashboard**: free-plan banner reads "You're on the Free Plan — Free forever — upgrade any time…". No more "X days left in trial".
+- **AdminDashboard**: Trial Active / Trial End fields replaced with Plan Source + Downgraded From (testids `sub-plan-source`, `sub-downgraded-from`).
+- **Register subtitle + LiveDashboardDemo toast** rewritten to drop trial wording.
+
+### Verification
+- Backend pytest `/app/backend/tests/test_iteration_47_free_plan.py` — 15/15 pass (covers prices payload, new-user defaults, legacy-data migration, both grace-expired and cancel-cycle downgrade paths, admin assign-free + assign-starter + remove-override, regression on /campaigns /drip-campaigns /dne-lists /accounts /unibox).
+- Frontend Playwright on Landing — 17/17 assertions pass live.
+- Polish nits flagged by tester both fixed: `/auth/me` now includes the two new fields, and admin assign-free skips the downgrade-event fields when the target was already free.
+
+
 ## Changelog — Iteration 46 (June 2026)
 
 ### Cloudflare Turnstile CAPTCHA on /login + /register only

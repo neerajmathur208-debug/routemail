@@ -2452,6 +2452,8 @@ async def get_me(user: User = Depends(get_current_user)):
             "role": user_doc.get("role", "user"),
             "trial_ends_at": None,
             "billing_cycle_end": user_doc.get("billing_cycle_end"),
+            "downgraded_to_free_at": user_doc.get("downgraded_to_free_at"),
+            "downgrade_reason": user_doc.get("downgrade_reason"),
             "subscription_active": sub_status.get("active", False),
             "onboarding_completed": user_doc.get("onboarding_completed", False)
         }
@@ -7394,6 +7396,11 @@ async def admin_assign_plan(
         
         # Apply admin override (or — when assigning `free` — wipe overrides and use base plan)
         if request.plan == "free":
+            was_paid = (
+                user.get("plan_type") in ("starter", "growth")
+                or (user.get("plan_type", "").startswith("custom_"))
+                or user.get("admin_override_active")
+            )
             update_data = {
                 "admin_override_active": False,
                 "admin_override_plan": None,
@@ -7403,9 +7410,12 @@ async def admin_assign_plan(
                 "subscription_status": "active",
                 "trial_ends_at": None,
                 "grace_period_end": None,
-                "downgraded_to_free_at": datetime.now(timezone.utc).isoformat(),
-                "downgrade_reason": "admin_assigned",
             }
+            if was_paid:
+                # Only mark a true downgrade — don't show the banner to users
+                # who were already on the Free Plan.
+                update_data["downgraded_to_free_at"] = datetime.now(timezone.utc).isoformat()
+                update_data["downgrade_reason"] = "admin_assigned"
         else:
             update_data = {
                 "admin_override_active": True,
