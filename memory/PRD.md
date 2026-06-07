@@ -1,6 +1,21 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 46 (June 2026)
+
+### Cloudflare Turnstile CAPTCHA on /login + /register only
+- **Backend** — `verify_turnstile_or_raise(token, http_request)` helper (~`server.py` L1999) POSTs to `https://challenges.cloudflare.com/turnstile/v0/siteverify` with the secret key. Wired as the **first line** of both `/api/auth/login` and `/api/auth/register` — runs before any user lookup, password hash check, or DB insert. Failures return HTTP 400 with the exact message **"Security verification failed. Please try again."**. Missing-token / bogus-token / whitespace-token all rejected. Tested register failure does NOT persist a user.
+- **Frontend** — new `Turnstile.jsx` component lazily injects the Cloudflare `api.js` script (singleton; only one script tag per page) and renders the explicit widget. Exposes a `widgetRef.reset()` for the parent to call after a failed auth attempt.
+- **Login.jsx + Register.jsx** — both render the widget below the submit button (testids `login-turnstile-wrapper`, `register-turnstile-wrapper`). Submit buttons are **disabled until the token is solved** (when `REACT_APP_TURNSTILE_SITE_KEY` is set). On error the widget auto-resets so the user can try again.
+- **Secret-key audit passed** — grep across all 10 frontend JS bundles confirms `TURNSTILE_SECRET_KEY` (`0x4AAAAAADgY3dK_B7t1fZDG7db_iCbUzpk`) does NOT appear in any bundle or DOM. Only the site key is exposed.
+- **Mobile responsive** — `scrollWidth == innerWidth == 390` at iPhone 14 width on both pages.
+- **No other endpoints gated** — `/api/campaigns`, `/api/drip-campaigns`, `/api/dne-lists`, `/api/unibox/replies`, `/api/accounts` all unchanged (verified).
+
+### Verification
+- Backend pytest `/app/backend/tests/test_iteration_46_turnstile.py` — 10/10 passing.
+- Frontend Playwright — widget renders, script injected exactly once, secret key absent from bundles, submit buttons disabled, mobile fits 390px. Happy-path (CAPTCHA solved) cannot be tested headlessly — that is the design intent of CAPTCHA.
+
+
 ## Changelog — Iteration 45 (June 2026)
 
 ### Unibox status section — compact + scalable
