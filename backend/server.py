@@ -1984,10 +1984,57 @@ class EmailRegisterRequest(BaseModel):
     email: EmailStr
     password: str
     confirm_password: str
+    turnstile_token: Optional[str] = None
 
 class EmailLoginRequest(BaseModel):
     email: EmailStr
     password: str
+    turnstile_token: Optional[str] = None
+
+
+# Cloudflare Turnstile server-side verification ----------------------------
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+TURNSTILE_FAIL_MESSAGE = "Security verification failed. Please try again."
+
+async def verify_turnstile_or_raise(token: Optional[str], http_request: Optional[Request] = None) -> None:
+    """Validate a Cloudflare Turnstile token server-side. Raises 400 on failure.
+    
+    If TURNSTILE_SECRET_KEY is unset in the environment (e.g. local dev), verification
+    is skipped — useful for tests and local bring-up. In production the key MUST be set.
+    """
+    secret = (os.environ.get("TURNSTILE_SECRET_KEY") or "").strip()
+    if not secret:
+        # Not configured → skip (dev / test mode)
+        return
+    if not token or not token.strip():
+        raise HTTPException(status_code=400, detail=TURNSTILE_FAIL_MESSAGE)
+    
+    remote_ip = ""
+    if http_request is not None:
+        try:
+            xff = http_request.headers.get("x-forwarded-for", "")
+            remote_ip = (xff.split(",")[0].strip() if xff else "") or (
+                http_request.client.host if http_request.client else ""
+            )
+        except Exception:
+            remote_ip = ""
+
+    payload = {"secret": secret, "response": token.strip()}
+    if remote_ip:
+        payload["remoteip"] = remote_ip
+    
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.post(TURNSTILE_VERIFY_URL, data=payload)
+        data = r.json() if r.status_code == 200 else {}
+    except Exception as exc:
+        logger.warning(f"[TURNSTILE] verification request failed: {exc}")
+        raise HTTPException(status_code=400, detail=TURNSTILE_FAIL_MESSAGE)
+    
+    if not data.get("success"):
+        codes = data.get("error-codes", [])
+        logger.warning(f"[TURNSTILE] verification failed for {http_request and http_request.client.host}: {codes}")
+        raise HTTPException(status_code=400, detail=TURNSTILE_FAIL_MESSAGE)
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -2415,9 +2462,11 @@ async def complete_onboarding(user: User = Depends(get_current_user)):
 # ==================== EMAIL/PASSWORD AUTH ====================
 
 @api_router.post("/auth/register")
-async def register_email(request: EmailRegisterRequest, background_tasks: BackgroundTasks):
+async def register_email(request: EmailRegisterRequest, http_request: Request, background_tasks: BackgroundTasks):
     """Register a new user with email and password - requires email verification"""
-    
+    # Cloudflare Turnstile gate
+    await verify_turnstile_or_raise(request.turnstile_token, http_request)
+
     # ========== STEP 1: Validate Input ==========
     logger.info(f"[REGISTRATION] Step 1: Validating input for email: {request.email}")
     
@@ -2800,8 +2849,10 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
     return {"message": "If this email is registered, you will receive a verification link."}
 
 @api_router.post("/auth/login")
-async def login_email(request: EmailLoginRequest, response: Response):
+async def login_email(request: EmailLoginRequest, http_request: Request, response: Response):
     """Login with email and password"""
+    # Cloudflare Turnstile gate
+    await verify_turnstile_or_raise(request.turnstile_token, http_request)
     # Find user
     user_doc = await db.users.find_one({"email": request.email}, {"_id": 0})
     

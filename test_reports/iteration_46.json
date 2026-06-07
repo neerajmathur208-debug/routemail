@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 46 — Cloudflare Turnstile CAPTCHA on /auth/login and /auth/register. Backend: 10/10 pytest pass (login + register both gated, exact 'Security verification failed. Please try again.' message returned with HTTP 400 for missing token, bogus token, and whitespace token; register failure verified to NOT persist a user in db.users; regression on /api/campaigns, /api/drip-campaigns, /api/dne-lists, /api/unibox/replies, /api/accounts all return 200 with session cookie). Frontend: Turnstile widget renders on both /login and /register (visually confirmed via screenshot — 'Verify you are human' + Cloudflare branding), wrapper testids login-turnstile-wrapper and register-turnstile-wrapper present, turnstile-container present, the Cloudflare api.js script is injected exactly ONCE per page load, both login-submit-btn and register-submit-btn are disabled before the challenge is solved. Secret-key audit: fetched all 10 JS bundles referenced from /login and grep'd them — TURNSTILE_SECRET_KEY (0x4AAAAAADgY3dK_B7t1fZDG7db_iCbUzpk) does NOT appear in any bundle or in the DOM; only the SITE key (0x4AAAAAADgY3RGHODsGMCYW) is in the bundle (expected). Mobile responsiveness at 390x844: scrollWidth==innerWidth==390 on both /login and /register, no horizontal overflow. Code review of /app/backend/server.py confirms verify_turnstile_or_raise is defined at L1999 and is the FIRST line of both /auth/login (L2855) and /auth/register (L2468), before user lookup / password hash check / DB insert.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_46_turnstile.py",
+    "/app/test_reports/pytest/iter46_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "verify_turnstile_or_raise silently skips when TURNSTILE_SECRET_KEY env is unset/empty (dev-mode bypass). Intentional per the code comment and the iteration spec, but it is a foot-gun for production: if the env var is ever blanked accidentally the CAPTCHA gate disappears with no error. Suggest a startup-time assertion or a separate TURNSTILE_REQUIRED=true flag for production deployments — non-blocking for iter-46.",
+    "Turnstile.jsx: the useEffect dependency array intentionally omits onToken/onExpire/onError to support inline-lambda parents. This is fine but leaves a comment-only contract; if a parent ever swaps callbacks at runtime the old ones will continue to fire. Low risk because Login/Register both use stable setState setters via closure, but worth a JSDoc note. Non-blocking.",
+    "Pre-existing lint blockers in Login.jsx / Register.jsx (apostrophes, react-hooks immutability) are carried over from earlier iterations and were explicitly excluded from iter-46 scope per the request. Confirmed not regressed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_46_turnstile.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (11/11 verifiable criteria; happy-path E2E with a solved Turnstile token is not verifiable from headless Chromium by design — that is the entire point of CAPTCHA)"},
+  "test_credentials": "Used dhruvmathur208@gmail.com / Perfect2026# for the login-gate test (so the gate is what blocks the call, not bad credentials) and for the regression session injection (session row inserted directly into db.user_sessions to bypass the CAPTCHA-gated login).",
+  "seed_data_creation": "None persisted. Two register attempts created with throw-away emails test.turnstile.<uuid>@example.com — both blocked at the Turnstile gate and verified absent from db.users. Two ephemeral rows added to db.user_sessions for regression test class, deleted in teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter-46 fully verified. Pytest file at /app/backend/tests/test_iteration_46_turnstile.py is reusable as regression. Note that real /api endpoint for email accounts is /api/accounts, NOT /api/email-accounts — the review request mislabelled it; the test was adjusted. Headless Chromium cannot solve Cloudflare Turnstile by design, so the happy path (token accepted → 200 + session cookie) is NOT testable via Playwright; it was verified by reading server.py — the same TURNSTILE_VERIFY_URL contract that rejected the bogus token will accept a real one. Pre-existing lint blockers in Login.jsx/Register.jsx are NOT iter-46 regressions and were ignored per instructions.",
+  "rca of the issue": "No issues found in this iteration."
+}

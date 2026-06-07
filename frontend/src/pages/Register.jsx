@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Check, Zap, Crown, CheckCircle2 } from "lucide-react";
@@ -7,6 +7,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { api } from "../App";
 import { toast } from "sonner";
+import Turnstile from "../components/Turnstile";
+
+const TURNSTILE_SITE_KEY = process.env.REACT_APP_TURNSTILE_SITE_KEY;
 
 export default function Register() {
   const navigate = useNavigate();
@@ -23,6 +26,8 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState("usd");
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileWidgetRef = useRef(null);
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [termsError, setTermsError] = useState(false);
@@ -108,9 +113,17 @@ export default function Register() {
       return;
     }
 
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      toast.error("Please complete the security check.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await api.post("/auth/register", formData);
+      const response = await api.post("/auth/register", {
+        ...formData,
+        turnstile_token: turnstileToken || undefined,
+      });
       
       // Check for successful response (status 200-299)
       if (response.status >= 200 && response.status < 300) {
@@ -144,6 +157,9 @@ export default function Register() {
         // Something else went wrong
         toast.error("An unexpected error occurred. Please try again.");
       }
+      // Reset Turnstile so the user can solve a fresh challenge.
+      setTurnstileToken("");
+      turnstileWidgetRef.current?.reset?.();
     } finally {
       setLoading(false);
     }
@@ -427,13 +443,23 @@ export default function Register() {
 
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || (TURNSTILE_SITE_KEY && !turnstileToken)}
               className="w-full py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
               data-testid="register-submit-btn"
             >
               {loading ? "Creating account..." : "Create Account"}
               {!loading && <ArrowRight size={18} className="ml-2" />}
             </Button>
+
+            {TURNSTILE_SITE_KEY && (
+              <div className="pt-2" data-testid="register-turnstile-wrapper">
+                <Turnstile
+                  siteKey={TURNSTILE_SITE_KEY}
+                  widgetRef={turnstileWidgetRef}
+                  onToken={(t) => setTurnstileToken(t)}
+                />
+              </div>
+            )}
           </form>
 
           {/* Trial Note */}

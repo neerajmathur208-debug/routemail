@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
@@ -7,6 +7,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { api } from "../App";
 import { toast } from "sonner";
+import Turnstile from "../components/Turnstile";
+
+const TURNSTILE_SITE_KEY = process.env.REACT_APP_TURNSTILE_SITE_KEY;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -14,6 +17,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileWidgetRef = useRef(null);
 
   const handleEmailLogin = async (e) => {
     e.preventDefault();
@@ -23,9 +28,18 @@ export default function Login() {
       return;
     }
 
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      toast.error("Please complete the security check.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await api.post("/auth/login", { email, password });
+      const response = await api.post("/auth/login", {
+        email,
+        password,
+        turnstile_token: turnstileToken || undefined,
+      });
       const userData = response.data;
       
       toast.success("Login successful!");
@@ -36,6 +50,9 @@ export default function Login() {
     } catch (error) {
       const message = error.response?.data?.detail || "Login failed";
       toast.error(message);
+      // Reset Turnstile so the user can solve a fresh challenge.
+      setTurnstileToken("");
+      turnstileWidgetRef.current?.reset?.();
     } finally {
       setLoading(false);
     }
@@ -113,18 +130,28 @@ export default function Login() {
 
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || (TURNSTILE_SITE_KEY && !turnstileToken)}
               className="w-full py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700"
               data-testid="login-submit-btn"
             >
               {loading ? "Signing in..." : "Log In"}
               {!loading && <ArrowRight size={18} className="ml-2" />}
             </Button>
+
+            {TURNSTILE_SITE_KEY && (
+              <div className="pt-2" data-testid="login-turnstile-wrapper">
+                <Turnstile
+                  siteKey={TURNSTILE_SITE_KEY}
+                  widgetRef={turnstileWidgetRef}
+                  onToken={(t) => setTurnstileToken(t)}
+                />
+              </div>
+            )}
           </form>
 
           {/* Register Link */}
           <p className="mt-6 text-center text-sm text-slate-600">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700" data-testid="register-link">
               Register
             </Link>
