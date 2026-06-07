@@ -868,21 +868,21 @@ export default function AdminDashboard({ user, setUser }) {
                   )}
                 </div>
 
-                {/* Trial Info */}
+                {/* Plan Source */}
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-sm text-slate-500">Trial Active</p>
-                  <p className="font-semibold text-slate-900" data-testid="sub-trial-active">
-                    {subscriptionData.trial_active ? "Yes" : "No"}
+                  <p className="text-sm text-slate-500">Plan Source</p>
+                  <p className="font-semibold text-slate-900" data-testid="sub-plan-source">
+                    {subscriptionData.plan_source || "free"}
                   </p>
                 </div>
 
-                {/* Trial End Date */}
+                {/* Downgraded From */}
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-sm text-slate-500">Trial End Date</p>
-                  <p className="font-medium text-slate-900 text-sm" data-testid="sub-trial-end">
-                    {subscriptionData.trial_end_date 
-                      ? formatDateTime(subscriptionData.trial_end_date) 
-                      : "N/A"}
+                  <p className="text-sm text-slate-500">Downgraded From</p>
+                  <p className="font-medium text-slate-900 text-sm" data-testid="sub-downgraded-from">
+                    {subscriptionData.downgraded_to_free_at
+                      ? `${subscriptionData.downgrade_reason || "expired"} · ${formatDateTime(subscriptionData.downgraded_to_free_at)}`
+                      : "—"}
                   </p>
                 </div>
 

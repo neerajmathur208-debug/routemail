@@ -293,12 +293,9 @@ export default function Dashboard({ user, setUser }) {
                       </>
                     ) : (
                       <>
-                        <p className="font-semibold">You're on the Free Plan</p>
+                        <p className="font-semibold">You&apos;re on the Free Plan</p>
                         <p className="text-sm opacity-90">
-                          {subscriptionData.trial_ends_at 
-                            ? `${Math.ceil((new Date(subscriptionData.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24))} days left in trial`
-                            : "Upgrade to unlock higher limits"
-                          }
+                          Free forever — upgrade any time for higher monthly contact limits.
                         </p>
                       </>
                     )}

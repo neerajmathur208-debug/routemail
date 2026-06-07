@@ -39,13 +39,13 @@ import {
  * Interactive, frontend-only preview of the RouteMail dashboard. The structure,
  * sidebar items and feature surface mirrors the production app exactly — but
  * every value comes from the SAMPLE constant below (no API calls). Any action
- * button shows a friendly toast: "This is a preview. Start your free trial."
+ * button shows a friendly toast: "This is a preview. Sign up for the Free Plan."
  */
 
 // Generic preview-action handler
 const previewClick = () =>
-  toast("This is a preview. Start your free trial to use RouteMail.", {
-    description: "Sign up free — no credit card required.",
+  toast("This is a preview. Sign up for the Free Plan to use RouteMail.", {
+    description: "It's free forever — no credit card required.",
   });
 
 // ────────────────────────────────────────────────────────────────────────────

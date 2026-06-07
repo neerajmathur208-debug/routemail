@@ -134,14 +134,8 @@ export default function Subscription({ user, setUser }) {
   const isActive = subscriptionData?.subscription_active;
   const statusDetails = subscriptionData?.status_details || {};
 
-  // Calculate trial days remaining
-  const getTrialDaysRemaining = () => {
-    if (!subscriptionData?.trial_ends_at) return null;
-    const trialEnd = new Date(subscriptionData.trial_ends_at);
-    const now = new Date();
-    const diff = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
-    return diff > 0 ? diff : 0;
-  };
+  // Helper retained for backward-compatible fields; the new Free Plan never expires.
+  const getTrialDaysRemaining = () => null;
 
   const trialDays = getTrialDaysRemaining();
 
@@ -165,18 +159,19 @@ export default function Subscription({ user, setUser }) {
           </div>
 
           {/* Alert Banners */}
-          {subscriptionData?.subscription_status === "expired" && (
+          {subscriptionData?.downgraded_to_free_at && subscriptionData?.downgrade_reason && currentPlan === "free" && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center gap-3"
+              className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center gap-3"
+              data-testid="downgrade-notice"
             >
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <AlertTriangle size={20} className="text-red-600" />
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={20} className="text-amber-600" />
               </div>
               <div>
-                <p className="font-semibold text-red-900">Trial Expired</p>
-                <p className="text-sm text-red-700">Your free trial has ended. Upgrade to continue sending emails.</p>
+                <p className="font-semibold text-amber-900">You are now on the Free Plan</p>
+                <p className="text-sm text-amber-700">Your paid plan has expired. You can keep sending up to 500 unique contacts/month for free, or upgrade any time below.</p>
               </div>
             </motion.div>
           )}
@@ -242,29 +237,24 @@ export default function Subscription({ user, setUser }) {
                   </h2>
                   {/* Status Badge */}
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    subscriptionData?.subscription_status === "active" 
+                    subscriptionData?.subscription_status === "active"
                       ? "bg-green-100 text-green-700"
-                      : subscriptionData?.subscription_status === "trialing"
-                      ? "bg-blue-100 text-blue-700"
                       : subscriptionData?.subscription_status === "past_due"
                       ? "bg-amber-100 text-amber-700"
                       : subscriptionData?.subscription_status === "canceled_pending"
                       ? "bg-slate-100 text-slate-700"
                       : "bg-red-100 text-red-700"
                   }`}>
-                    {subscriptionData?.subscription_status === "trialing" && trialDays !== null
-                      ? `${trialDays} days left`
-                      : subscriptionData?.subscription_status?.replace("_", " ")
-                    }
+                    {currentPlan === "free" ? "Free forever" : subscriptionData?.subscription_status?.replace("_", " ")}
                   </span>
                 </div>
                 
                 {/* Billing Info */}
                 <div className="mt-3 space-y-1 text-sm text-slate-500">
-                  {subscriptionData?.trial_ends_at && currentPlan === "free" && subscriptionData?.subscription_status === "trialing" && (
+                  {currentPlan === "free" && (
                     <p className="flex items-center gap-2">
-                      <Clock size={14} />
-                      Trial ends: <span className="font-medium text-slate-700">{new Date(subscriptionData.trial_ends_at).toLocaleDateString()}</span>
+                      <Shield size={14} />
+                      No expiry — your Free Plan is active forever.
                     </p>
                   )}
                   {subscriptionData?.billing_cycle_end && currentPlan !== "free" && (
@@ -396,9 +386,11 @@ export default function Subscription({ user, setUser }) {
                   Current Plan
                 </div>
               )}
-              <h3 className="text-xl font-bold text-slate-900 mb-1">Free Trial</h3>
-              <p className="text-slate-500 text-sm mb-4">14 days to explore</p>
-              <div className="text-3xl font-bold text-slate-900 mb-6">Free</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-1">Free</h3>
+              <p className="text-slate-500 text-sm mb-4">Free forever — no expiry</p>
+              <div className="text-3xl font-bold text-slate-900 mb-6">
+                $0<span className="text-base text-slate-500 font-medium">/year</span>
+              </div>
               
               <ul className="space-y-3 mb-6">
                 <li className="flex items-center gap-2 text-sm text-slate-600">
@@ -420,12 +412,13 @@ export default function Subscription({ user, setUser }) {
                   variant="outline"
                   className="w-full"
                   disabled
+                  data-testid="free-plan-current-btn"
                 >
                   Current Plan
                 </Button>
               ) : (
                 <div className="text-xs text-slate-500 px-2 py-2 text-center" data-testid="cancel-support-note">
-                  To cancel or downgrade, please email{" "}
+                  To downgrade to Free, please email{" "}
                   <a href="mailto:support@routemail.co" className="text-blue-600 underline">
                     support@routemail.co
                   </a>

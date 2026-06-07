@@ -88,10 +88,10 @@ function Header({ onCtaClick, navigate }) {
           <Button
             onClick={onCtaClick}
             className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white px-3 sm:px-4 text-sm whitespace-nowrap"
-            data-testid="header-start-trial-btn"
+            data-testid="header-start-free-btn"
           >
             <span className="sm:hidden">Get Started</span>
-            <span className="hidden sm:inline">Start Free Trial</span>
+            <span className="hidden sm:inline">Start Free</span>
           </Button>
         </div>
       </div>
@@ -154,9 +154,9 @@ function Hero({ onPrimary, onSecondary }) {
               size="lg"
               onClick={onPrimary}
               className="bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white h-12 px-6 text-base"
-              data-testid="hero-start-trial-btn"
+              data-testid="hero-start-free-btn"
             >
-              Start Free Trial
+              Start Free
               <ArrowRight size={18} className="ml-1.5" />
             </Button>
             <Button
@@ -181,7 +181,7 @@ function Hero({ onPrimary, onSecondary }) {
             </span>
             <span className="inline-flex items-center gap-1">
               <Check size={14} className="text-emerald-500" />
-              14-day free trial
+              Free forever
             </span>
           </motion.div>
         </motion.div>
@@ -694,7 +694,7 @@ function WhyRouteMail() {
 // ────────────────────────────────────────────────────────────────────────────
 // Pricing
 // ────────────────────────────────────────────────────────────────────────────
-function PricingCard({ name, contacts, price, period, accent = "slate", featured = false, ctaLabel, onCta, testId }) {
+function PricingCard({ name, contacts, price, period, accent = "slate", featured = false, ctaLabel, onCta, testId, footnote }) {
   return (
     <motion.div
       {...fadeUp}
@@ -736,7 +736,7 @@ function PricingCard({ name, contacts, price, period, accent = "slate", featured
         </li>
         <li className="flex items-start gap-2 text-sm">
           <Check size={16} className={featured ? "text-white mt-0.5 shrink-0" : `text-${accent}-500 mt-0.5 shrink-0`} />
-          Suppression & deliverability controls
+          Suppression &amp; deliverability controls
         </li>
       </ul>
       <Button
@@ -749,6 +749,11 @@ function PricingCard({ name, contacts, price, period, accent = "slate", featured
       >
         {ctaLabel}
       </Button>
+      {footnote && (
+        <p className={`mt-3 text-center text-[11px] ${featured ? "text-white/80" : "text-slate-500"}`}>
+          {footnote}
+        </p>
+      )}
     </motion.div>
   );
 }
@@ -779,14 +784,25 @@ function PricingSection({ navigate, onPrimary }) {
           </div>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6" data-testid="pricing-grid">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6" data-testid="pricing-grid">
+          <PricingCard
+            name="Free"
+            contacts="500"
+            price="$0"
+            period="/year"
+            accent="slate"
+            ctaLabel="Start Free"
+            onCta={onPrimary}
+            testId="pricing-card-free"
+            footnote="Free forever — no credit card"
+          />
           <PricingCard
             name="Starter"
             contacts="4,000"
             price="$99"
             period="/year"
             accent="blue"
-            ctaLabel="Start Free Trial"
+            ctaLabel="Choose Starter"
             onCta={onPrimary}
             testId="pricing-card-starter"
           />
@@ -797,7 +813,7 @@ function PricingSection({ navigate, onPrimary }) {
             period="/year"
             accent="emerald"
             featured
-            ctaLabel="Start Free Trial"
+            ctaLabel="Choose Growth"
             onCta={onPrimary}
             testId="pricing-card-growth"
           />
@@ -834,8 +850,8 @@ const FAQS = [
     a: "Yes — multi-step drip sequences with per-step delays, timezone-aware schedules, randomized send timing, and easy step duplication.",
   },
   {
-    q: "Is there a free trial?",
-    a: "Yes — 14 days, no credit card required. You'll get 500 unique contacts/month and up to 3 connected accounts during the trial.",
+    q: "Is there a free plan?",
+    a: "Yes — RouteMail has a Free Plan that's free forever. You get 500 unique contacts/month and up to 3 connected accounts, with no credit card and no expiry. Upgrade any time you need more monthly contacts.",
   },
 ];
 
@@ -895,7 +911,7 @@ function CtaBanner({ onPrimary }) {
               Stop burning domains. Start landing in inboxes.
             </h3>
             <p className="mt-3 text-white/85 max-w-xl mx-auto">
-              14-day free trial · No credit card required · Cancel any time.
+              Start free forever. Upgrade when you need more monthly contacts.
             </p>
             <Button
               size="lg"
@@ -903,7 +919,7 @@ function CtaBanner({ onPrimary }) {
               className="mt-7 bg-white text-blue-700 hover:bg-blue-50 h-12 px-7"
               data-testid="cta-banner-btn"
             >
-              Start Free Trial
+              Start Free
               <ArrowRight size={18} className="ml-1.5" />
             </Button>
           </div>

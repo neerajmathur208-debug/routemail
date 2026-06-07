@@ -464,7 +464,7 @@ export default function Register() {
 
           {/* Trial Note */}
           <p className="mt-4 text-center text-xs text-slate-500">
-            Start with a 14-day free trial. No credit card required.
+            Start free forever. Upgrade when you need more monthly contacts.
           </p>
 
           {/* Login Link */}

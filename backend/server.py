@@ -1439,15 +1439,15 @@ def get_welcome_email_html(first_name: str, plan_type: str) -> tuple:
         """
         intro = "Your Starter Plan is now active."
         outro = "You're ready to scale your outreach efficiently."
-    else:  # free/trialing
-        subject = "Welcome to RouteMail – Your 14-Day Trial Has Started 🚀"
+    else:  # free
+        subject = "Welcome to RouteMail – You're on the Free Plan"
         features = """
             <li style="margin-bottom: 8px;">Connect up to <strong>3 email accounts</strong></li>
             <li style="margin-bottom: 8px;">Store up to <strong>500 contacts</strong></li>
             <li style="margin-bottom: 8px;">Send emails to <strong>500 contacts per month</strong></li>
         """
-        intro = "Your 14-day free trial is now active."
-        outro = "You can upgrade anytime from your dashboard to unlock higher limits and advanced sending power.<br><br>Let's get your first campaign live!"
+        intro = "Your Free Plan is now active — free forever, no expiry."
+        outro = "Upgrade anytime from your dashboard to unlock higher monthly contact limits.<br><br>Let's get your first campaign live!"
     
     html = f"""
     <!DOCTYPE html>
@@ -1561,7 +1561,7 @@ def get_admin_signup_notification_html(user_email: str, signup_method: str, ip_a
                 </table>
             </div>
             <p style="color: #3f3f46; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-                <strong>Trial Status:</strong> 14-day trial started.
+                <strong>Plan:</strong> Free Plan (free forever).
             </p>
             <p style="color: #71717a; font-size: 13px; margin: 0;">
                 You can view the user in the Super Admin dashboard.
@@ -1768,7 +1768,9 @@ async def check_recipient_limit(user_id: str, new_recipients: int = 0) -> dict:
     }
 
 async def check_subscription_active(user_id: str) -> dict:
-    """Check if user has active subscription or valid trial"""
+    """Check if a user can send. Free Plan is a permanent (non-expiring) tier; paid plans
+    use Stripe with the standard 7-day grace period before downgrade to Free.
+    """
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user:
         return {"active": False, "reason": "User not found"}
@@ -1784,14 +1786,14 @@ async def check_subscription_active(user_id: str) -> dict:
         }
     
     plan_type = user.get("plan_type", "free")
-    status = user.get("subscription_status", "trialing")
+    status = user.get("subscription_status", "active")
     
     # Check for paid plans (Stripe)
-    if plan_type in ["starter", "growth"]:
+    if plan_type in ["starter", "growth"] or plan_type.startswith("custom_"):
         if status == "active":
             return {"active": True, "plan": plan_type, "status": status, "source": "stripe"}
         elif status == "past_due":
-            # Check grace period
+            # Check grace period (7 days)
             grace_end = user.get("grace_period_end")
             if grace_end:
                 if isinstance(grace_end, str):
@@ -1800,7 +1802,9 @@ async def check_subscription_active(user_id: str) -> dict:
                     grace_end = grace_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < grace_end:
                     return {"active": True, "plan": plan_type, "status": "grace_period", "grace_ends": grace_end.isoformat(), "source": "stripe"}
-            return {"active": False, "reason": "Payment overdue", "status": status}
+            # Grace period expired → automatic downgrade to Free Plan
+            await _downgrade_to_free_plan(user_id, reason="grace_expired")
+            return {"active": True, "plan": "free", "status": "active", "downgraded_from": plan_type, "source": "free"}
         elif status == "canceled":
             # Check if still in billing period
             cycle_end = user.get("billing_cycle_end")
@@ -1811,31 +1815,43 @@ async def check_subscription_active(user_id: str) -> dict:
                     cycle_end = cycle_end.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < cycle_end:
                     return {"active": True, "plan": plan_type, "status": "canceled_active", "ends": cycle_end.isoformat(), "source": "stripe"}
-            return {"active": False, "reason": "Subscription canceled", "status": status}
+            # Past cycle end with canceled status → downgrade
+            await _downgrade_to_free_plan(user_id, reason="canceled_cycle_ended")
+            return {"active": True, "plan": "free", "status": "active", "downgraded_from": plan_type, "source": "free"}
     
-    # Free plan - check trial
-    if status == "trialing":
-        trial_end = user.get("trial_ends_at")
-        if trial_end:
-            if isinstance(trial_end, str):
-                trial_end = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
-            if trial_end.tzinfo is None:
-                trial_end = trial_end.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) < trial_end:
-                return {"active": True, "plan": "free", "status": "trialing", "trial_ends": trial_end.isoformat(), "source": "free"}
-            else:
-                # Trial expired
-                await db.users.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"subscription_status": "expired"}}
-                )
-                return {"active": False, "reason": "Trial expired", "status": "expired"}
-        return {"active": True, "plan": "free", "status": "trialing", "source": "free"}
+    # Free Plan — no expiration. Migrate any legacy 'trialing' or 'expired' statuses on read.
+    if status in ("trialing", "expired"):
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "subscription_status": "active",
+                "plan_type": "free",
+                "trial_ends_at": None,
+            }},
+        )
+        status = "active"
+        plan_type = "free"
     
-    if status == "expired":
-        return {"active": False, "reason": "Trial expired", "status": "expired"}
-    
-    return {"active": True, "plan": plan_type, "status": status, "source": "free"}
+    return {"active": True, "plan": plan_type, "status": "active", "source": "free"}
+
+
+async def _downgrade_to_free_plan(user_id: str, reason: str = "expired") -> None:
+    """Downgrade a paid user to the Free Plan. Preserves Stripe customer id for re-subscribing
+    later, but clears the active subscription id + grace fields. Idempotent.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "plan_type": "free",
+            "subscription_status": "active",
+            "stripe_subscription_id": None,
+            "grace_period_end": None,
+            "downgraded_to_free_at": now_iso,
+            "downgrade_reason": reason,
+            "trial_ends_at": None,
+        }},
+    )
 
 async def increment_recipient_count(user_id: str, count: int = 1):
     """Increment the monthly recipient counter"""
@@ -2352,8 +2368,7 @@ async def exchange_session(request: SessionRequest, response: Response):
     else:
         # Determine role for new user
         role = "super_admin" if email == SUPER_ADMIN_EMAIL else "user"
-        trial_end = datetime.now(timezone.utc) + timedelta(days=14)
-        
+
         user_dict = {
             "user_id": user_id,
             "email": email,
@@ -2361,12 +2376,12 @@ async def exchange_session(request: SessionRequest, response: Response):
             "picture": picture,
             "provider": "google",
             "role": role,
-            # Subscription fields
+            # Subscription fields — Free Plan, no expiry
             "plan_type": "free",
-            "subscription_status": "trialing",
+            "subscription_status": "active",
             "stripe_customer_id": None,
             "stripe_subscription_id": None,
-            "trial_ends_at": trial_end.isoformat(),
+            "trial_ends_at": None,
             "billing_cycle_start": None,
             "billing_cycle_end": None,
             "grace_period_end": None,
@@ -2432,10 +2447,10 @@ async def get_me(user: User = Depends(get_current_user)):
             "email": user_doc["email"],
             "name": user_doc.get("name", ""),
             "picture": user_doc.get("picture"),
-            "subscription_status": user_doc.get("subscription_status", "trialing"),
+            "subscription_status": user_doc.get("subscription_status", "active"),
             "plan_type": user_doc.get("plan_type", "free"),
             "role": user_doc.get("role", "user"),
-            "trial_ends_at": user_doc.get("trial_ends_at"),
+            "trial_ends_at": None,
             "billing_cycle_end": user_doc.get("billing_cycle_end"),
             "subscription_active": sub_status.get("active", False),
             "onboarding_completed": user_doc.get("onboarding_completed", False)
@@ -2519,8 +2534,7 @@ async def register_email(request: EmailRegisterRequest, http_request: Request, b
     password_hash = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     role = "super_admin" if request.email == SUPER_ADMIN_EMAIL else "user"
-    trial_end = datetime.now(timezone.utc) + timedelta(days=14)
-    
+
     user_doc = {
         "user_id": user_id,
         "email": request.email,
@@ -2533,12 +2547,12 @@ async def register_email(request: EmailRegisterRequest, http_request: Request, b
         "email_verified": False,
         "verification_token": verification_token,  # SAME token that will be emailed
         "verification_expires": verification_expires.isoformat(),
-        # Subscription fields
+        # Subscription fields — Free Plan, no expiry
         "plan_type": "free",
-        "subscription_status": "trialing",
+        "subscription_status": "active",
         "stripe_customer_id": None,
         "stripe_subscription_id": None,
-        "trial_ends_at": trial_end.isoformat(),
+        "trial_ends_at": None,
         "billing_cycle_start": None,
         "billing_cycle_end": None,
         "grace_period_end": None,
@@ -7236,7 +7250,7 @@ async def get_admin_user_subscription(
             raise HTTPException(status_code=404, detail="User not found")
         
         plan_type = user.get("plan_type", "free")
-        subscription_status = user.get("subscription_status", "trialing")
+        subscription_status = user.get("subscription_status", "active")
         stripe_customer_id = user.get("stripe_customer_id")
         stripe_subscription_id = user.get("stripe_subscription_id")
         
@@ -7251,10 +7265,10 @@ async def get_admin_user_subscription(
             "stripe_subscription_id": stripe_subscription_id or "N/A",
             "stripe_price_id": "N/A",
             "currency": "N/A",
-            "trial_active": False,
-            "trial_end_date": None,
             "subscription_end_date": None,
             "grace_period_end": None,
+            "downgraded_to_free_at": user.get("downgraded_to_free_at"),
+            "downgrade_reason": user.get("downgrade_reason"),
             "is_permanent_plan": user.get("email", "").lower() in PERMANENT_PLAN_ASSIGNMENTS,
             "admin_override_active": user.get("admin_override_active", False),
             "admin_override_plan": user.get("admin_override_plan"),
@@ -7275,19 +7289,6 @@ async def get_admin_user_subscription(
             subscription_info["notes"] = "Permanently assigned plan (bypasses Stripe)"
         elif stripe_subscription_id:
             subscription_info["plan_source"] = "stripe"
-        
-        # Check trial status
-        trial_ends_at = user.get("trial_ends_at")
-        if trial_ends_at:
-            if isinstance(trial_ends_at, str):
-                trial_dt = datetime.fromisoformat(trial_ends_at.replace('Z', '+00:00'))
-            else:
-                trial_dt = trial_ends_at
-            if trial_dt.tzinfo is None:
-                trial_dt = trial_dt.replace(tzinfo=timezone.utc)
-            
-            subscription_info["trial_end_date"] = trial_ends_at
-            subscription_info["trial_active"] = datetime.now(timezone.utc) < trial_dt and subscription_status == "trialing"
         
         # Get billing cycle end from local storage
         billing_cycle_end = user.get("billing_cycle_end")
@@ -7352,7 +7353,7 @@ async def get_admin_user_subscription(
 # ==================== ADMIN PLAN OVERRIDE ENDPOINTS ====================
 
 class AdminPlanOverrideRequest(BaseModel):
-    plan: str  # "starter" or "growth"
+    plan: str  # "free", "starter", "growth", or "custom_*"
 
 @api_router.post("/admin/users/{user_id}/assign-plan")
 async def admin_assign_plan(
@@ -7362,6 +7363,7 @@ async def admin_assign_plan(
 ):
     """
     Assign a plan to a user via admin override.
+    Supports `free` (downgrade), `starter`, `growth`, or custom_* slabs.
     Only works for users WITHOUT an active Stripe subscription.
     """
     try:
@@ -7371,8 +7373,9 @@ async def admin_assign_plan(
             raise HTTPException(status_code=404, detail="User not found")
         
         # Validate plan type
-        if request.plan not in ["starter", "growth"]:
-            raise HTTPException(status_code=400, detail="Plan must be 'starter' or 'growth'")
+        valid_plans = {"free", "starter", "growth"} | {s["slug"] for s in CUSTOM_PLAN_SLABS}
+        if request.plan not in valid_plans:
+            raise HTTPException(status_code=400, detail=f"Plan must be one of: {sorted(valid_plans)}")
         
         # Check if user has active Stripe subscription
         stripe_sub_id = user.get("stripe_subscription_id")
@@ -7389,16 +7392,30 @@ async def admin_assign_plan(
                 detail="This user has a permanently assigned plan that cannot be overridden."
             )
         
-        # Apply admin override
-        update_data = {
-            "admin_override_active": True,
-            "admin_override_plan": request.plan,
-            "plan_type": request.plan,
-            "plan_source": "admin_override",
-            "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
-            # Clear trial expiry since they now have a plan
-            "subscription_status": "active"
-        }
+        # Apply admin override (or — when assigning `free` — wipe overrides and use base plan)
+        if request.plan == "free":
+            update_data = {
+                "admin_override_active": False,
+                "admin_override_plan": None,
+                "plan_type": "free",
+                "plan_source": "free",
+                "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
+                "subscription_status": "active",
+                "trial_ends_at": None,
+                "grace_period_end": None,
+                "downgraded_to_free_at": datetime.now(timezone.utc).isoformat(),
+                "downgrade_reason": "admin_assigned",
+            }
+        else:
+            update_data = {
+                "admin_override_active": True,
+                "admin_override_plan": request.plan,
+                "plan_type": request.plan,
+                "plan_source": "admin_override",
+                "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
+                "subscription_status": "active",
+                "trial_ends_at": None,
+            }
         
         await db.users.update_one(
             {"user_id": user_id},
@@ -7451,14 +7468,15 @@ async def admin_remove_override(
         if not user.get("admin_override_active"):
             raise HTTPException(status_code=400, detail="User does not have an active admin override")
         
-        # Remove override and revert to free
+        # Remove override and revert to Free Plan (no expiry)
         update_data = {
             "admin_override_active": False,
             "admin_override_plan": None,
             "plan_type": "free",
             "plan_source": "free",
             "admin_override_updated_at": datetime.now(timezone.utc).isoformat(),
-            "subscription_status": "trialing"  # Revert to trial status
+            "subscription_status": "active",
+            "trial_ends_at": None,
         }
         
         await db.users.update_one(
@@ -7596,11 +7614,13 @@ async def get_subscription_status(user: User = Depends(get_current_user)):
     
     return {
         "plan_type": user_doc.get("plan_type", "free"),
-        "subscription_status": user_doc.get("subscription_status", "trialing"),
+        "subscription_status": user_doc.get("subscription_status", "active"),
         "subscription_active": sub_status.get("active", False),
         "status_details": sub_status,
         "trial_ends_at": user_doc.get("trial_ends_at"),
         "billing_cycle_end": user_doc.get("billing_cycle_end"),
+        "downgraded_to_free_at": user_doc.get("downgraded_to_free_at"),
+        "downgrade_reason": user_doc.get("downgrade_reason"),
         "limits": limits,
         "usage": {
             "accounts": account_usage,
@@ -7655,8 +7675,9 @@ async def get_subscription_prices():
             "slabs": custom_slabs,
         },
         "free_plan": {
-            "name": "Free Trial",
-            "trial_days": 14,
+            "name": "Free",
+            "free_forever": True,
+            "price_usd": 0,
             "features": {
                 "max_accounts": 3,
                 "max_contacts": 500,
@@ -7943,7 +7964,10 @@ async def handle_payment_failed(invoice):
         logger.error(f"handle_payment_failed error: {e}")
 
 async def handle_subscription_deleted(subscription):
-    """Handle subscription cancellation"""
+    """Handle subscription cancellation — keep user on their paid plan until billing_cycle_end,
+    then downgrade lazily via check_subscription_active(). If the cycle is already past
+    when this webhook fires, downgrade immediately.
+    """
     try:
         customer_id = subscription.get("customer")
         
@@ -7951,18 +7975,33 @@ async def handle_subscription_deleted(subscription):
         if not user:
             return
         
-        await db.users.update_one(
-            {"user_id": user["user_id"]},
-            {"$set": {
-                "plan_type": "free",
-                "subscription_status": "canceled",
-                "stripe_subscription_id": None,
-                "billing_cycle_start": None,
-                "billing_cycle_end": None
-            }}
-        )
+        cycle_end_raw = user.get("billing_cycle_end")
+        is_past = True
+        if cycle_end_raw:
+            try:
+                ce = (datetime.fromisoformat(cycle_end_raw.replace('Z', '+00:00'))
+                      if isinstance(cycle_end_raw, str) else cycle_end_raw)
+                if ce.tzinfo is None:
+                    ce = ce.replace(tzinfo=timezone.utc)
+                is_past = datetime.now(timezone.utc) >= ce
+            except Exception:
+                is_past = True
+
+        if is_past:
+            # Already past cycle end — immediate downgrade
+            await _downgrade_to_free_plan(user["user_id"], reason="subscription_deleted")
+        else:
+            # Stay on the paid plan until cycle ends; check_subscription_active will
+            # detect cycle expiry and call _downgrade_to_free_plan automatically.
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": {
+                    "subscription_status": "canceled",
+                    "stripe_subscription_id": None,
+                }}
+            )
         
-        logger.info(f"Subscription canceled for user {user['user_id']}")
+        logger.info(f"Subscription canceled for user {user['user_id']} (immediate_downgrade={is_past})")
         
     except Exception as e:
         logger.error(f"handle_subscription_deleted error: {e}")
