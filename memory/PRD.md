@@ -1,6 +1,36 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 49 (June 2026)
+
+### Blog Permission Management
+- New per-user permission `can_manage_blogs` (boolean, default false) — independent of role / subscription / campaign permissions.
+- New backend dependency `get_blog_manager_user` — allows access when `role == "super_admin"` OR `can_manage_blogs == true`. Replaces `get_super_admin_user` on all 6 `/api/admin/blogs*` endpoints (list/create/read/update/delete + image upload).
+- New endpoint `PUT /api/admin/users/{user_id}/blog-permission` (super_admin only) — body `{can_manage_blogs: bool}`. Records `blog_permission_updated_at` + `blog_permission_updated_by` and writes to `admin_logs`.
+- `/api/auth/me` now returns `can_manage_blogs`.
+- `/api/admin/users` listing now includes `can_manage_blogs` per user.
+
+### Blog Backup & Restore
+- New endpoint `GET /api/admin/backup/blogs/export` (super_admin only) → ZIP with `metadata.json` + `blogs.json`. Featured images preserved inline as base64 data-URIs inside `blogs.json` (per design).
+- New endpoint `POST /api/admin/backup/blogs/export` with `{blog_ids:[...]}` (super_admin only) → ZIP of selected blogs only.
+- New endpoint `POST /api/admin/backup/blogs/import?conflict=skip|merge|replace|copy` (default `copy`) — restores blogs from a backup ZIP. Works with blog-only and full-platform exports.
+  - **copy** (default): inserts a new blog with fresh `blog_id`, slug suffix `-imported`, title suffix `(Imported)`.
+  - **skip**: leaves existing blog untouched.
+  - **merge**: updates the existing blog with imported fields (preserves `blog_id` + `slug`).
+  - **replace**: replaces the existing blog in place (preserves `blog_id` + `slug`).
+- `POST /api/admin/backup/export/users` now accepts optional `include_blogs: bool` — when true, bundles `blogs.json` (all platform blogs) into the selected-users ZIP. Default false.
+
+### Frontend
+- **Sidebar**: new `Blog Management` link (testid `nav-blog-management`) visible to super_admin OR users with `can_manage_blogs`.
+- **AdminBlogs** (`/admin/blogs`): permission gate relaxed — now reachable by any user with `can_manage_blogs`. Back button routes non-super-admins to `/dashboard`.
+- **AdminDashboard** Users table: new blog-permission toggle per row (testid `blog-permission-toggle-{user_id}`) — disabled for super_admins (always-on by virtue of role).
+- **SystemBackupRestore**: new `Blog Backup & Restore` section (testid `sys-backup-blogs-section`) with `Export All Blogs`, `Export Selected Blogs`, `Import Blogs` flows. New `Include Blogs` checkbox on the Export Selected Users section.
+
+### Verification
+- Iteration 49 test report: 28/28 backend tests pass (grant + revoke + 403/200 enforcement + all 4 conflict modes + invalid-ZIP handling + regression on existing /campaigns /drip-campaigns /accounts /dne-lists /unibox/replies /auth/me). Frontend testids verified at source level + live smoke screenshots (admin dashboard + system backup page).
+- `retest_needed: false`.
+
+
 ## Changelog — Iteration 48 (June 2026)
 
 ### Stripe secret rotation + dashboard support footer
