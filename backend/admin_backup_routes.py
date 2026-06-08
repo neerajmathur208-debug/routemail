@@ -147,6 +147,15 @@ async def _record_backup_history(
 class SelectedUsersExportRequest(BaseModel):
     user_ids: List[str]
     include_credentials: bool = True  # encrypted blobs only — never plain text
+    include_blogs: bool = False  # blogs are platform-wide; include only if requested
+
+
+class SelectedBlogsExportRequest(BaseModel):
+    blog_ids: List[str]
+
+
+class BlogsImportOptions(BaseModel):
+    conflict: str = "copy"  # skip | merge | replace | copy
 
 
 class PlatformImportOptions(BaseModel):
@@ -308,13 +317,28 @@ def build_admin_backup_router(db, get_super_admin_user):  # noqa: C901
             "backup_type": "selected_users",
             "exported_at": _now_iso(),
             "user_count": len(scrubbed_users),
+            "includes_blogs": bool(req.include_blogs),
         }
+
+        # Optionally include blogs (platform-wide collection).
+        # When include_blogs=True, ALL blogs are bundled. Restore-side will
+        # de-dupe by slug. This is intentional because blogs are not strictly
+        # scoped per user in the current schema.
+        blogs_payload: List[Dict[str, Any]] = []
+        if req.include_blogs:
+            blogs_payload = [
+                {k: v for k, v in b.items() if k != "_id"}
+                for b in await db.blogs.find({}, {"_id": 0}).to_list(100000)
+            ]
+            metadata["counts"] = {"blogs": len(blogs_payload)}
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("metadata.json", json.dumps(metadata, indent=2, default=str))
             zf.writestr("users.json", json.dumps(scrubbed_users, indent=2, default=str))
             zf.writestr("per_user_data.json", json.dumps(per_user_blocks, indent=2, default=str))
+            if req.include_blogs:
+                zf.writestr("blogs.json", json.dumps(blogs_payload, indent=2, default=str))
         buf.seek(0)
         content = buf.read()
 
@@ -519,6 +543,169 @@ def build_admin_backup_router(db, get_super_admin_user):  # noqa: C901
                 "plans": len(parsed["plans"]),
                 "system_settings": len(parsed["system_settings"]),
             },
+        }
+
+    # ============================================================
+    # EXPORT — blogs only (all or selected)
+    # ============================================================
+    def _stream_blogs_zip(blogs: List[Dict[str, Any]], backup_type: str) -> bytes:
+        metadata = {
+            "schema_version": PLATFORM_SCHEMA_VERSION,
+            "routemail_version": ROUTEMAIL_VERSION,
+            "backup_type": backup_type,
+            "exported_at": _now_iso(),
+            "counts": {"blogs": len(blogs)},
+            "note": "Featured images are stored inline as base64 data-URIs inside blogs.json.",
+        }
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("metadata.json", json.dumps(metadata, indent=2, default=str))
+            zf.writestr("blogs.json", json.dumps(blogs, indent=2, default=str))
+        buf.seek(0)
+        return buf.read()
+
+    @router.get("/blogs/export")
+    async def export_all_blogs(admin=Depends(get_super_admin_user)):
+        blogs = [
+            {k: v for k, v in b.items() if k != "_id"}
+            for b in await db.blogs.find({}, {"_id": 0}).to_list(100000)
+        ]
+        content = _stream_blogs_zip(blogs, "blogs_all")
+        await _record_backup_history(
+            db,
+            admin_user_id=admin.get("user_id") if isinstance(admin, dict) else "admin",
+            backup_type="blogs_all",
+            file_size=len(content),
+            user_count=0,
+        )
+        fname = f"routemail-blogs-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
+    @router.post("/blogs/export")
+    async def export_selected_blogs(req: SelectedBlogsExportRequest, admin=Depends(get_super_admin_user)):
+        if not req.blog_ids:
+            raise HTTPException(status_code=400, detail="At least one blog_id required")
+        blogs = [
+            {k: v for k, v in b.items() if k != "_id"}
+            for b in await db.blogs.find({"blog_id": {"$in": req.blog_ids}}, {"_id": 0}).to_list(100000)
+        ]
+        if not blogs:
+            raise HTTPException(status_code=404, detail="No matching blogs found")
+        content = _stream_blogs_zip(blogs, "blogs_selected")
+        await _record_backup_history(
+            db,
+            admin_user_id=admin.get("user_id") if isinstance(admin, dict) else "admin",
+            backup_type="blogs_selected",
+            file_size=len(content),
+            user_count=0,
+        )
+        fname = f"routemail-blogs-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
+    @router.post("/blogs/import")
+    async def import_blogs(
+        file: UploadFile = File(...),
+        conflict: str = Query("copy"),
+        admin=Depends(get_super_admin_user),
+    ):
+        """Restore blogs from a backup ZIP (full-platform OR blogs-only).
+
+        Conflict modes (applied when a blog with the same slug already exists):
+        - skip      → leave the existing blog untouched
+        - merge     → update the existing blog with fields from the import (preserves blog_id)
+        - replace   → delete the existing blog and insert the imported one as-is
+        - copy      → insert as a new blog with a fresh blog_id and "<title> (Imported)" + suffixed slug (default)
+        """
+        conflict = (conflict or "copy").lower()
+        if conflict not in ("skip", "merge", "replace", "copy"):
+            raise HTTPException(status_code=400, detail="conflict must be skip|merge|replace|copy")
+
+        content = await file.read()
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                names = set(zf.namelist())
+                if "blogs.json" not in names:
+                    raise HTTPException(status_code=400, detail="ZIP does not contain blogs.json")
+                blogs = json.loads(zf.read("blogs.json") or b"[]")
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive")
+
+        if not isinstance(blogs, list):
+            raise HTTPException(status_code=400, detail="Invalid blogs.json format")
+
+        results = {"imported": 0, "skipped": 0, "merged": 0, "replaced": 0, "copied": 0, "items": []}
+
+        async def _unique_slug(base: str, current_id: Optional[str] = None) -> str:
+            candidate = base
+            n = 2
+            while True:
+                q = {"slug": candidate}
+                if current_id:
+                    q["blog_id"] = {"$ne": current_id}
+                if not await db.blogs.find_one(q, {"slug": 1}):
+                    return candidate
+                candidate = f"{base}-{n}"
+                n += 1
+
+        for blog in blogs:
+            blog = {k: v for k, v in blog.items() if k != "_id"}
+            slug = blog.get("slug") or ""
+            existing = await db.blogs.find_one({"slug": slug}, {"_id": 0}) if slug else None
+
+            if existing:
+                if conflict == "skip":
+                    results["skipped"] += 1
+                    results["items"].append({"slug": slug, "action": "skipped"})
+                    continue
+                if conflict == "merge":
+                    merged_doc = {**blog, "blog_id": existing["blog_id"], "slug": existing["slug"]}
+                    await db.blogs.update_one({"blog_id": existing["blog_id"]}, {"$set": merged_doc})
+                    results["merged"] += 1
+                    results["items"].append({"slug": slug, "action": "merged"})
+                    continue
+                if conflict == "replace":
+                    new_doc = {**blog}
+                    new_doc["blog_id"] = existing["blog_id"]
+                    new_doc["slug"] = existing["slug"]
+                    await db.blogs.replace_one({"blog_id": existing["blog_id"]}, new_doc)
+                    results["replaced"] += 1
+                    results["items"].append({"slug": slug, "action": "replaced"})
+                    continue
+                # copy
+                new_blog = {**blog}
+                new_blog["blog_id"] = f"blog_{uuid.uuid4().hex[:12]}"
+                base_slug = f"{slug}-imported" if slug else f"post-{uuid.uuid4().hex[:6]}"
+                new_blog["slug"] = await _unique_slug(base_slug, current_id=new_blog["blog_id"])
+                if new_blog.get("title"):
+                    new_blog["title"] = f"{new_blog['title']} (Imported)"
+                await db.blogs.insert_one(new_blog)
+                results["copied"] += 1
+                results["items"].append({"slug": new_blog["slug"], "action": "copied"})
+            else:
+                # Fresh insert — keep slug + blog_id from backup
+                new_blog = {**blog}
+                if not new_blog.get("blog_id"):
+                    new_blog["blog_id"] = f"blog_{uuid.uuid4().hex[:12]}"
+                if not new_blog.get("slug"):
+                    new_blog["slug"] = await _unique_slug(f"post-{uuid.uuid4().hex[:6]}", current_id=new_blog["blog_id"])
+                await db.blogs.insert_one(new_blog)
+                results["imported"] += 1
+                results["items"].append({"slug": new_blog["slug"], "action": "imported"})
+
+        return {
+            "success": True,
+            "conflict": conflict,
+            "total": len(blogs),
+            **{k: v for k, v in results.items() if k != "items"},
+            "items": results["items"][:200],  # truncate large lists in response
         }
 
     # ============================================================

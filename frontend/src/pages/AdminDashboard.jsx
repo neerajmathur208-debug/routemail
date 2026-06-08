@@ -23,6 +23,7 @@ import {
   Crown,
   UserCog,
   Database,
+  PenSquare,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -200,6 +201,23 @@ export default function AdminDashboard({ user, setUser }) {
       toast.error(error.response?.data?.detail || "Failed to update role");
     } finally {
       setRoleLoading(false);
+    }
+  };
+
+  const handleToggleBlogPermission = async (u) => {
+    const next = !u.can_manage_blogs;
+    try {
+      await api.put(`/admin/users/${u.user_id}/blog-permission`, {
+        can_manage_blogs: next,
+      });
+      toast.success(
+        next
+          ? `Granted Blog Management to ${u.email}`
+          : `Revoked Blog Management from ${u.email}`
+      );
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update blog permission");
     }
   };
 
@@ -613,6 +631,33 @@ export default function AdminDashboard({ user, setUser }) {
                   <TableCell className="text-slate-500 text-sm">{formatDate(u.last_login)}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleToggleBlogPermission(u)}
+                        data-testid={`blog-permission-toggle-${u.user_id}`}
+                        title={
+                          u.role === "super_admin"
+                            ? "Super Admins always have blog management"
+                            : (u.can_manage_blogs
+                                ? "Revoke Blog Management"
+                                : "Grant Blog Management")
+                        }
+                        disabled={u.role === "super_admin"}
+                      >
+                        <PenSquare
+                          size={16}
+                          className={
+                            u.role === "super_admin"
+                              ? "text-indigo-400"
+                              : (u.can_manage_blogs
+                                  ? "text-indigo-600"
+                                  : "text-slate-400 hover:text-indigo-500")
+                          }
+                          strokeWidth={u.can_manage_blogs || u.role === "super_admin" ? 2.2 : 1.5}
+                        />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

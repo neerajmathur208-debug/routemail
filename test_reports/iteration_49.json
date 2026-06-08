@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 49 — Blog Permission Management + Blog Backup/Restore. BACKEND: 28/28 pytest pass via the public REACT_APP_BACKEND_URL (zero failures). Full coverage of (a) PUT /api/admin/users/{id}/blog-permission grant + revoke + super-admin-only enforcement; (b) get_blog_manager_user 403/200 on all 6 /admin/blogs endpoints — verified delegated user (drip.tester with can_manage_blogs=true) can list/read/create/update/delete a blog and upload a featured image, and the doc is persisted in mongo; (c) /api/auth/me + /api/admin/users both expose can_manage_blogs; (d) blog backup ZIP — GET /admin/backup/blogs/export returns metadata.json + blogs.json with featured_image_url preserved as inline data-URI; POST variant filters by blog_ids; both endpoints 403 for non-super-admin even if can_manage_blogs=true; (e) all four import conflict modes (skip / merge / replace / copy) work correctly — copy creates fresh blog_id with '-imported' slug + '(Imported)' title, skip leaves existing untouched, merge updates in-place keeping blog_id+slug, replace also preserves blog_id+slug; (f) invalid file (non-zip + zip-without-blogs.json) returns 400; (g) users-export include_blogs=true bundles blogs.json, default false does not; (h) full-platform export + import still carry blogs (regression OK); (i) existing endpoints (/campaigns /drip-campaigns /accounts /dne-lists /unibox/replies /auth/me) all 200. FRONTEND: source-level verification confirms all 5 testids exist (nav-blog-management, blog-permission-toggle-{user_id}, sys-backup-blogs-section, sys-backup-export-blogs-all-btn, sys-backup-open-blogs-import-btn, include-blogs-checkbox, sys-backup-blogs-list) plus the permission gate at AdminBlogs.jsx L83 (super_admin OR can_manage_blogs, otherwise navigate('/dashboard')) and Sidebar.jsx L49 (canManageBlogs = isSuperAdmin || !!user?.can_manage_blogs). Live Playwright UI test could NOT be executed because the public preview URL (https://routemail.preview.emergentagent.com/) is currently returning the emergent.sh 'Preview Unavailable!!!' placeholder (Webflow 404 page) for the FRONTEND route — but the SAME URL routes /api/* requests through to backend correctly (proven by 28/28 backend tests). This is an upstream emergent preview-routing condition (frontend supervisor is RUNNING locally at port 3000 returning 200), not a code bug introduced by iter-49.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_49_blog_permissions_backup.py",
+    "/app/test_reports/pytest/iter49_results.xml"
+  ],
+  "action_items": [
+    "Optional: Once the emergent.sh preview-routing layer wakes the frontend back up, re-run the Playwright UI script (in this report's context_for_next_testing_agent) to live-verify (1) sidebar nav-blog-management hidden/visible toggle for normal user pre/post grant, (2) the blog-permission-toggle-{user_id} button click on /admin actually calls PUT /admin/users/{id}/blog-permission, (3) sys-backup-blogs-section renders on /backup with all 4 sub-testids, (4) delegated user reaches /admin/blogs successfully. Backend already confirms all underlying APIs and source confirms all testids + gates are wired."
+  ],
+  "critical_code_review_comments": [
+    "admin_backup_routes.py L613-709 import_blogs: clean, idempotent design. Conflict-mode dispatch is exhaustive (skip/merge/replace/copy) and matches user spec (copy is default). _unique_slug correctly handles repeat imports by suffixing -2/-3.",
+    "admin_backup_routes.py L588-611 POST /blogs/export rejects empty blog_ids with 400 and returns 404 when no matching blogs — good defensive behaviour.",
+    "server.py L6199-6212 get_blog_manager_user — clean dependency, properly inspects role first then can_manage_blogs flag.",
+    "server.py L7136+ PUT /admin/users/{id}/blog-permission validates body, persists with $set, writes audit row via _record_backup_history-equivalent log. Returns updated value in response.",
+    "Sidebar.jsx + AdminBlogs.jsx permission gates use `user?.can_manage_blogs` (bool-or-undefined safe) and OR with super_admin role — consistent across UI and backend.",
+    "Pre-existing lint blockers on Sidebar.jsx L101 (NavLink-in-function-body), AdminDashboard.jsx (no-unstable-nested-components), AdminBlogs.jsx (unescaped quote) — NOT introduced by iter-49 and confirmed to not break runtime (CRA dev server reports compile-OK)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_49_blog_permissions_backup.py (new — 28 tests, reusable as regression)"
+  ],
+  "success_rate": {"backend": "100% (28/28 pytest pass)", "frontend": "source-verified 100% (all 5 testids present, gates wired); live Playwright blocked by upstream preview-routing showing Preview Unavailable splash"},
+  "test_credentials": "Used both super-admin dhruvmathur208@gmail.com (user_b3e333b0f467) and drip.tester@example.com (user_35cc629e1385) — sessions injected directly into db.user_sessions to bypass Turnstile (proven iter-48 pattern). All TEST_iter49_* session rows + TEST_iter49 blog rows cleaned up in teardown; drip.tester can_manage_blogs reset to false at end.",
+  "seed_data_creation": "Per-test ephemeral data only: (a) session rows prefixed TEST_iter49_ in db.user_sessions, (b) one persistent seed blog with slug iter49-seed-* in db.blogs scoped to TestBlogBackup class — all torn down in fixtures.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend coverage is comprehensive — reuse /app/backend/tests/test_iteration_49_blog_permissions_backup.py for any future blog-permission / blog-backup regression. Pattern: inject session row directly into db.user_sessions (bypasses Turnstile + Stripe gate). The Playwright UI script that was prepared (but blocked by an upstream 'Preview Unavailable' splash at the time of testing) is embedded in this iteration's tool calls — it (1) sets session_token cookie for drip.tester, expects nav-blog-management count==0 and /admin/blogs redirect to /dashboard; (2) swaps to super-admin cookie, expects nav-blog-management count>=1, clicks blog-permission-toggle-{user_35cc629e1385} and asserts a PUT to /api/admin/users/.../blog-permission with status 200; (3) navigates to /backup and asserts all 5 testids (sys-backup-blogs-section, sys-backup-export-blogs-all-btn, sys-backup-open-blogs-import-btn, include-blogs-checkbox, sys-backup-blogs-list) render; (4) swaps back to drip.tester (now with can_manage_blogs=true) and asserts /admin/blogs renders (not redirected). If the preview routing is restored before next iteration, run that script to close the live-UI loop.",
+  "rca of the issue": "Not applicable — no bugs found in iter-49. Note: the public preview URL currently serves the emergent.sh 'Preview Unavailable' Webflow placeholder for the FRONTEND (HTML route /), but /api/* still routes through to the backend correctly (28/28 pytest pass against that same hostname). Frontend supervisor is RUNNING (uptime 0:57:49) and localhost:3000 returns 200. This is an emergent preview-routing inactivity gate, not an iter-49 regression."
+}

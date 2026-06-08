@@ -20,6 +20,7 @@ import {
   Inbox,
   Star,
   Server,
+  PenSquare,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -45,6 +46,7 @@ export default function Sidebar({ user, setUser }) {
   const [userPlan, setUserPlan] = useState(null);
 
   const isSuperAdmin = user?.role === "super_admin";
+  const canManageBlogs = isSuperAdmin || !!user?.can_manage_blogs;
 
   // Fetch user subscription status
   useEffect(() => {
@@ -199,6 +201,26 @@ export default function Sidebar({ user, setUser }) {
             <NavLink key={item.path} item={item} />
           ))}
           
+          {/* Blog Management — visible to super_admin OR users with can_manage_blogs */}
+          {canManageBlogs && (
+            <button
+              data-testid="nav-blog-management"
+              onClick={() => {
+                navigate("/admin/blogs");
+                setMobileOpen(false);
+              }}
+              className={`sidebar-link w-full ${!isSuperAdmin ? "mt-4 border-t border-slate-200 pt-4" : ""} ${
+                location.pathname.startsWith("/admin/blogs") ? "active" : ""
+              }`}
+            >
+              <PenSquare size={20} strokeWidth={1.5} className="text-indigo-600" />
+              <span className="font-medium text-indigo-600">Blog Management</span>
+              {location.pathname.startsWith("/admin/blogs") && (
+                <ChevronRight size={16} className="ml-auto" />
+              )}
+            </button>
+          )}
+
           {/* Admin Panel Link - Only for super_admin */}
           {isSuperAdmin && (
             <>
@@ -209,12 +231,12 @@ export default function Sidebar({ user, setUser }) {
                   setMobileOpen(false);
                 }}
                 className={`sidebar-link w-full mt-4 border-t border-slate-200 pt-4 ${
-                  location.pathname === "/admin" || location.pathname.startsWith("/admin/users") || location.pathname.startsWith("/admin/blogs") ? "active" : ""
+                  location.pathname === "/admin" || location.pathname.startsWith("/admin/users") ? "active" : ""
                 }`}
               >
                 <Shield size={20} strokeWidth={1.5} className="text-violet-600" />
                 <span className="font-medium text-violet-600">Admin Panel</span>
-                {(location.pathname === "/admin" || location.pathname.startsWith("/admin/users") || location.pathname.startsWith("/admin/blogs")) && (
+                {(location.pathname === "/admin" || location.pathname.startsWith("/admin/users")) && (
                   <ChevronRight size={16} className="ml-auto" />
                 )}
               </button>

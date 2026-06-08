@@ -80,7 +80,7 @@ export default function AdminBlogs({ user, setUser }) {
   }, []);
 
   useEffect(() => {
-    if (user && user.role !== "super_admin") {
+    if (user && user.role !== "super_admin" && !user.can_manage_blogs) {
       navigate("/dashboard", { replace: true });
       return;
     }
@@ -165,7 +165,7 @@ export default function AdminBlogs({ user, setUser }) {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-6xl mx-auto p-6 lg:p-10">
         <div className="flex items-center gap-3 mb-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(user?.role === "super_admin" ? "/admin" : "/dashboard")} data-testid="admin-blog-back-btn">
             <ArrowLeft size={20} />
           </Button>
           <h1 className="text-3xl font-bold text-slate-900 flex-1 flex items-center gap-2">

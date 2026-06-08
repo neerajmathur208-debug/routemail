@@ -2450,6 +2450,7 @@ async def get_me(user: User = Depends(get_current_user)):
             "subscription_status": user_doc.get("subscription_status", "active"),
             "plan_type": user_doc.get("plan_type", "free"),
             "role": user_doc.get("role", "user"),
+            "can_manage_blogs": bool(user_doc.get("can_manage_blogs", False)),
             "trial_ends_at": None,
             "billing_cycle_end": user_doc.get("billing_cycle_end"),
             "downgraded_to_free_at": user_doc.get("downgraded_to_free_at"),
@@ -6195,6 +6196,21 @@ async def get_super_admin_user(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Access denied. Super admin required.")
     return user_doc
 
+async def get_blog_manager_user(request: Request) -> dict:
+    """Allow access for super_admin OR any user with `can_manage_blogs=True`.
+    Used by /admin/blogs endpoints so a delegated user can manage blogs without
+    being promoted to super_admin.
+    """
+    user = await get_current_user(request)
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    if user_doc.get("role") == "super_admin":
+        return user_doc
+    if bool(user_doc.get("can_manage_blogs")):
+        return user_doc
+    raise HTTPException(status_code=403, detail="Access denied. Blog management permission required.")
+
 def _slugify(text: str) -> str:
     text = re.sub(r'[^A-Za-z0-9]+', '-', (text or '').strip().lower())
     return text.strip('-') or f"post-{uuid.uuid4().hex[:6]}"
@@ -6220,14 +6236,14 @@ async def get_public_blog(slug: str):
     return blog
 
 @api_router.get("/admin/blogs")
-async def admin_list_blogs(admin: dict = Depends(get_super_admin_user)):
-    """Super admin: list all blogs (drafts + published)."""
+async def admin_list_blogs(admin: dict = Depends(get_blog_manager_user)):
+    """List all blogs (drafts + published). Open to super_admin OR users with can_manage_blogs."""
     blogs = await db.blogs.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return blogs
 
 @api_router.post("/admin/blogs")
-async def admin_create_blog(request: CreateBlogRequest, admin: dict = Depends(get_super_admin_user)):
-    """Super admin: create a new blog."""
+async def admin_create_blog(request: CreateBlogRequest, admin: dict = Depends(get_blog_manager_user)):
+    """Create a new blog. Open to super_admin OR users with can_manage_blogs."""
     if not request.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
     if not request.content.strip():
@@ -6269,14 +6285,14 @@ async def admin_create_blog(request: CreateBlogRequest, admin: dict = Depends(ge
     return blog
 
 @api_router.get("/admin/blogs/{blog_id}")
-async def admin_get_blog(blog_id: str, admin: dict = Depends(get_super_admin_user)):
+async def admin_get_blog(blog_id: str, admin: dict = Depends(get_blog_manager_user)):
     blog = await db.blogs.find_one({"blog_id": blog_id}, {"_id": 0})
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
     return blog
 
 @api_router.put("/admin/blogs/{blog_id}")
-async def admin_update_blog(blog_id: str, request: UpdateBlogRequest, admin: dict = Depends(get_super_admin_user)):
+async def admin_update_blog(blog_id: str, request: UpdateBlogRequest, admin: dict = Depends(get_blog_manager_user)):
     existing = await db.blogs.find_one({"blog_id": blog_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Blog not found")
@@ -6317,7 +6333,7 @@ async def admin_update_blog(blog_id: str, request: UpdateBlogRequest, admin: dic
     return updated
 
 @api_router.delete("/admin/blogs/{blog_id}")
-async def admin_delete_blog(blog_id: str, admin: dict = Depends(get_super_admin_user)):
+async def admin_delete_blog(blog_id: str, admin: dict = Depends(get_blog_manager_user)):
     res = await db.blogs.delete_one({"blog_id": blog_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Blog not found")
@@ -6326,7 +6342,7 @@ async def admin_delete_blog(blog_id: str, admin: dict = Depends(get_super_admin_
 @api_router.post("/admin/blogs/upload-image")
 async def admin_upload_blog_image(
     file: UploadFile = File(...),
-    admin: dict = Depends(get_super_admin_user),
+    admin: dict = Depends(get_blog_manager_user),
 ):
     """Upload a featured image — stored as a base64 data URI in the DB.
     Keeps deployment simple (no external CDN required).
@@ -6986,6 +7002,7 @@ async def get_admin_users(
                 "email": user["email"],
                 "name": user.get("name", ""),
                 "role": user.get("role", "user"),
+                "can_manage_blogs": bool(user.get("can_manage_blogs", False)),
                 "subscription_status": user.get("subscription_status", "inactive"),
                 "created_at": user.get("created_at"),
                 "accounts_count": accounts_count,
@@ -7115,6 +7132,56 @@ async def update_user_role(
     except Exception as e:
         logger.error(f"Update role error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/admin/users/{user_id}/blog-permission")
+async def update_blog_permission(
+    user_id: str,
+    payload: dict,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Grant or revoke `can_manage_blogs` for a user (super_admin only).
+
+    Body: { "can_manage_blogs": true | false }
+
+    Super admins always have implicit blog management — toggling this on a
+    super_admin is a no-op against role but the flag is still persisted so
+    that a future demotion preserves the permission unless explicitly cleared.
+    """
+    if "can_manage_blogs" not in payload:
+        raise HTTPException(status_code=400, detail="`can_manage_blogs` boolean required in body")
+    new_value = bool(payload.get("can_manage_blogs"))
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "can_manage_blogs": new_value,
+            "blog_permission_updated_at": datetime.now(timezone.utc).isoformat(),
+            "blog_permission_updated_by": admin.get("user_id"),
+        }}
+    )
+
+    # Audit log
+    try:
+        await db.admin_logs.insert_one({
+            "log_id": f"log_{uuid.uuid4().hex[:12]}",
+            "admin_user_id": admin.get("user_id"),
+            "target_user_id": user_id,
+            "action": "blog_permission_updated",
+            "details": {"can_manage_blogs": new_value},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "message": f"Blog management permission {'granted' if new_value else 'revoked'}",
+        "user_id": user_id,
+        "can_manage_blogs": new_value,
+    }
 
 @api_router.delete("/admin/users/{user_id}")
 async def delete_user(
