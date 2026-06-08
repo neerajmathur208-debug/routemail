@@ -249,6 +249,24 @@ export default function Sidebar({ user, setUser }) {
             <span className="font-medium">Sign Out</span>
           </button>
         </div>
+
+        {/* Support footer — visible on every dashboard page that uses Sidebar */}
+        <div
+          className="px-4 py-3 border-t border-slate-100 bg-slate-50/60 text-[11px] leading-snug text-slate-500"
+          data-testid="sidebar-support-footer"
+        >
+          <span className="font-medium text-slate-600">Need help?</span>{" "}
+          <span className="block sm:inline">
+            For any queries or support, please contact{" "}
+            <a
+              href="mailto:support@routemail.co"
+              className="text-blue-600 hover:text-blue-700 underline break-all"
+              data-testid="support-email-link"
+            >
+              support@routemail.co
+            </a>
+          </span>
+        </div>
       </aside>
 
       {/* Main content spacer for mobile */}

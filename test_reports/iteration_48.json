@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 48 — Stripe secret rotation + Sidebar support footer. BACKEND PASSES: GET /api/health 200; GET /api/subscription/prices 200 (Stripe lib accepted the new key cleanly); protected GETs /api/campaigns, /api/drip-campaigns, /api/accounts, /api/unibox/replies, /api/dne-lists all 200 with valid session. Background scheduler + warmup worker started cleanly after restart; no Stripe AuthenticationError or api_key_expired in latest backend log run. SECURITY GREP PASSES: new key sk_live_...rRp00IrhIp5Dk appears in exactly ONE place — /app/backend/.env (excluding the test file itself). Old key sk_live_...xCMrFc2g has ZERO matches anywhere under /app (excluding .git). No sk_live_ anywhere in /app/frontend (src or any other subdir except node_modules). No frontend build dir exists (dev-mode serving) so no bundle leak possible. FRONTEND PASSES: /login does NOT render `sidebar-support-footer` (auth gate). 10/10 dashboard pages render the footer correctly with testid `sidebar-support-footer` containing 'Need help?' + 'For any queries or support, please contact support@routemail.co' and an <a data-testid='support-email-link' href='mailto:support@routemail.co'>. Verified via Playwright on /dashboard, /campaign, /drip-campaigns, /accounts (note: review request listed /email-accounts but actual frontend route is /accounts — Sidebar 'Email Accounts' link points to /accounts), /email-lists, /unibox, /leads, /do-not-email, /subscription, /backup. Mobile 390x844 on /dashboard: footer renders inside sidebar with no horizontal page overflow (document.scrollWidth <= innerWidth).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/auth/me", "issue": "Returns 500 with AttributeError: 'NoneType' object has no attribute 'startswith' at server.py L1792 inside check_subscription_active(). Triggered for any user whose users-doc has plan_type=None (e.g. seeded super-admin dhruvmathur208@gmail.com has plan_type:None in db). Root cause: `user.get('plan_type', 'free')` returns None when the key exists but value is None — the 'free' default only applies when the key is missing. Impact: super-admin cannot load /auth/me → React auth gate redirects them to landing → entire dashboard inaccessible for users with plan_type=None. PRE-EXISTING bug (not introduced by iter-48), but blocks the super-admin login flow listed in the iter-48 regression checklist.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_48_stripe_rotation.py",
+    "/app/test_reports/pytest/iter48_results.xml"
+  ],
+  "action_items": [
+    "Fix server.py L1788 + L1792: change `plan_type = user.get('plan_type', 'free')` to `plan_type = user.get('plan_type') or 'free'` (or guard the .startswith with `plan_type and plan_type.startswith('custom_')`). This unblocks /auth/me for super-admin (plan_type stored as None in db). Pre-existing bug surfaced during iter-48 regression — should be fixed alongside.",
+    "OPTIONAL: Backfill super-admin users in db.users to have plan_type='free' (or 'admin') instead of None, so the unaffected drip.tester behaviour matches super-admin behaviour. Not strictly needed if code fix is applied."
+  ],
+  "critical_code_review_comments": [
+    "server.py L1788: `user.get('plan_type', 'free')` returns None when the field is explicitly stored as None. Defensive idiom should be `user.get('plan_type') or 'free'`. Same pattern appears for `subscription_status` on L1789 — also vulnerable.",
+    "Sidebar.jsx: support-footer markup is unconditional inside the <aside>, so it correctly appears on every page that mounts Sidebar (Dashboard, Campaign, Drip, Accounts, Email Lists, Unibox, Leads, Do Not Email, Subscription, Backup, plus all Admin pages). Cleanly hidden on /login because Sidebar isn't rendered there.",
+    "Review request lists `/email-accounts` as a dashboard route but the actual React Route is `/accounts` (App.js L122) — the sidebar 'Email Accounts' nav link routes to /accounts. Cosmetic naming mismatch in the spec, not a bug.",
+    "Pre-existing lint blocker on Sidebar.jsx L101 (NavLink defined inside the component function body) was already there in iter-47 — NOT introduced by iter-48. Sidebar still renders correctly at runtime."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_48_stripe_rotation.py (new)"
+  ],
+  "success_rate": {"backend": "92% (11/12 pytest pass — only /auth/me fails due to pre-existing plan_type=None bug)", "frontend": "100% (10/10 dashboard pages render footer; mobile responsive; /login excluded; href + text content all verified)"},
+  "test_credentials": "drip.tester@example.com (user_35cc629e1385) used for Playwright frontend verification — works around the pre-existing /auth/me bug because this user has no plan_type field at all (key missing → get default 'free' kicks in). Super-admin dhruvmathur208@gmail.com cannot be used for live UI testing until L1792 bug is fixed.",
+  "seed_data_creation": "Two ephemeral rows in db.user_sessions (TEST_iter48_*) for super-admin and drip.tester, both deleted in test/script teardown. No production data modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stripe rotation is fully verified and clean — no leak, old key gone. Sidebar support footer is verified on every dashboard route and on mobile. The only open issue (HIGH) is /api/auth/me crashing for users with plan_type=None — this is pre-existing (not iter-48) but it blocks the iter-48 super-admin login regression line. Fix is a one-line code change at server.py L1788/L1792. Playwright must inject session_token cookie directly (Turnstile cannot be solved headless); see test_iteration_48_stripe_rotation.py fixture for the pattern. Backend test file is reusable as iter-48+ regression.",
+  "rca of the issue": "RCA — /auth/me 500: server.py check_subscription_active() L1788 reads `plan_type = user.get('plan_type', 'free')`. The seeded super-admin user (user_b3e333b0f467) has the key 'plan_type' present in its mongo doc but set to literal None. dict.get returns the stored None (not the 'free' default), so on L1792 `plan_type.startswith('custom_')` throws AttributeError on NoneType. Mitigation: replace with `plan_type = user.get('plan_type') or 'free'` (and same for `status` on L1789). Reproduction: hit GET /api/auth/me with a session_token for user_b3e333b0f467 — returns 500. Confirmed via grep + db lookup that the super admin's plan_type is None."
+}
