@@ -85,9 +85,17 @@ def test_protected_endpoints(auth_client, path):
 
 
 # === Security greps ===
+# NOTE: We intentionally read the secret values from environment variables rather
+# than hardcoding them, so this test file is safe to commit / push to GitHub
+# (GitHub Secret Protection blocks pushes that contain raw `sk_live_*` strings).
+# Set these in /app/backend/.env (already gitignored) to actually run the asserts;
+# if they are missing the tests are skipped — they are pure leak-detection greps
+# and have no value without a real key to look for.
 def test_new_stripe_key_only_in_backend_env():
     import subprocess
-    new_key = "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"
+    new_key = os.environ.get("STRIPE_SECRET_KEY")
+    if not new_key or not new_key.startswith("sk_"):
+        pytest.skip("STRIPE_SECRET_KEY not set in environment — skipping leak check")
     res = subprocess.run(
         ["grep", "-rl", new_key, "/app",
          "--exclude-dir=.git", "--exclude-dir=node_modules",
@@ -101,7 +109,12 @@ def test_new_stripe_key_only_in_backend_env():
 
 def test_old_stripe_key_fully_removed():
     import subprocess
-    old_key = "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"
+    # The previous (rotated-out) Stripe key. We do not hardcode it; we read it
+    # from STRIPE_OLD_KEY_FOR_LEAK_CHECK (set locally in /app/backend/.env only
+    # while a rotation is in progress, otherwise the test is skipped).
+    old_key = os.environ.get("STRIPE_OLD_KEY_FOR_LEAK_CHECK")
+    if not old_key or not old_key.startswith("sk_"):
+        pytest.skip("STRIPE_OLD_KEY_FOR_LEAK_CHECK not set — skipping post-rotation leak check")
     res = subprocess.run(
         ["grep", "-rl", old_key, "/app",
          "--exclude-dir=.git", "--exclude-dir=node_modules",
