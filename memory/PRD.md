@@ -1,6 +1,23 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 48 (June 2026)
+
+### Stripe secret rotation + dashboard support footer
+- **STRIPE_SECRET_KEY rotated** in `/app/backend/.env` to the new value (`sk_live_...IrhIp5Dk`). Old key removed completely — confirmed via grep across /app (excluding /.git). New key appears in exactly one file: `/app/backend/.env`. Frontend bundles never see it.
+- Stripe library accepted the new key cleanly (`/api/subscription/prices` 200, no `AuthenticationError` in backend logs after restart).
+- **Sidebar support footer** added at the bottom of the `<aside>` (testid `sidebar-support-footer`) — renders unconditionally for every page that mounts Sidebar (Dashboard, Campaigns, Drip, Email Accounts, Email Lists, Unibox, Leads, Do Not Email, Subscription, Backup, Admin pages). Contains an `<a href="mailto:support@routemail.co" data-testid="support-email-link">`. Hidden on /login because Sidebar isn't rendered there.
+- Mobile responsive at 390px (no horizontal overflow).
+
+### Drive-by fix (surfaced by tester)
+- `check_subscription_active()` was crashing 500 for any user whose `plan_type` field exists in Mongo but is `None` (e.g. seeded super-admin). `user.get('plan_type', 'free')` returns the stored `None` rather than the default. Fixed with `user.get('plan_type') or 'free'` (and same for `subscription_status`). `/auth/me` now returns 200 for the super-admin.
+
+### Verification
+- Backend: `/api/auth/me`, `/api/subscription/prices`, `/api/campaigns`, `/api/drip-campaigns`, `/api/email-accounts`, `/api/unibox/replies`, `/api/dne-lists` all 200 with the new key + the /auth/me fix.
+- Secret-key grep: new key in one file only; old key fully absent.
+- Frontend: 10/10 dashboard pages render the footer; /login correctly excludes it.
+
+
 ## Changelog — Iteration 47 (June 2026)
 
 ### Free Forever Plan replaces 14-day trial

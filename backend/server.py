@@ -1785,8 +1785,8 @@ async def check_subscription_active(user_id: str) -> dict:
             "source": "admin_override"
         }
     
-    plan_type = user.get("plan_type", "free")
-    status = user.get("subscription_status", "active")
+    plan_type = user.get("plan_type") or "free"
+    status = user.get("subscription_status") or "active"
     
     # Check for paid plans (Stripe)
     if plan_type in ["starter", "growth"] or plan_type.startswith("custom_"):
