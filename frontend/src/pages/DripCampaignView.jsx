@@ -121,6 +121,7 @@ export default function DripCampaignView({ user, setUser }) {
       start_time: "09:00",
       end_time: "18:00",
       randomize_time: false,
+      start_date: "",
     },
     stop_on_reply: true,
     stop_on_bounce: true,
@@ -162,6 +163,7 @@ export default function DripCampaignView({ user, setUser }) {
           start_time: camp.schedule?.start_time || "09:00",
           end_time: camp.schedule?.end_time || "18:00",
           randomize_time: camp.schedule?.randomize_time || false,
+          start_date: camp.schedule?.start_date || "",
         },
         stop_on_reply: camp.stop_on_reply !== false,
         stop_on_bounce: camp.stop_on_bounce !== false,
@@ -804,24 +806,55 @@ export default function DripCampaignView({ user, setUser }) {
           {/* SCHEDULE */}
           <TabsContent value="schedule">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-              <div>
-                <Label>Timezone</Label>
-                <Select
-                  value={form.schedule.timezone}
-                  onValueChange={(v) =>
-                    setForm({ ...form, schedule: { ...form.schedule, timezone: v } })
-                  }
-                  disabled={!canEdit}
-                >
-                  <SelectTrigger data-testid="drip-tz-select" className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_TIMEZONES.map((tz) => (
-                      <SelectItem key={tz} value={tz}>{tz}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Start date <span className="text-slate-400 font-normal">(optional)</span></Label>
+                  <Input
+                    type="date"
+                    value={form.schedule.start_date || ""}
+                    min={new Date().toLocaleDateString("en-CA")}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      // Reject past dates (defence in depth — the input already enforces min).
+                      if (next) {
+                        const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
+                        if (next < today) {
+                          toast.error("Start date cannot be in the past");
+                          return;
+                        }
+                      }
+                      setForm({
+                        ...form,
+                        schedule: { ...form.schedule, start_date: next },
+                      });
+                    }}
+                    disabled={!canEdit}
+                    data-testid="drip-start-date"
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    The first email step won&apos;t fire before this date in the selected timezone.
+                  </p>
+                </div>
+                <div>
+                  <Label>Timezone</Label>
+                  <Select
+                    value={form.schedule.timezone}
+                    onValueChange={(v) =>
+                      setForm({ ...form, schedule: { ...form.schedule, timezone: v } })
+                    }
+                    disabled={!canEdit}
+                  >
+                    <SelectTrigger data-testid="drip-tz-select" className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COMMON_TIMEZONES.map((tz) => (
+                        <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div>

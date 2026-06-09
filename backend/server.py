@@ -588,7 +588,21 @@ async def process_drip_campaign(campaign: dict):
     # Get current time in campaign timezone
     now_utc = datetime.now(timezone.utc)
     now_local = now_utc.astimezone(tz)
-    
+
+    # Honour start_date — if set and the current local date is still before it,
+    # the campaign hasn't started yet. The drip worker silently skips it; the
+    # next worker tick will pick it up once the date has rolled over.
+    start_date_str = schedule.get("start_date")
+    if start_date_str:
+        try:
+            from datetime import date as _date_cls
+            start_date_obj = _date_cls.fromisoformat(start_date_str)
+            if now_local.date() < start_date_obj:
+                return
+        except Exception:
+            # Malformed start_date — ignore the gate rather than block sending.
+            pass
+
     # Check if current day is a sending day (0=Monday, 6=Sunday)
     current_day = now_local.weekday()
     if current_day not in sending_days:
@@ -2230,6 +2244,10 @@ class DripScheduleSettings(BaseModel):
     start_time: str = "09:00"
     end_time: str = "18:00"
     randomize_time: bool = False
+    # Optional one-shot calendar date when the campaign should *begin* (in `timezone`).
+    # Stored as an ISO date string ("YYYY-MM-DD") or None. When set, the drip worker
+    # will treat the campaign as not-yet-due until that local date arrives.
+    start_date: Optional[str] = None
 
 class CreateDripCampaignRequest(BaseModel):
     name: str
@@ -8129,9 +8147,11 @@ async def health():
 from backup_routes import build_backup_router
 from unibox_routes import build_unibox_router, run_imap_worker, register_sent_email
 from admin_backup_routes import build_admin_backup_router
+from reports_routes import build_reports_router
 api_router.include_router(build_backup_router(db, get_current_user))
 api_router.include_router(build_unibox_router(db, get_current_user, fernet))
 api_router.include_router(build_admin_backup_router(db, get_super_admin_user))
+api_router.include_router(build_reports_router(db, get_current_user))
 app.include_router(api_router)
 
 app.add_middleware(

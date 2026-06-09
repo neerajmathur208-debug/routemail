@@ -28,6 +28,7 @@ import {
   Download,
   Upload,
   Workflow,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -64,6 +65,7 @@ import {
 import Sidebar from "../components/Sidebar";
 import RichTextEditor from "../components/RichTextEditor";
 import AccountMultiSelect from "../components/AccountMultiSelect";
+import ExportReportDialog from "../components/ExportReportDialog";
 import { api } from "../App";
 import { toast } from "sonner";
 import useAutoSaveDraft from "../hooks/useAutoSaveDraft";
@@ -85,6 +87,7 @@ export default function Campaign({ user, setUser }) {
   const [submitting, setSubmitting] = useState(false);
   const [showPlainText, setShowPlainText] = useState(false);
   const [view, setView] = useState("list"); // list, create, edit
+  const [exportReportOpen, setExportReportOpen] = useState(false);
   
   // Send Test Email state
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
@@ -1504,6 +1507,15 @@ Best regards"
                 Import
               </Button>
               <Button
+                variant="outline"
+                onClick={() => setExportReportOpen(true)}
+                data-testid="campaign-export-report-btn"
+                className="border-violet-300 text-violet-700 hover:bg-violet-50"
+              >
+                <FileSpreadsheet size={16} className="mr-2" />
+                Export Report
+              </Button>
+              <Button
                 onClick={() => {
                   resetForm();
                   setView("create");
@@ -1804,6 +1816,14 @@ Best regards"
           </div>
         </div>
       </main>
+
+      {/* Export Campaign Report dialog */}
+      <ExportReportDialog
+        open={exportReportOpen}
+        onOpenChange={setExportReportOpen}
+        lockType="campaigns"
+        title="Export Campaign Report"
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

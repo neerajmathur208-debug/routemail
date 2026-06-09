@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 50 — Drip start_date + Excel reporting endpoint + new list-view UI + Export Report dialog on Campaigns/Drip Campaigns/Dashboard. BACKEND: 19/19 pytest pass (regression on /auth/me /subscription/prices /admin/users /campaigns /drip-campaigns; drip schedule.start_date round-trip via PUT then GET then Mongo; /api/reports/export returns 200 with XLSX MIME type, Summary+Campaigns+Drip Campaigns sheets, exact header rows per spec on both data sheets, Content-Disposition filename pattern, campaign_type=campaigns leaves drip sheet header-only, campaign_type=drip leaves campaigns sheet header-only, campaign_type=all populates both, invalid type → 400, date range excludes out-of-range rows, status filter doesn't error, drip Active/Completed/Replies/Bounce/Unsub counts match db.drip_contacts buckets exactly, unauth → 401). FRONTEND: live Playwright on https://routemail-demo.preview.emergentagent.com verified — Drip Campaigns list view (drip-list-view, drip-search-input, drip-sort-select, drip-export-report-btn, 5 drip rows, 5 drip-status-badge-*, nonsense-search shows drip-no-search-results placeholder), Drip schedule tab shows drip-start-date input with min=2026-06-09 (today) defence-in-depth, Export Report dialog testids all present (export-from-date / export-to-date / export-status-{draft,scheduled,running,paused,completed} / export-report-cancel / export-report-confirm), lockType behaviour correct (no select on /drip-campaigns and /campaign, select PRESENT on /dashboard), From>To validation surfaces toast 'From Date must be on or before To Date' and does NOT call the backend, confirm on /campaign fires real network call GET /api/reports/export?campaign_type=campaigns → 200. All flows green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/drip-campaigns list", "issues": ["React hydration console warnings: <motion.tr> inside DripRow is wrapped by an instrumentation <span style='display:contents'> in tbody, which produces 'span cannot be child of tbody' + '<tr> cannot be child of <span>' console errors. Does NOT break rendering (5 rows display correctly, badges/search/sort all work). This is an emergent-tooling/<span data-ve-dynamic> wrapper around dynamic components, not a code bug introduced by iter-50, but flagging because the warning is loud."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_50_drip_schedule_reports.py",
+    "/app/test_reports/pytest/iter50_results.xml"
+  ],
+  "action_items": [
+    "No functional issues. Optional cosmetic: silence the hydration warning on DripCampaigns.jsx — the emergent dynamic-component <span data-ve-dynamic> wrapper is being injected between <tbody> and <motion.tr>. If this wrapper comes from a visual-edit/instrumentation HOC, marking DripRow as static (or wrapping the table body differently) would clean up the console. Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "reports_routes.py is clean, self-contained (~334 lines), and uses StreamingResponse with proper Content-Type + Content-Disposition. The router is mounted under /api via include_router on the existing api_router in server.py — no duplication.",
+    "Date filtering helper _matches_date_range handles both datetime and ISO-string created_at values (good defensive coding because the codebase mixes both representations). Inclusive on both ends; to_date with a bare YYYY-MM-DD is auto-rounded to 23:59:59 — matches user expectation.",
+    "Drip status bucketing is done with a single $group aggregate per drip — efficient O(1) round-trips per drip, not per contact. 'Currently Running' is reported as the same value as 'Active Contacts' (column 13 == column 10) which matches the spec language but may confuse end-users; consider renaming/removing one column in a future iteration.",
+    "Unsubscribes for regular campaigns are user-wide (DNE source='unsubscribe' in window) and the same number is shown on every campaign row — Summary sheet has an explicit Note disclosing this, which is the right call given the schema does not tag DNE entries with campaign_id.",
+    "server.py L2241 DripScheduleSettings.start_date Optional[str] — typed minimally as a string (no strict YYYY-MM-DD pydantic validator) matching the spec ('we do not yet block past dates server-side'). process_drip_campaign at L588-605 gates correctly on local-tz date < start_date and falls open if malformed (intentional).",
+    "/api/reports/export properly auths via Depends(get_current_user) — unauthenticated request returns 401 (verified). All data is scoped to user.user_id, no cross-tenant leak."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_50_drip_schedule_reports.py (new — 19 tests, reusable as regression)"
+  ],
+  "success_rate": {"backend": "100% (19/19 pytest pass)", "frontend": "100% (all spec testids present, dialog lock/unlock behaviour correct on all 3 entry points, real network confirm verified)"},
+  "test_credentials": "Used drip.tester@example.com (user_35cc629e1385) and super-admin dhruvmathur208 (user_b3e333b0f467) via Mongo-injected session_token rows prefixed TEST_iter50_. All test session rows cleaned up in teardown + post-run.",
+  "seed_data_creation": "None — tests use existing seeded drip campaigns owned by drip.tester. The first PUT test temporarily mutates schedule.start_date and restores the original value at the end of the test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_iteration_50_drip_schedule_reports.py for any future drip-schedule or reporting regression. Pattern follows iter-49 exactly (Mongo-injected session_token rows). For Playwright UI work, REMEMBER the app route is /campaign (singular) for the Campaigns page, not /campaigns — /campaigns is a public marketing landing page. The full set of new testids: drip-list-view, drip-search-input, drip-sort-select, drip-row-{drip_id}, drip-status-badge-{drip_id}, drip-no-search-results, drip-export-report-btn, drip-start-date, campaign-export-report-btn, dashboard-export-all-btn, export-report-dialog, export-from-date, export-to-date, export-status-{draft|scheduled|running|paused|completed}, export-campaign-type-select (only when unlocked), export-report-cancel, export-report-confirm.",
+  "rca of the issue": "Not applicable — no bugs found in iter-50. The only observation is pre-existing console hydration warnings from a <span data-ve-dynamic style='display:contents'> instrumentation wrapper that the emergent visual-editor injects between <tbody> and <motion.tr> in the new DripRow. It does not affect functionality (5 rows render correctly, all interactions verified live)."
+}

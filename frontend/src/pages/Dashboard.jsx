@@ -23,6 +23,7 @@ import {
   CreditCard,
   Clock,
   LogOut,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   AreaChart,
@@ -38,6 +39,7 @@ import {
 import { Button } from "../components/ui/button";
 import Sidebar from "../components/Sidebar";
 import OnboardingTour from "../components/ui/OnboardingTour";
+import ExportReportDialog from "../components/ExportReportDialog";
 import { api } from "../App";
 import { toast } from "sonner";
 
@@ -48,6 +50,7 @@ export default function Dashboard({ user, setUser }) {
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [exportReportOpen, setExportReportOpen] = useState(false);
 
   // Check for subscription success
   useEffect(() => {
@@ -245,6 +248,16 @@ export default function Dashboard({ user, setUser }) {
                     <span>{user.email}</span>
                   </div>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExportReportOpen(true)}
+                  data-testid="dashboard-export-all-btn"
+                  className="border-violet-300 text-violet-700 hover:bg-violet-50"
+                >
+                  <FileSpreadsheet size={16} />
+                  <span className="hidden sm:inline ml-2">Export All Campaign Data</span>
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1248,6 +1261,14 @@ export default function Dashboard({ user, setUser }) {
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
         onSkip={handleOnboardingSkip}
+      />
+
+      {/* Export All Campaign Data dialog */}
+      <ExportReportDialog
+        open={exportReportOpen}
+        onOpenChange={setExportReportOpen}
+        lockType={null}
+        title="Export All Campaign Data"
       />
     </div>
   );
