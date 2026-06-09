@@ -1,6 +1,41 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 50 (June 2026)
+
+### Drip Campaign Scheduling — Start Date
+- New optional `schedule.start_date` field on Drip Campaigns (ISO `YYYY-MM-DD`).
+- `process_drip_campaign` worker now skips processing a drip until the current local date (in the configured `timezone`) ≥ `start_date`. Malformed values fail open (no gate) so a bad date string never blocks legitimate sends.
+- Frontend Drip Schedule tab: new `drip-start-date` input next to Timezone, with HTML `min=today` and a JS guard rejecting past dates.
+
+### Drip Campaigns — Grid → List View
+- Old card grid removed; replaced with a full responsive table:
+  - Columns: Name, Status, List, Contacts, Steps, Scheduled Start, Created, Last Modified, Actions.
+  - Status badges styled by state (draft/scheduled/running/paused/completed).
+  - Row actions: Open, Rename, Duplicate, Export (JSON), Pause/Resume, Delete.
+- New `drip-search-input` filters live by campaign name. `drip-sort-select` cycles Newest/Oldest/Name A→Z/Name Z→A/Scheduled Start/Status. Empty-search-result placeholder included.
+
+### Campaign Reporting — Excel Export
+- New module `/app/backend/reports_routes.py` mounted at `/api/reports`.
+- `GET /api/reports/export?from_date&to_date&campaign_type&status` returns a 3-sheet `.xlsx`:
+  - **Summary** — generation metadata + the explicit note that opens/clicks are not tracked.
+  - **Campaigns** — Name, Type, Status, Created/Scheduled/Start dates, Contacts Targeted, Emails Sent, Replies (from Unibox), Bounce Count (= failed_count), Unsubscribes (DNE entries in window), Reply Rate, List.
+  - **Drip Campaigns** — Name, Type, Status, dates, Total Steps, Contacts Targeted, Emails Sent, Active/Completed/Stopped/Running, Replies, Bounce Count, Unsubscribes (all sourced from `drip_contacts` status buckets), Reply Rate, List.
+- Filters: `campaign_type` ∈ {`all`,`campaigns`,`drip`} (400 otherwise); `status` is a comma-separated list (any combination of draft/scheduled/running/paused/completed; empty = all); `from_date` + `to_date` filter `created_at` inclusively; `to_date` is auto-extended to end-of-day when a bare date is given.
+- Filename pattern: `RouteMail_Campaign_Report_YYYY-MM-DD_to_YYYY-MM-DD.xlsx` returned via `Content-Disposition`.
+
+### Frontend — Export Report Dialog
+- New shared component `/app/frontend/src/components/ExportReportDialog.jsx`.
+- Mounted in three places:
+  - **Drip Campaigns** header — `drip-export-report-btn`, lockType=`drip` (hides Type select).
+  - **Campaigns** header — `campaign-export-report-btn`, lockType=`campaigns` (hides Type select).
+  - **Dashboard** header — `dashboard-export-all-btn`, lockType=`null` (Type select visible).
+- Client-side guard: From Date > To Date surfaces a toast and never hits the backend.
+
+### Verification
+- Iteration 50 test report: 19/19 backend pytest pass; all frontend flows verified live via Playwright (list view, search, sort, status badges, schedule start date round-trip, dialog testids, lockType behaviour, validation toast, real network call success on /api/reports/export). `retest_needed: false`.
+
+
 ## Changelog — Iteration 49 (June 2026)
 
 ### Blog Permission Management
