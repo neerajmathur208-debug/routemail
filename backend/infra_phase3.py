@@ -10,11 +10,13 @@ Two endpoints:
 """
 
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone, date as _date_cls
 from math import ceil
 from statistics import median
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 
@@ -34,6 +36,27 @@ class PlannerRequest(BaseModel):
     steps: int = Field(..., ge=1, le=20)
     duration_days: int = Field(..., ge=1, le=365)
     sending_days_per_week: int = Field(5, ge=1, le=7)
+
+
+# -- Batch-based weekly sending planner --
+class BatchPlannerRequest(BaseModel):
+    leads: int = Field(..., ge=1, le=10_000_000)
+    steps: int = Field(..., ge=1, le=20)
+    delay_days: int = Field(7, ge=1, le=90,
+        description="Days between consecutive steps (uniform per spec). 7 = same weekday next week.")
+    sending_days: List[int] = Field(
+        default_factory=lambda: [0, 1, 2, 3, 4],
+        description="Weekday integers (0=Mon..6=Sun) the user wants to send on.",
+    )
+    start_date: str = Field(..., description="Local start date for batch 1, YYYY-MM-DD.")
+    timezone_name: str = Field("UTC", description="IANA timezone label (used for export labels — calendar math is local-date only).")
+
+    # ONE OF the two inbox-pool inputs must be supplied. If `account_ids` is
+    # set we draw the daily limit + capacity from the real Infrastructure
+    # data; otherwise we use the manual `accounts` × `daily_limit_per_account`.
+    account_ids: Optional[List[str]] = None
+    accounts: Optional[int] = Field(None, ge=1, le=10_000)
+    daily_limit_per_account: Optional[int] = Field(None, ge=1, le=10_000)
 
 
 # ---------- helpers --------------------------------------------------------
@@ -156,6 +179,227 @@ def _allocate(
     }
 
 
+def _next_sending_day(d: _date_cls, sending_days: List[int]) -> _date_cls:
+    """Roll `d` forward to the next allowed weekday. If `d` itself is allowed
+    we return it unchanged. Caps at 14 iterations as a safety net against an
+    empty sending_days list."""
+    if not sending_days:
+        return d
+    s = set(sending_days)
+    for _ in range(14):
+        if d.weekday() in s:
+            return d
+        d = d + timedelta(days=1)
+    return d
+
+
+def _batch_plan(
+    req: BatchPlannerRequest,
+    inboxes_for_pool: List[Dict[str, Any]],
+    projection: Dict[str, Dict[str, int]],
+) -> Dict[str, Any]:
+    """Build a per-day, per-step calendar for a batch-based campaign.
+
+    Strategy:
+      1. Pick the daily-capacity figure — sum of `daily_limit` across the
+         picked account pool when `account_ids` was supplied, else the
+         manual `accounts * daily_limit_per_account`.
+      2. Carve `leads` into `ceil(leads / daily_capacity)` batches; the last
+         batch carries any remainder.
+      3. Assign batches to the next N available sending-days starting at
+         `start_date` (rolled forward to the nearest allowed weekday).
+      4. For each (batch, step≥2), date = batch_step1_date + delay_days*(step-1),
+         rolled forward to the next allowed sending-day if it lands on a
+         non-sending weekday (spec §6).
+      5. For every (date, sends_required) pair, check against the real
+         projection-aware remaining capacity for the pool and tag the row
+         Ready / Partial Capacity / Insufficient Capacity (spec §7).
+    """
+    # ---- 1. Resolve the pool + daily capacity --------------------------
+    if req.account_ids:
+        pool = [r for r in inboxes_for_pool if r["account_id"] in set(req.account_ids)]
+        if not pool:
+            raise HTTPException(status_code=400, detail="None of the supplied account_ids are visible to this user.")
+        pool_account_ids = [r["account_id"] for r in pool]
+        daily_capacity = sum(int(r["daily_limit"]) for r in pool)
+        account_count = len(pool)
+        median_limit = max(int(median([r["daily_limit"] for r in pool])), 1)
+        pool_label = "real_inbox_pool"
+    else:
+        if not (req.accounts and req.daily_limit_per_account):
+            raise HTTPException(
+                status_code=400,
+                detail="Provide either `account_ids` OR (`accounts` AND `daily_limit_per_account`).",
+            )
+        pool_account_ids = []
+        daily_capacity = int(req.accounts) * int(req.daily_limit_per_account)
+        account_count = int(req.accounts)
+        median_limit = int(req.daily_limit_per_account)
+        pool_label = "manual"
+        pool = []
+
+    if daily_capacity <= 0:
+        raise HTTPException(status_code=400, detail="Daily capacity must be > 0")
+
+    # ---- 2. Carve leads into batches -----------------------------------
+    total_batches = ceil(req.leads / daily_capacity)
+    batches: List[Dict[str, Any]] = []
+    remaining = req.leads
+    for i in range(total_batches):
+        size = min(daily_capacity, remaining)
+        batches.append({"batch": i + 1, "leads": size})
+        remaining -= size
+
+    # ---- 3. Assign step-1 dates ----------------------------------------
+    try:
+        cursor = _date_cls.fromisoformat(req.start_date)
+    except Exception:
+        raise HTTPException(status_code=400, detail="start_date must be YYYY-MM-DD")
+    sending_days = sorted({int(d) for d in (req.sending_days or [0, 1, 2, 3, 4])})
+
+    for b in batches:
+        cursor = _next_sending_day(cursor, sending_days)
+        b["step_1_date"] = cursor
+        cursor = cursor + timedelta(days=1)  # advance for next batch
+
+    # ---- 4. Project every (batch, step) onto a date --------------------
+    # Pre-compute the projection load for the pool — only relevant when we
+    # have a real account pool. For the manual mode we assume zero existing
+    # load (the user is forecasting in isolation).
+    def _pool_used_on(d: _date_cls) -> int:
+        if not pool_account_ids:
+            return 0
+        iso = d.isoformat()
+        return sum(int((projection.get(aid) or {}).get(iso, 0)) for aid in pool_account_ids)
+
+    def _pool_capacity_on(d: _date_cls) -> int:
+        # For the manual pool we assume daily_capacity every day; for the real
+        # pool we sum the per-inbox daily_limit (constant) and subtract the
+        # already-projected load.
+        if not pool_account_ids:
+            return daily_capacity
+        return daily_capacity - _pool_used_on(d)
+
+    schedule: List[Dict[str, Any]] = []
+    # Aggregate self-conflict — when two batches' steps land on the same day,
+    # we add their loads together against the same capacity.
+    self_load: Dict[str, int] = defaultdict(int)
+    plan_steps: List[Dict[str, Any]] = []
+
+    for b in batches:
+        step_date = b["step_1_date"]
+        for step in range(1, req.steps + 1):
+            if step > 1:
+                step_date = _next_sending_day(
+                    step_date + timedelta(days=req.delay_days), sending_days
+                )
+            plan_steps.append({
+                "batch": b["batch"],
+                "step": step,
+                "leads": b["leads"],
+                "date": step_date,
+            })
+            self_load[step_date.isoformat()] += b["leads"]
+
+    # Resolve status per row
+    for row in plan_steps:
+        iso = row["date"].isoformat()
+        required = int(self_load[iso])  # combined load across overlapping batches on this date
+        if pool_account_ids:
+            available = max(_pool_capacity_on(row["date"]), 0)
+        else:
+            available = daily_capacity
+        if available >= required:
+            # If this row alone fits but the combined day still uses more than
+            # half of capacity, surface that distinction — keep "Ready" for
+            # the row level since the row's own leads fit comfortably, only
+            # downgrade if the day-level overflow puts THIS row past capacity.
+            status = "Ready"
+        elif available >= row["leads"]:
+            status = "Partial Capacity"
+        else:
+            status = "Insufficient Capacity"
+        schedule.append({
+            "date": iso,
+            "weekday": row["date"].weekday(),
+            "weekday_name": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][row["date"].weekday()],
+            "batch": row["batch"],
+            "step": row["step"],
+            "leads": row["leads"],
+            "required_capacity": required,
+            "available_capacity": available,
+            "shortfall": max(required - available, 0),
+            "status": status,
+        })
+    schedule.sort(key=lambda r: (r["date"], r["batch"], r["step"]))
+
+    # ---- 5. Roll-ups ---------------------------------------------------
+    total_emails = req.leads * req.steps
+    last_date = schedule[-1]["date"] if schedule else req.start_date
+    first_date = schedule[0]["date"] if schedule else req.start_date
+    duration_days = (
+        _date_cls.fromisoformat(last_date) - _date_cls.fromisoformat(first_date)
+    ).days + 1
+
+    warnings: List[str] = []
+    bad_days = [r for r in schedule if r["status"] != "Ready"]
+    if bad_days:
+        for r in bad_days[:5]:
+            warnings.append(
+                f"Capacity exceeded on {r['date']}. "
+                f"Required: {r['required_capacity']:,} · Available: {r['available_capacity']:,} · "
+                f"Shortfall: {r['shortfall']:,}"
+            )
+        if len(bad_days) > 5:
+            warnings.append(f"…and {len(bad_days) - 5} more day(s) with capacity issues.")
+
+    overall_status = "Ready"
+    if any(r["status"] == "Insufficient Capacity" for r in schedule):
+        overall_status = "Insufficient Capacity"
+    elif any(r["status"] == "Partial Capacity" for r in schedule):
+        overall_status = "Partial Capacity"
+
+    return {
+        "inputs": {
+            "leads": req.leads,
+            "steps": req.steps,
+            "delay_days": req.delay_days,
+            "sending_days": sending_days,
+            "start_date": req.start_date,
+            "timezone": req.timezone_name,
+            "pool_source": pool_label,
+            "pool_account_ids": pool_account_ids,
+            "manual_accounts": req.accounts,
+            "manual_daily_limit_per_account": req.daily_limit_per_account,
+        },
+        "summary": {
+            "total_leads": req.leads,
+            "total_batches": total_batches,
+            "total_steps": req.steps,
+            "total_emails": total_emails,
+            "daily_capacity": daily_capacity,
+            "account_count": account_count,
+            "median_daily_limit": median_limit,
+            "duration_days": duration_days,
+            "first_send_date": first_date,
+            "last_send_date": last_date,
+            "status": overall_status,
+        },
+        "batches": [
+            {
+                "batch": b["batch"],
+                "leads": b["leads"],
+                "step_1_date": b["step_1_date"].isoformat(),
+                "weekday_name": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][b["step_1_date"].weekday()],
+            }
+            for b in batches
+        ],
+        "schedule": schedule,
+        "warnings": warnings,
+    }
+
+
+
 def _plan(
     inboxes: List[Dict[str, Any]],
     capacity: Dict[str, int],
@@ -270,3 +514,107 @@ def attach_phase3_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn,
         projection = await build_projection_fn(db, user, window_days=120)
         capacity = aggregate_capacity_fn(rows, projection, 120)
         return _plan(rows, capacity, req)
+
+    @router.post("/planner/batch")
+    async def planner_batch(req: BatchPlannerRequest, user=Depends(get_infra_user)):
+        rows = await load_inboxes_fn(db, user)
+        projection = await build_projection_fn(db, user, window_days=120)
+        return _batch_plan(req, rows, projection)
+
+    @router.post("/planner/batch/export")
+    async def planner_batch_export(
+        req: BatchPlannerRequest,
+        format: str = Query("xlsx", description="xlsx | csv"),
+        user=Depends(get_infra_user),
+    ):
+        rows = await load_inboxes_fn(db, user)
+        projection = await build_projection_fn(db, user, window_days=120)
+        plan = _batch_plan(req, rows, projection)
+        fmt = (format or "xlsx").lower()
+        if fmt not in ("xlsx", "csv"):
+            raise HTTPException(status_code=400, detail="format must be xlsx|csv")
+
+        import io
+        import csv as _csv
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        fname = f"RouteMail_Batch_Plan_{today}.{fmt}"
+        HEADERS = [
+            "Date", "Day", "Batch", "Step", "Leads Scheduled",
+            "Required Capacity", "Available Capacity", "Shortfall", "Status",
+        ]
+
+        if fmt == "xlsx":
+            wb = Workbook()
+            # Schedule sheet
+            ws = wb.active
+            ws.title = "Schedule"
+            font = Font(bold=True, color="FFFFFF")
+            fill = PatternFill("solid", fgColor="0F766E")  # teal-700
+            for i, h in enumerate(HEADERS, 1):
+                c = ws.cell(row=1, column=i, value=h)
+                c.font = font
+                c.fill = fill
+            for idx, r in enumerate(plan["schedule"], 2):
+                ws.cell(row=idx, column=1, value=r["date"])
+                ws.cell(row=idx, column=2, value=r["weekday_name"])
+                ws.cell(row=idx, column=3, value=r["batch"])
+                ws.cell(row=idx, column=4, value=r["step"])
+                ws.cell(row=idx, column=5, value=r["leads"])
+                ws.cell(row=idx, column=6, value=r["required_capacity"])
+                ws.cell(row=idx, column=7, value=r["available_capacity"])
+                ws.cell(row=idx, column=8, value=r["shortfall"])
+                ws.cell(row=idx, column=9, value=r["status"])
+            for col_cells in ws.columns:
+                length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
+                ws.column_dimensions[col_cells[0].column_letter].width = min(max(length + 2, 10), 28)
+            # Summary sheet (first to greet the user when they open the file)
+            sm = wb.create_sheet("Summary", 0)
+            sm["A1"] = "RouteMail — Batch Plan"
+            sm["A1"].font = Font(bold=True, size=14)
+            sumrows = [
+                ("Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")),
+                ("Status", plan["summary"]["status"]),
+                ("Total Leads", plan["summary"]["total_leads"]),
+                ("Total Batches", plan["summary"]["total_batches"]),
+                ("Steps", plan["summary"]["total_steps"]),
+                ("Total Emails", plan["summary"]["total_emails"]),
+                ("Daily Capacity", plan["summary"]["daily_capacity"]),
+                ("Account Count", plan["summary"]["account_count"]),
+                ("Median Daily Limit", plan["summary"]["median_daily_limit"]),
+                ("Duration (days)", plan["summary"]["duration_days"]),
+                ("First Send", plan["summary"]["first_send_date"]),
+                ("Last Send", plan["summary"]["last_send_date"]),
+            ]
+            for r_idx, (k, v) in enumerate(sumrows, 3):
+                sm.cell(row=r_idx, column=1, value=k).font = Font(bold=True)
+                sm.cell(row=r_idx, column=2, value=v)
+            if plan["warnings"]:
+                sm.cell(row=len(sumrows) + 5, column=1, value="Warnings").font = Font(bold=True)
+                for i, w in enumerate(plan["warnings"]):
+                    sm.cell(row=len(sumrows) + 6 + i, column=1, value=w)
+            sm.column_dimensions["A"].width = 28
+            sm.column_dimensions["B"].width = 24
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            content = buf.read()
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            out = io.StringIO()
+            w = _csv.writer(out)
+            w.writerow(HEADERS)
+            for r in plan["schedule"]:
+                w.writerow([
+                    r["date"], r["weekday_name"], r["batch"], r["step"], r["leads"],
+                    r["required_capacity"], r["available_capacity"], r["shortfall"], r["status"],
+                ])
+            content = out.getvalue().encode()
+            media = "text/csv"
+        return StreamingResponse(
+            iter([content]),
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )

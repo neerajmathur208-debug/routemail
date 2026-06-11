@@ -1185,6 +1185,7 @@ function AllocatorSection() {
  * ============================================================ */
 function PlannerSection() {
   const [open, setOpen] = useState(true);
+  const [mode, setMode] = useState("standard"); // "standard" | "batch"
   const [leads, setLeads] = useState(10000);
   const [steps, setSteps] = useState(3);
   const [days, setDays] = useState(30);
@@ -1237,6 +1238,39 @@ function PlannerSection() {
             current inbox pool can absorb it, and how many more inboxes you&apos;d need if not.
           </p>
 
+          {/* Mode selector */}
+          <div className="flex items-center gap-2" data-testid="planner-mode-row">
+            <Label className="text-[11px] uppercase tracking-wider text-slate-500">Planning Mode</Label>
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMode("standard")}
+                data-testid="planner-mode-standard"
+                className={`px-3 py-1.5 text-xs font-medium ${
+                  mode === "standard"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Standard Campaign Volume
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("batch")}
+                data-testid="planner-mode-batch"
+                className={`px-3 py-1.5 text-xs font-medium ${
+                  mode === "batch"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Batch-Based Weekly Sending
+              </button>
+            </div>
+          </div>
+
+          {mode === "batch" ? <BatchPlannerForm /> : (
+          <>
           <div className="flex flex-wrap items-end gap-3">
             <PlannerInput label="Leads" value={leads} onChange={setLeads} testid="planner-leads" min={1} />
             <PlannerInput label="Steps" value={steps} onChange={setSteps} testid="planner-steps" min={1} max={20} />
@@ -1313,6 +1347,8 @@ function PlannerSection() {
               </div>
             </div>
           )}
+          </>
+          )}
         </div>
       )}
     </section>
@@ -1357,3 +1393,333 @@ function PlannerStat({ label, value, highlight, testid }) {
     </div>
   );
 }
+
+/* ============================================================
+ *  Batch-Based Weekly Sending Planner
+ *    POST /infrastructure/planner/batch         → calculates schedule
+ *    POST /infrastructure/planner/batch/export  → xlsx | csv
+ * ============================================================ */
+const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const STATUS_PILL = {
+  Ready: "bg-emerald-100 text-emerald-700",
+  "Partial Capacity": "bg-amber-100 text-amber-700",
+  "Insufficient Capacity": "bg-rose-100 text-rose-700",
+};
+
+function BatchPlannerForm() {
+  const [leads, setLeads] = useState(4000);
+  const [steps, setSteps] = useState(3);
+  const [delayDays, setDelayDays] = useState(7);
+  const [sendingDays, setSendingDays] = useState([0, 1, 2, 3, 4]); // Mon–Fri
+  const [accounts, setAccounts] = useState(20);
+  const [perAccount, setPerAccount] = useState(40);
+  const [startDate, setStartDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [tz, setTz] = useState("UTC");
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const includeWeekends = sendingDays.includes(5) || sendingDays.includes(6);
+  const toggleDay = (idx) =>
+    setSendingDays((prev) =>
+      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx].sort()
+    );
+  const toggleWeekends = () =>
+    setSendingDays((prev) => {
+      const weekdays = prev.filter((d) => d <= 4);
+      if (includeWeekends) return weekdays;
+      return Array.from(new Set([...weekdays, 5, 6])).sort();
+    });
+
+  const run = async () => {
+    if (!sendingDays.length) {
+      toast.error("Pick at least one sending day");
+      return;
+    }
+    setLoading(true);
+    setPlan(null);
+    try {
+      const res = await api.post("/infrastructure/planner/batch", {
+        leads: Number(leads) || 1,
+        steps: Number(steps) || 1,
+        delay_days: Number(delayDays) || 7,
+        sending_days: sendingDays,
+        start_date: startDate,
+        timezone_name: tz,
+        accounts: Number(accounts) || 1,
+        daily_limit_per_account: Number(perAccount) || 1,
+      });
+      setPlan(res.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail?.[0]?.msg || e?.response?.data?.detail || "Batch planner failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadExport = async (fmt) => {
+    try {
+      const res = await axios.post(
+        `${API}/infrastructure/planner/batch/export?format=${fmt}`,
+        {
+          leads: Number(leads) || 1,
+          steps: Number(steps) || 1,
+          delay_days: Number(delayDays) || 7,
+          sending_days: sendingDays,
+          start_date: startDate,
+          timezone_name: tz,
+          accounts: Number(accounts) || 1,
+          daily_limit_per_account: Number(perAccount) || 1,
+        },
+        { withCredentials: true, responseType: "blob" }
+      );
+      const cd = res.headers["content-disposition"] || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : `batch_plan.${fmt}`;
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Plan exported");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Export failed");
+    }
+  };
+
+  const dailyCapacity = (Number(accounts) || 0) * (Number(perAccount) || 0);
+  const s = plan?.summary;
+
+  return (
+    <div className="space-y-4" data-testid="batch-planner-form">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <PlannerInput label="Total leads" value={leads} onChange={setLeads} testid="batch-leads" min={1} />
+        <PlannerInput label="Steps" value={steps} onChange={setSteps} testid="batch-steps" min={1} max={20} />
+        <PlannerInput label="Delay between steps (days)" value={delayDays} onChange={setDelayDays} testid="batch-delay" min={1} max={90} />
+        <PlannerInput label="Email accounts" value={accounts} onChange={setAccounts} testid="batch-accounts" min={1} />
+        <PlannerInput label="Daily limit / account" value={perAccount} onChange={setPerAccount} testid="batch-per-account" min={1} />
+        <div>
+          <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+            Start date
+          </Label>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            data-testid="batch-start-date"
+            className="w-44"
+          />
+        </div>
+        <div>
+          <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+            Timezone
+          </Label>
+          <Input
+            value={tz}
+            onChange={(e) => setTz(e.target.value)}
+            placeholder="e.g. Europe/Dublin"
+            className="w-44"
+            data-testid="batch-tz"
+          />
+        </div>
+        <div className="flex items-end">
+          <div
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm w-44"
+            data-testid="batch-daily-capacity-readout"
+          >
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">
+              Daily capacity
+            </div>
+            <div className="font-bold tabular-nums text-slate-900">
+              {dailyCapacity.toLocaleString()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sending days */}
+      <div data-testid="batch-sending-days-row">
+        <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1 block">
+          Sending days
+        </Label>
+        <div className="flex flex-wrap items-center gap-2">
+          {WEEKDAY_NAMES.map((d, idx) => {
+            const on = sendingDays.includes(idx);
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => toggleDay(idx)}
+                data-testid={`batch-day-${d.toLowerCase()}`}
+                className={`px-3 py-1.5 text-xs font-medium rounded border ${
+                  on
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {d}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={toggleWeekends}
+            data-testid="batch-include-weekends"
+            className={`ml-2 text-xs font-medium px-3 py-1.5 rounded border ${
+              includeWeekends
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {includeWeekends ? "Weekends ON" : "Include weekends"}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={run}
+          disabled={loading}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          data-testid="batch-run-btn"
+        >
+          {loading ? (
+            <Loader2 className="mr-2 animate-spin" size={16} />
+          ) : (
+            <Calculator className="mr-2" size={16} />
+          )}
+          Build batch plan
+        </Button>
+        {plan && (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => downloadExport("xlsx")}
+              data-testid="batch-export-xlsx-btn"
+            >
+              Export xlsx
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => downloadExport("csv")}
+              data-testid="batch-export-csv-btn"
+            >
+              Export CSV
+            </Button>
+          </>
+        )}
+      </div>
+
+      {plan && (
+        <div
+          data-testid="batch-plan-result"
+          className="border border-slate-200 rounded-lg p-4 bg-slate-50/50 space-y-4"
+        >
+          {/* Status badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                STATUS_PILL[s.status] || "bg-slate-100 text-slate-700"
+              }`}
+              data-testid={`batch-status-${(s.status || "").replace(/ /g, "-").toLowerCase()}`}
+            >
+              {s.status}
+            </span>
+            <span className="text-sm text-slate-600">
+              {s.first_send_date} → {s.last_send_date} · {s.duration_days} days
+            </span>
+          </div>
+
+          {/* Warnings */}
+          {plan.warnings?.length > 0 && (
+            <ul
+              className="space-y-1 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3"
+              data-testid="batch-warnings"
+            >
+              {plan.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <PlannerStat label="Total leads" value={s.total_leads} />
+            <PlannerStat label="Total batches" value={s.total_batches} highlight />
+            <PlannerStat label="Daily capacity" value={s.daily_capacity} />
+            <PlannerStat label="Total emails" value={s.total_emails} />
+          </div>
+
+          {/* Batch list */}
+          <div>
+            <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1 block">
+              Batches
+            </Label>
+            <div className="flex flex-wrap gap-2" data-testid="batch-list">
+              {plan.batches.map((b) => (
+                <div
+                  key={b.batch}
+                  data-testid={`batch-card-${b.batch}`}
+                  className="border border-slate-200 rounded px-3 py-2 bg-white text-xs"
+                >
+                  <div className="font-semibold text-slate-900">Batch {b.batch}</div>
+                  <div className="text-slate-600">
+                    {b.weekday_name} {b.step_1_date}
+                  </div>
+                  <div className="text-slate-500">{b.leads.toLocaleString()} leads</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Schedule table */}
+          <div className="max-h-[440px] overflow-y-auto border border-slate-200 rounded-lg" data-testid="batch-schedule-table">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Date</th>
+                  <th className="text-left px-3 py-2 font-medium">Day</th>
+                  <th className="text-right px-3 py-2 font-medium">Batch</th>
+                  <th className="text-right px-3 py-2 font-medium">Step</th>
+                  <th className="text-right px-3 py-2 font-medium">Leads</th>
+                  <th className="text-right px-3 py-2 font-medium">Required</th>
+                  <th className="text-right px-3 py-2 font-medium">Available</th>
+                  <th className="text-left px-3 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plan.schedule.map((r, i) => (
+                  <tr
+                    key={i}
+                    className="border-t border-slate-100"
+                    data-testid={`batch-row-${r.date}-${r.batch}-${r.step}`}
+                  >
+                    <td className="px-3 py-1.5 font-medium text-slate-800">{r.date}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{r.weekday_name}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.batch}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.step}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.leads.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.required_capacity.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.available_capacity.toLocaleString()}</td>
+                    <td className="px-3 py-1.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          STATUS_PILL[r.status] || "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
