@@ -981,7 +981,9 @@ function AllocatorSection() {
 
   const copyEmails = async () => {
     if (!result?.inboxes?.length) return;
-    const text = result.inboxes.map((i) => i.email).join("\n");
+    // Comma-separated so the output drops cleanly into the campaign /
+    // drip-campaign account selector's paste handler.
+    const text = result.inboxes.map((i) => i.email).join(", ");
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);

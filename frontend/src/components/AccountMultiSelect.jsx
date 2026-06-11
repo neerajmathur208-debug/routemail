@@ -4,6 +4,12 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Checkbox } from "./ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { toast } from "sonner";
+
+// Email separator pattern — matches commas, semicolons, whitespace (including
+// newlines) and any combination thereof. Used to split a pasted bulk string
+// into individual addresses.
+const EMAIL_SPLIT_RE = /[,;\s]+/;
 
 /**
  * Searchable, checkbox-based multi-select for connected email accounts.
@@ -48,6 +54,66 @@ export default function AccountMultiSelect({
   const selectAll = () => onChange(allSelectedIds);
   const clearAll = () => onChange([]);
 
+  /**
+   * Bulk paste handler — accepts a string containing emails separated by
+   * commas, semicolons, newlines, or whitespace. Matches each entry against
+   * the connected accounts and selects every match in a single onChange call.
+   *
+   * If the paste yields more than one email it's treated as a bulk operation
+   * and the search input is left empty (so the user immediately sees the
+   * selections instead of an incomprehensible filter). For a single email
+   * we fall through to the regular onChange so the input still types
+   * normally.
+   *
+   * Returns true if a bulk-paste was handled (caller should preventDefault).
+   */
+  const handleBulkPaste = (text) => {
+    if (!text) return false;
+    const parts = text
+      .split(EMAIL_SPLIT_RE)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    if (parts.length < 2) return false; // single-email paste → normal input behaviour
+
+    const byEmail = new Map(
+      accounts.map((a) => [(a.email || "").toLowerCase(), a.account_id])
+    );
+    const matchedIds = new Set(value); // start from current selection
+    const matchedEmails = new Set();
+    const missing = [];
+    const seen = new Set();
+    for (const p of parts) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      const id = byEmail.get(p);
+      if (id) {
+        matchedIds.add(id);
+        matchedEmails.add(p);
+      } else {
+        missing.push(p);
+      }
+    }
+
+    onChange(Array.from(matchedIds));
+    setQuery("");
+
+    const matchedCount = matchedEmails.size;
+    if (matchedCount === 0) {
+      toast.error(`No matching accounts — ${missing.length} email(s) not found.`);
+    } else if (missing.length === 0) {
+      toast.success(`${matchedCount} email account${matchedCount === 1 ? "" : "s"} selected successfully.`);
+    } else {
+      toast.success(
+        `${matchedCount} email account${matchedCount === 1 ? "" : "s"} selected. ` +
+        `${missing.length} email${missing.length === 1 ? " was" : "s were"} not found.`,
+        {
+          description: missing.slice(0, 5).join(", ") + (missing.length > 5 ? "…" : ""),
+        }
+      );
+    }
+    return true;
+  };
+
   const triggerLabel =
     selectedCount === 0
       ? placeholder
@@ -85,7 +151,13 @@ export default function AccountMultiSelect({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by email or name…"
+              onPaste={(e) => {
+                const text = e.clipboardData?.getData("text") || "";
+                if (handleBulkPaste(text)) {
+                  e.preventDefault();
+                }
+              }}
+              placeholder="Search or paste emails (comma / newline / semicolon)…"
               className="pl-8 h-9 text-sm"
               data-testid={`${testIdPrefix}-search-input`}
             />

@@ -1,6 +1,23 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 54 (June 2026)
+
+### Auto-Allocate Copy → Multi-Email Paste Workflow
+- **Allocator copy button** (`/infrastructure`) now joins the picked-inbox emails with `", "` instead of newlines, so the clipboard payload drops cleanly into any multi-select input.
+- **AccountMultiSelect** (used by both Campaign and Drip Campaign creation) now accepts a bulk paste in the search input:
+  - Splits on `,`, `;`, newline, or whitespace (any combination) via `/[,;\s]+/`.
+  - Trims, lowercases, and de-duplicates the entries.
+  - Matches against connected accounts and selects every match in a single `onChange`.
+  - Single-email pastes fall through to the regular search behaviour (no regression).
+  - Toast surfaces three states: all-matched ("N email accounts selected successfully."), mixed ("N selected. M was/were not found." with the unmatched addresses as a description), and zero-match (error toast).
+- Search input placeholder updated to "Search or paste emails (comma / newline / semicolon)…" so the feature is discoverable.
+- Applies automatically to Campaign + Drip Campaign (both already used this component).
+
+### Verification
+- Live Playwright: clipboard payload from `Copy emails` is exactly `"a, b, c, d"` (comma-separated, no newlines). Pasting `"a, b, notfound@example.com"` selects 2 accounts + emits the mixed-state toast. Newline paste de-duplicates against current selection. Semicolon paste adds the new account. `retest_needed: false`.
+
+
 ## Changelog — Iteration 53 (June 2026)
 
 ### Infrastructure Module — Phase 3 (Auto-Allocation + Capacity Planner)
