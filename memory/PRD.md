@@ -1,6 +1,34 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 52 (June 2026)
+
+### Infrastructure Module — Phase 2 (120-Day Projection Engine)
+- New module `/app/backend/infra_projection.py`:
+  - `build_projection(db, user_doc, window_days=120)` walks every active `drip_contacts.next_send_at` forward through remaining drip steps (respecting `step.delay_days/delay_hours`, `schedule.sending_days`, `schedule.start_date`, `schedule.timezone`), distributing across each drip's `account_ids` round-robin. Scheduled / running regular campaigns are projected as a single spike on their `scheduled_at` local date with pending = `total_emails − sent_count` distributed evenly across `account_ids` (remainder spread to first inboxes).
+  - `aggregate_capacity(rows, projection, window_days)` rolls up real per-day remaining capacity across `today / week (7d) / month_30 (30d) / window (120d)`.
+  - `calendar_for_account(account, per_acc_projection, window_days)` produces the per-day grid each calendar dialog consumes; day 0 includes today's live counter, day 119 is +119d.
+- Updated `infrastructure_routes.py`:
+  - `GET /summary` now projection-aware. `capacity` returns real `remaining_today / remaining_week / remaining_30_days / remaining_window` numbers (no more linear estimate) + `window_days: 120` + an updated `note`. Accepts `?window_days=1..365` (default 120, bounds-enforced by FastAPI Query).
+  - `GET /inboxes` injects `projected_window_total` + `projected_window_days` on every row.
+  - New `GET /calendar/{account_id}?window_days=120` — returns `{account, window_days, days:[{date,weekday,limit,projected,used,remaining,status}], totals:{projected,remaining,capacity}}`. 404 when the inbox isn't visible to the requester.
+  - Inbox + domain Excel/CSV exports now carry a `Projected (120d)` column.
+
+### Frontend
+- `/infrastructure`:
+  - **Capacity cards** — now 4 cards (Today / Next 7 Days / Next 30 Days / Next 120 Days), all real numbers (`est.` label removed).
+  - **Domain Capacity table** + **Inbox Availability table** each gained a `Projected (120d)` column.
+  - **Per-inbox calendar drill-down**: clicking the email cell OR the new calendar icon opens `calendar-dialog` with a 17-week × 7-day heatmap (one cell per day, colour-coded Available/Partial/Reserved, hoverable tooltip showing used/limit/remaining/status), a totals row (Capacity / Projected / Remaining), legend, and a collapsible 120-row day-by-day table behind `calendar-toggle-table`.
+
+### Verification
+- Iteration 52 test report: 28/28 backend pytest pass — real projection validated by seeding a running drip (5 active contacts, steps `[0,7,3]`, 2 inboxes round-robin) → exactly 15 projected sends across the pool, with the expected weekday landing. Scheduled regular campaign (10 pending, 3 inboxes) spikes 4/3/3 on its local scheduled date. All Phase-1 testids regressed clean. `retest_needed: false`.
+
+### Phase 3 backlog (next iteration)
+- Auto-Allocation engine with domain diversification.
+- Capacity Planner (leads × steps × duration → required inboxes).
+- Demo-data seeder (optional `is_demo:true` tag).
+
+
 ## Changelog — Iteration 51 (June 2026)
 
 ### Infrastructure Module — Phase 1 (Internal Only)
