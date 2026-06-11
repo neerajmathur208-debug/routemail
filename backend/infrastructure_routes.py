@@ -30,6 +30,10 @@ from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from infra_projection import build_projection, aggregate_capacity, calendar_for_account
+
+DEFAULT_WINDOW_DAYS = 120
+
 
 # ---------- helpers ---------------------------------------------------------
 
@@ -190,8 +194,13 @@ async def _load_inboxes(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 
-def _summarise(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Cards data: counts by status + capacity rollups."""
+def _summarise(rows: List[Dict[str, Any]], projection: Optional[Dict[str, Dict[str, int]]] = None,
+               window_days: int = DEFAULT_WINDOW_DAYS) -> Dict[str, Any]:
+    """Cards data: counts by status + capacity rollups.
+
+    If `projection` is supplied (Phase 2), week / 30d / window-day capacity is
+    computed against real per-day projected sends instead of a linear estimate.
+    """
     inbox_counts = defaultdict(int)
     for r in rows:
         inbox_counts[r["status"]] += 1
@@ -226,19 +235,45 @@ def _summarise(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         domain_counts[s] += 1
         total = sum(x["daily_limit"] for x in items)
         used = sum(x["emails_sent_today"] for x in items)
+        # Projected sends across the window for this domain
+        projected_window = 0
+        if projection:
+            for x in items:
+                projected_window += sum((projection.get(x["account_id"]) or {}).values())
         domain_capacity[dom] = {
             "total": total,
             "used": used,
             "remaining": max(total - used, 0),
             "inbox_count": len(items),
             "status": s,
+            "projected_window": projected_window,
         }
 
-    remaining_today = sum(r["remaining_capacity"] for r in rows)
-    # Phase 1 estimate — projecting forward is just (remaining_today × N).
-    # Phase 2 replaces this with real per-day projection from drip_contacts.
-    remaining_week = remaining_today * 7
-    remaining_30 = remaining_today * 30
+    if projection is not None:
+        cap = aggregate_capacity(rows, projection, window_days)
+        capacity = {
+            "remaining_today": cap["today"],
+            "remaining_week": cap["week"],
+            "remaining_30_days": cap["month_30"],
+            "remaining_window": cap["window"],
+            "window_days": window_days,
+            "note": (
+                f"Capacity numbers are computed from the live projection engine — "
+                f"each remaining number is `daily_limit * days − (today's sends + "
+                f"projected sends from active drips + scheduled campaigns)` "
+                f"across the next {window_days} days."
+            ),
+        }
+    else:
+        remaining_today = sum(r["remaining_capacity"] for r in rows)
+        capacity = {
+            "remaining_today": remaining_today,
+            "remaining_week": remaining_today * 7,
+            "remaining_30_days": remaining_today * 30,
+            "remaining_window": remaining_today * window_days,
+            "window_days": window_days,
+            "note": "Linear estimate — projection unavailable.",
+        }
 
     return {
         "inbox_counts": {
@@ -256,14 +291,7 @@ def _summarise(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             "fully_reserved": domain_counts.get("Fully Reserved", 0),
             "total": len(domains),
         },
-        "capacity": {
-            "remaining_today": remaining_today,
-            "remaining_week": remaining_week,
-            "remaining_30_days": remaining_30,
-            "note": "Week / 30-day capacity is a linear estimate; the Phase-2 "
-                    "projection engine will replace this with per-day modelling "
-                    "from drip_contacts.next_send_at.",
-        },
+        "capacity": capacity,
         "domains": domain_capacity,
     }
 
@@ -286,6 +314,15 @@ def build_infrastructure_router(db, get_infra_user):
         user=Depends(get_infra_user),
     ):
         rows = await _load_inboxes(db, user)
+
+        # Phase-2: bake projection rollup onto every row so the table can show
+        # "X reserved over next 120 days" without a follow-up calendar call.
+        projection = await build_projection(db, user, window_days=DEFAULT_WINDOW_DAYS)
+        for r in rows:
+            per_acc = projection.get(r["account_id"]) or {}
+            r["projected_window_total"] = sum(per_acc.values())
+            r["projected_window_days"] = DEFAULT_WINDOW_DAYS
+
         # apply filters in python — list is small enough (per-tenant) that
         # this is dramatically simpler than building dynamic Mongo queries.
         if ownership:
@@ -323,9 +360,42 @@ def build_infrastructure_router(db, get_infra_user):
         }
 
     @router.get("/summary")
-    async def summary(user=Depends(get_infra_user)):
+    async def summary(
+        window_days: int = Query(DEFAULT_WINDOW_DAYS, ge=1, le=365),
+        user=Depends(get_infra_user),
+    ):
         rows = await _load_inboxes(db, user)
-        return _summarise(rows)
+        projection = await build_projection(db, user, window_days=window_days)
+        return _summarise(rows, projection=projection, window_days=window_days)
+
+    @router.get("/calendar/{account_id}")
+    async def calendar(
+        account_id: str,
+        window_days: int = Query(DEFAULT_WINDOW_DAYS, ge=1, le=365),
+        user=Depends(get_infra_user),
+    ):
+        """120-day (or `window_days`) per-day calendar for one inbox.
+
+        Returns: { account: <row>, days: [ {date, projected, used, remaining, status, weekday}, ... ] }
+        """
+        rows = await _load_inboxes(db, user)
+        target = next((r for r in rows if r["account_id"] == account_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Inbox not found or not visible")
+
+        projection = await build_projection(db, user, window_days=window_days)
+        per_acc = projection.get(account_id, {})
+        days = calendar_for_account(target, per_acc, window_days)
+        return {
+            "account": target,
+            "window_days": window_days,
+            "days": days,
+            "totals": {
+                "projected": sum(d["projected"] for d in days),
+                "remaining": sum(d["remaining"] for d in days),
+                "capacity": sum(d["limit"] for d in days),
+            },
+        }
 
     # -------- export --------
 
@@ -339,7 +409,7 @@ def build_infrastructure_router(db, get_infra_user):
         headers = [
             "Email", "Domain", "Ownership", "Workspace", "Status",
             "Daily Limit", "Sent Today", "Remaining", "Active Campaigns",
-            "Warmup Status", "Last Activity",
+            "Projected (120d)", "Warmup Status", "Last Activity",
         ]
         for i, h in enumerate(headers, 1):
             c = ws.cell(row=1, column=i, value=h)
@@ -356,8 +426,9 @@ def build_infrastructure_router(db, get_infra_user):
             ws.cell(row=r_idx, column=7, value=row["emails_sent_today"])
             ws.cell(row=r_idx, column=8, value=row["remaining_capacity"])
             ws.cell(row=r_idx, column=9, value=row["active_campaign_count"])
-            ws.cell(row=r_idx, column=10, value=row["warmup_status"])
-            ws.cell(row=r_idx, column=11, value=row["last_activity_at"])
+            ws.cell(row=r_idx, column=10, value=row.get("projected_window_total", 0))
+            ws.cell(row=r_idx, column=11, value=row["warmup_status"])
+            ws.cell(row=r_idx, column=12, value=row["last_activity_at"])
         for col_cells in ws.columns:
             length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
             ws.column_dimensions[col_cells[0].column_letter].width = min(max(length + 2, 10), 40)
@@ -366,23 +437,27 @@ def build_infrastructure_router(db, get_infra_user):
         buf.seek(0)
         return buf.read()
 
-    def _xlsx_domain_workbook(rows: List[Dict[str, Any]]) -> bytes:
+    def _xlsx_domain_workbook(rows: List[Dict[str, Any]], projection: Optional[Dict[str, Dict[str, int]]] = None) -> bytes:
         wb = Workbook()
         ws = wb.active
         ws.title = "Domain Inventory"
-        headers = ["Domain", "Inbox Count", "Total Daily Capacity", "Used Today", "Remaining Today", "Status"]
+        headers = [
+            "Domain", "Inbox Count", "Total Daily Capacity", "Used Today",
+            "Remaining Today", "Projected (120d)", "Status",
+        ]
         for i, h in enumerate(headers, 1):
             c = ws.cell(row=1, column=i, value=h)
             c.font = HEADER_FONT
             c.fill = HEADER_FILL
-        summary = _summarise(rows)
+        summary = _summarise(rows, projection=projection)
         for r_idx, (dom, info) in enumerate(sorted(summary["domains"].items()), 2):
             ws.cell(row=r_idx, column=1, value=dom)
             ws.cell(row=r_idx, column=2, value=info["inbox_count"])
             ws.cell(row=r_idx, column=3, value=info["total"])
             ws.cell(row=r_idx, column=4, value=info["used"])
             ws.cell(row=r_idx, column=5, value=info["remaining"])
-            ws.cell(row=r_idx, column=6, value=info["status"])
+            ws.cell(row=r_idx, column=6, value=info.get("projected_window", 0))
+            ws.cell(row=r_idx, column=7, value=info["status"])
         for col_cells in ws.columns:
             length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
             ws.column_dimensions[col_cells[0].column_letter].width = min(max(length + 2, 10), 40)
@@ -397,23 +472,30 @@ def build_infrastructure_router(db, get_infra_user):
         w.writerow([
             "Email", "Domain", "Ownership", "Workspace", "Status",
             "Daily Limit", "Sent Today", "Remaining", "Active Campaigns",
-            "Warmup Status", "Last Activity",
+            "Projected (120d)", "Warmup Status", "Last Activity",
         ])
         for r in rows:
             w.writerow([
                 r["email"], r["domain"], r["ownership"], r["workspace"], r["status"],
                 r["daily_limit"], r["emails_sent_today"], r["remaining_capacity"],
-                r["active_campaign_count"], r["warmup_status"], r["last_activity_at"],
+                r["active_campaign_count"], r.get("projected_window_total", 0),
+                r["warmup_status"], r["last_activity_at"],
             ])
         return out.getvalue().encode()
 
-    def _csv_domain(rows: List[Dict[str, Any]]) -> bytes:
+    def _csv_domain(rows: List[Dict[str, Any]], projection: Optional[Dict[str, Dict[str, int]]] = None) -> bytes:
         out = io.StringIO()
         w = csv.writer(out)
-        w.writerow(["Domain", "Inbox Count", "Total Daily Capacity", "Used Today", "Remaining Today", "Status"])
-        summary = _summarise(rows)
+        w.writerow([
+            "Domain", "Inbox Count", "Total Daily Capacity", "Used Today",
+            "Remaining Today", "Projected (120d)", "Status",
+        ])
+        summary = _summarise(rows, projection=projection)
         for dom, info in sorted(summary["domains"].items()):
-            w.writerow([dom, info["inbox_count"], info["total"], info["used"], info["remaining"], info["status"]])
+            w.writerow([
+                dom, info["inbox_count"], info["total"], info["used"],
+                info["remaining"], info.get("projected_window", 0), info["status"],
+            ])
         return out.getvalue().encode()
 
     @router.get("/export")
@@ -430,14 +512,22 @@ def build_infrastructure_router(db, get_infra_user):
             raise HTTPException(status_code=400, detail="format must be xlsx|csv")
 
         rows = await _load_inboxes(db, user)
+        projection = await build_projection(db, user, window_days=DEFAULT_WINDOW_DAYS)
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         ext = "xlsx" if fmt == "xlsx" else "csv"
         fname = f"RouteMail_Infrastructure_{type.title()}_{today}.{ext}"
 
         if type == "inboxes":
+            # Enrich rows with projection rollup for the export
+            for r in rows:
+                r["projected_window_total"] = sum((projection.get(r["account_id"]) or {}).values())
             content = _xlsx_inbox_workbook(rows) if fmt == "xlsx" else _csv_inbox(rows)
         else:
-            content = _xlsx_domain_workbook(rows) if fmt == "xlsx" else _csv_domain(rows)
+            content = (
+                _xlsx_domain_workbook(rows, projection)
+                if fmt == "xlsx"
+                else _csv_domain(rows, projection)
+            )
 
         media = (
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
