@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 51 — Phase 1 Infrastructure module (internal-only): permission toggle + sidebar gate + ownership + inbox/summary/export. BACKEND: 31/31 pytest pass (auth/me + admin/users return can_access_infrastructure; PUT /admin/users/{id}/infrastructure-permission persists+toggles+super_admin-only 403 for normal user+400 on missing body; PUT /accounts/{id}/ownership for own-account works, super_admin can update any account, owner-mismatch w/o admin returns 404 not 403, >120 chars truncated; /api/infrastructure/inboxes shape with all required keys, status categories Available + Warming Up + others present, filter ownership/domain/status/min_remaining/search all apply, non-admin infra-permitted user sees ONLY own accounts in Mongo lookup; /api/infrastructure/summary shape covers inbox_counts/domain_counts/capacity/domains, remaining_week=today*7 + remaining_30_days=today*30 (documented Phase-1 linear estimate), total matches inbox list; /api/infrastructure/export xlsx returns 200 with correct MIME + Content-Disposition RouteMail_Infrastructure_Inboxes_<date>.xlsx, Inbox Inventory sheet headers match spec exactly, data rows == total; domains csv has exact header `Domain,Inbox Count,Total Daily Capacity,Used Today,Remaining Today,Status`; invalid type/format → 400; non-permitted user → 403 on all infra/*; regression /campaigns /drip-campaigns /accounts /auth/me /subscription/prices all 200). FRONTEND (live Playwright with Mongo-injected session): super_admin sees nav-infrastructure; click navigates to /infrastructure; ALL 24 spec testids present (infra-internal-badge, infra-summary-cards + 6 card-*-inboxes, infra-capacity-cards + 3 card-cap-*, infra-domain-section, infra-inbox-section, 6 filter testids + infra-reset-filters, 3 export buttons); 18 inbox-row-* + 5 domain-row-* + 18 inbox-edit-ownership-* render; live search to nonsense reduces rows to 0; status=Available filter narrows from 18→16 (matches /summary count); ownership-edit-dialog opens with ownership-input; xlsx export click triggers GET /api/infrastructure/export with 200 + correct filename header (RouteMail_Infrastructure_Inboxes_2026-06-11.xlsx); regular user without flag: nav-infrastructure HIDDEN (count=0), /infrastructure → redirects to /dashboard; AdminDashboard has 15 infra-permission-toggle-{user_id} buttons, present on regular-user row (drip.tester). All flows green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/infrastructure + others using motion table rows", "issues": ["Pre-existing React hydration warning ('<tr> cannot be child of <span>' / '<span> cannot be child of <tbody>') from the emergent visual-editor <span data-ve-dynamic style='display:contents'> wrapper between <tbody> and motion.tr rows. Same warning was flagged in iter-50 — not introduced by iter-51, not blocking. UI renders all 18 inbox rows + 5 domain rows correctly."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_51_infrastructure.py",
+    "/app/test_reports/pytest/iter51_results.xml"
+  ],
+  "action_items": [
+    "No functional issues — Phase 1 Infrastructure module is shipping-ready.",
+    "Cosmetic-only: the pre-existing motion.tr hydration warning continues to fire on the new Infrastructure tables (and on Drip Campaigns from iter-50). Wrap inbox/domain rows in a plain <tr> (or memo-export a non-instrumented row component) if you want to silence it. Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "infrastructure_routes.py (~453 lines, single file) — clean separation: _domain_of / _emails_sent_today / _compute_status / _load_inboxes / _summarise helpers + build_infrastructure_router. Status mapping is correctly prioritised: Risky (disconnected/last_error) > Warming Up > Paused > Fully Reserved > Partially Available > Available — matches spec.",
+    "_load_inboxes pre-builds campaign/drip assignment map in 2 Mongo round-trips total (not N), which scales correctly with workspace growth.",
+    "Tenant scoping is explicit (`if not is_admin: q['user_id'] = user_doc['user_id']`) for accounts AND for campaign/drip queries — verified at runtime via Mongo cross-check that non-admin sees only own accounts.",
+    "Ownership endpoint deliberately returns 404 (not 403) for non-owner non-admin to avoid leaking account existence — documented behaviour, matches spec.",
+    "list_inboxes does an extra unfiltered _load_inboxes call just to build the dropdown options. Cheap today (<100 accounts/tenant) but worth memoising via a single load + two passes if a workspace ever crosses ~1000 accounts. Non-blocking.",
+    "/export uses StreamingResponse with iter([content]) and a correct media_type per format. Filename includes UTC date — fine.",
+    "Phase-1 estimate `remaining_week = remaining_today * 7` and `remaining_30_days * 30` is intentional + the response includes an explicit `capacity.note` calling it out. UI also tags both with `est.` chips. Not a bug.",
+    "infrastructure-permission audit log entry written via audit_log collection (action: infrastructure_permission_updated) — good operational hygiene matching the blog-permission pattern.",
+    "/api/auth/me bool coercion (`bool(user_doc.get('can_access_infrastructure', False))`) handles legacy users that never had the field — verified via fresh user returning False."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration_51_infrastructure.py (new — 31 tests, reusable as regression)"
+  ],
+  "success_rate": {"backend": "100% (31/31 pytest pass)", "frontend": "100% (all 24 spec testids present, ownership dialog opens, xlsx export 200 with correct filename, status filter narrows correctly, sidebar gated correctly for non-permitted user, /infrastructure redirects)"},
+  "test_credentials": "Used dhruvmathur208 (super_admin user_b3e333b0f467) and drip.tester (user_35cc629e1385) via Mongo-injected session_token rows prefixed TEST_iter51_. All test sessions deleted after run; normal user can_access_infrastructure reset to False after run.",
+  "seed_data_creation": "None — used existing seeded accounts (18 on super_admin's view, 10 on drip.tester). Ownership tests set 'TEST_iter51_label' on one drip.tester account and cleared it back to '' in the same test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter-51 Phase 1 Infrastructure is fully green. /app/backend/tests/test_iteration_51_infrastructure.py is the regression suite for Phase 2 work — re-run it before/after the projection engine lands to confirm the linear estimate is replaced cleanly and the status mapping signature stays stable. Note that _compute_status() in infrastructure_routes.py is the single hook Phase 2 will need to extend (folding in pre-projected drip step reservations) — its signature was left stable for exactly that purpose. The hydration <span data-ve-dynamic> warning is a known pre-existing emergent-tooling artefact (also affects /drip-campaigns from iter-50) — DO NOT chase it unless main agent explicitly asks. Mongo-injected session pattern (TEST_iter{n}_<uuid>) continues to work and is the right approach since login is Turnstile-gated.",
+  "rca of the issue": "Not applicable — no bugs found in iter-51 backend or frontend. Pre-existing hydration warning on motion.tr rows is the only console noise and was already documented in iter-50 with the same explanation (emergent visual-editor <span data-ve-dynamic style='display:contents'> wrapper)."
+}

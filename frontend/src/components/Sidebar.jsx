@@ -21,6 +21,7 @@ import {
   Star,
   Server,
   PenSquare,
+  Network,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -47,6 +48,7 @@ export default function Sidebar({ user, setUser }) {
 
   const isSuperAdmin = user?.role === "super_admin";
   const canManageBlogs = isSuperAdmin || !!user?.can_manage_blogs;
+  const canAccessInfrastructure = isSuperAdmin || !!user?.can_access_infrastructure;
 
   // Fetch user subscription status
   useEffect(() => {
@@ -216,6 +218,26 @@ export default function Sidebar({ user, setUser }) {
               <PenSquare size={20} strokeWidth={1.5} className="text-indigo-600" />
               <span className="font-medium text-indigo-600">Blog Management</span>
               {location.pathname.startsWith("/admin/blogs") && (
+                <ChevronRight size={16} className="ml-auto" />
+              )}
+            </button>
+          )}
+
+          {/* Infrastructure — internal only (super_admin OR can_access_infrastructure) */}
+          {canAccessInfrastructure && (
+            <button
+              data-testid="nav-infrastructure"
+              onClick={() => {
+                navigate("/infrastructure");
+                setMobileOpen(false);
+              }}
+              className={`sidebar-link w-full ${(!isSuperAdmin && !canManageBlogs) ? "mt-4 border-t border-slate-200 pt-4" : ""} ${
+                location.pathname.startsWith("/infrastructure") ? "active" : ""
+              }`}
+            >
+              <Network size={20} strokeWidth={1.5} className="text-sky-600" />
+              <span className="font-medium text-sky-600">Infrastructure</span>
+              {location.pathname.startsWith("/infrastructure") && (
                 <ChevronRight size={16} className="ml-auto" />
               )}
             </button>

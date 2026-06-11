@@ -31,6 +31,7 @@ import AdminBlogs from "./pages/AdminBlogs";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUserDetail from "./pages/AdminUserDetail";
 import SystemBackupRestore from "./pages/SystemBackupRestore";
+import Infrastructure from "./pages/Infrastructure";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
@@ -235,6 +236,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <SystemBackupRestore user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/infrastructure"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <Infrastructure user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />

@@ -1952,6 +1952,9 @@ class EmailAccount(BaseModel):
     daily_send_count: int = 0
     last_send_date: Optional[str] = None
     last_reset_at: Optional[datetime] = None
+    # Infrastructure module — free-form ownership label (e.g. "Client A", "Perfect
+    # Digitals", "Internal"). Defaults to empty; super_admin or owner can set it.
+    ownership: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class EmailList(BaseModel):
@@ -2469,6 +2472,7 @@ async def get_me(user: User = Depends(get_current_user)):
             "plan_type": user_doc.get("plan_type", "free"),
             "role": user_doc.get("role", "user"),
             "can_manage_blogs": bool(user_doc.get("can_manage_blogs", False)),
+            "can_access_infrastructure": bool(user_doc.get("can_access_infrastructure", False)),
             "trial_ends_at": None,
             "billing_cycle_end": user_doc.get("billing_cycle_end"),
             "downgraded_to_free_at": user_doc.get("downgraded_to_free_at"),
@@ -3192,6 +3196,35 @@ async def update_account_delay(account_id: str, request: UpdateAccountDelayReque
         raise HTTPException(status_code=404, detail="Account not found")
     
     return {"message": "Sending delay updated", "send_delay": send_delay}
+
+
+@api_router.put("/accounts/{account_id}/ownership")
+async def update_account_ownership(
+    account_id: str,
+    payload: dict,
+    user: User = Depends(get_current_user),
+):
+    """Tag an inbox with an "Ownership" label (e.g. Client A, Perfect Digitals,
+    Internal). Used by the Infrastructure module to group/filter inboxes. Any
+    authenticated user can label their own accounts; super_admin can label any.
+
+    Body: { "ownership": "<label or empty string to clear>" }
+    """
+    ownership = payload.get("ownership")
+    if ownership is not None and not isinstance(ownership, str):
+        raise HTTPException(status_code=400, detail="ownership must be a string")
+    ownership = (ownership or "").strip()[:120]
+
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    query = {"account_id": account_id}
+    if (user_doc or {}).get("role") != "super_admin":
+        query["user_id"] = user.user_id
+
+    result = await db.email_accounts.update_one(query, {"$set": {"ownership": ownership}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    return {"message": "Ownership updated", "ownership": ownership}
 
 # ==================== WARMUP ENDPOINTS ====================
 
@@ -6229,6 +6262,21 @@ async def get_blog_manager_user(request: Request) -> dict:
         return user_doc
     raise HTTPException(status_code=403, detail="Access denied. Blog management permission required.")
 
+async def get_infrastructure_user(request: Request) -> dict:
+    """Allow access for super_admin OR any user with `can_access_infrastructure=True`.
+    Used by /api/infrastructure/* endpoints. This is an internal-only module —
+    hidden from regular users completely.
+    """
+    user = await get_current_user(request)
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    if user_doc.get("role") == "super_admin":
+        return user_doc
+    if bool(user_doc.get("can_access_infrastructure")):
+        return user_doc
+    raise HTTPException(status_code=403, detail="Access denied. Infrastructure module access required.")
+
 def _slugify(text: str) -> str:
     text = re.sub(r'[^A-Za-z0-9]+', '-', (text or '').strip().lower())
     return text.strip('-') or f"post-{uuid.uuid4().hex[:6]}"
@@ -7021,6 +7069,7 @@ async def get_admin_users(
                 "name": user.get("name", ""),
                 "role": user.get("role", "user"),
                 "can_manage_blogs": bool(user.get("can_manage_blogs", False)),
+                "can_access_infrastructure": bool(user.get("can_access_infrastructure", False)),
                 "subscription_status": user.get("subscription_status", "inactive"),
                 "created_at": user.get("created_at"),
                 "accounts_count": accounts_count,
@@ -7199,6 +7248,55 @@ async def update_blog_permission(
         "message": f"Blog management permission {'granted' if new_value else 'revoked'}",
         "user_id": user_id,
         "can_manage_blogs": new_value,
+    }
+
+
+@api_router.put("/admin/users/{user_id}/infrastructure-permission")
+async def update_infrastructure_permission(
+    user_id: str,
+    payload: dict,
+    admin: dict = Depends(get_super_admin_user)
+):
+    """Grant or revoke `can_access_infrastructure` for a user (super_admin only).
+
+    Body: { "can_access_infrastructure": true | false }
+
+    The Infrastructure module is INTERNAL-ONLY — visible to super_admins and
+    any user explicitly granted this flag. Standard users never see it.
+    """
+    if "can_access_infrastructure" not in payload:
+        raise HTTPException(status_code=400, detail="`can_access_infrastructure` boolean required in body")
+    new_value = bool(payload.get("can_access_infrastructure"))
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "can_access_infrastructure": new_value,
+            "infrastructure_permission_updated_at": datetime.now(timezone.utc).isoformat(),
+            "infrastructure_permission_updated_by": admin.get("user_id"),
+        }}
+    )
+
+    try:
+        await db.admin_logs.insert_one({
+            "log_id": f"log_{uuid.uuid4().hex[:12]}",
+            "admin_user_id": admin.get("user_id"),
+            "target_user_id": user_id,
+            "action": "infrastructure_permission_updated",
+            "details": {"can_access_infrastructure": new_value},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "message": f"Infrastructure module access {'granted' if new_value else 'revoked'}",
+        "user_id": user_id,
+        "can_access_infrastructure": new_value,
     }
 
 @api_router.delete("/admin/users/{user_id}")
@@ -8148,10 +8246,12 @@ from backup_routes import build_backup_router
 from unibox_routes import build_unibox_router, run_imap_worker, register_sent_email
 from admin_backup_routes import build_admin_backup_router
 from reports_routes import build_reports_router
+from infrastructure_routes import build_infrastructure_router
 api_router.include_router(build_backup_router(db, get_current_user))
 api_router.include_router(build_unibox_router(db, get_current_user, fernet))
 api_router.include_router(build_admin_backup_router(db, get_super_admin_user))
 api_router.include_router(build_reports_router(db, get_current_user))
+api_router.include_router(build_infrastructure_router(db, get_infrastructure_user))
 app.include_router(api_router)
 
 app.add_middleware(

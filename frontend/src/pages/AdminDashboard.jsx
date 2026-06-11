@@ -24,6 +24,7 @@ import {
   UserCog,
   Database,
   PenSquare,
+  Network,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -218,6 +219,25 @@ export default function AdminDashboard({ user, setUser }) {
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update blog permission");
+    }
+  };
+
+  const handleToggleInfrastructurePermission = async (u) => {
+    const next = !u.can_access_infrastructure;
+    try {
+      await api.put(`/admin/users/${u.user_id}/infrastructure-permission`, {
+        can_access_infrastructure: next,
+      });
+      toast.success(
+        next
+          ? `Granted Infrastructure Access to ${u.email}`
+          : `Revoked Infrastructure Access from ${u.email}`
+      );
+      fetchUsers();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.detail || "Failed to update infrastructure permission"
+      );
     }
   };
 
@@ -656,6 +676,33 @@ export default function AdminDashboard({ user, setUser }) {
                                   : "text-slate-400 hover:text-indigo-500")
                           }
                           strokeWidth={u.can_manage_blogs || u.role === "super_admin" ? 2.2 : 1.5}
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleToggleInfrastructurePermission(u)}
+                        data-testid={`infra-permission-toggle-${u.user_id}`}
+                        title={
+                          u.role === "super_admin"
+                            ? "Super Admins always have Infrastructure access"
+                            : (u.can_access_infrastructure
+                                ? "Revoke Infrastructure Access"
+                                : "Grant Infrastructure Access")
+                        }
+                        disabled={u.role === "super_admin"}
+                      >
+                        <Network
+                          size={16}
+                          className={
+                            u.role === "super_admin"
+                              ? "text-sky-400"
+                              : (u.can_access_infrastructure
+                                  ? "text-sky-600"
+                                  : "text-slate-400 hover:text-sky-500")
+                          }
+                          strokeWidth={u.can_access_infrastructure || u.role === "super_admin" ? 2.2 : 1.5}
                         />
                       </Button>
                       <Button
