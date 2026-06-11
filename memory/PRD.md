@@ -1,6 +1,33 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 55 (June 2026)
+
+### Capacity Planner — Batch-Based Weekly Sending Mode
+- **New Pydantic model `BatchPlannerRequest`** + helpers `_next_sending_day` + `_batch_plan` in `/app/backend/infra_phase3.py`.
+- **New endpoint `POST /api/infrastructure/planner/batch`** returns:
+  - `summary` — total_leads, total_batches (`ceil(leads/daily_capacity)`), daily_capacity, total_emails, duration_days, first_send_date, last_send_date, overall status (Ready / Partial Capacity / Insufficient Capacity).
+  - `batches[]` — each `{batch, leads, step_1_date, weekday_name}`. Remainder lands in the last batch.
+  - `schedule[]` — every (batch, step) row with `{date, weekday_name, batch, step, leads, required_capacity, available_capacity, shortfall, status}`. Step ≥ 2 dates are computed as `step_1_date + delay_days*(step-1)` then rolled forward to the next allowed sending day if they land on a non-sending weekday (per spec §6).
+  - `warnings[]` — surfaces "Capacity exceeded on YYYY-MM-DD. Required: X · Available: Y · Shortfall: Z" lines (per spec §7) for any row whose `required_capacity > available_capacity`. When two batches overlap on the same day their loads are summed before the status check.
+- **Inbox-pool inputs are either/or**: supply `account_ids[]` to draw `daily_capacity` from the real Infrastructure dataset (sums each inbox's live `daily_limit` minus its existing projected load), OR supply `accounts` + `daily_limit_per_account` for an isolated forecast. Missing both → 400.
+- **New endpoint `POST /api/infrastructure/planner/batch/export?format=xlsx|csv`** — same payload, downloads the plan. xlsx has a Summary sheet (status, totals, warnings) followed by a Schedule sheet (Date / Day / Batch / Step / Leads Scheduled / Required Capacity / Available Capacity / Shortfall / Status); csv carries just the schedule. Filename: `RouteMail_Batch_Plan_<date>.xlsx|csv`.
+
+### Frontend
+- **Capacity Planner section now has a Mode toggle** (`planner-mode-standard` | `planner-mode-batch`). Standard mode is unchanged (default). Batch mode reveals `BatchPlannerForm`:
+  - 7 numeric inputs (leads, steps, delay days, accounts, daily limit per account, start date, timezone).
+  - Live `batch-daily-capacity-readout` showing `accounts × daily_limit_per_account`.
+  - 7 day buttons (`batch-day-mon`…`batch-day-sun`) + a `batch-include-weekends` convenience toggle.
+  - `batch-run-btn` calls the endpoint; result panel renders status badge (Ready / Partial / Insufficient), date-range header, warnings list, 4 summary cards, batch cards row, and the full schedule table.
+  - Two export buttons (`batch-export-xlsx-btn` + `batch-export-csv-btn`) appear once the plan is computed.
+
+### Verification
+- Iteration 55 test report: **21/21 backend pass** + all frontend testids verified live via Playwright. Exact spec example (4,000 leads ÷ 800/day) reproduces: 5 batches × 800 leads each, step-1 dates Mon Sep 14 → Fri Sep 18, Batch 1 follow-ups Mon Sep 21 + Mon Sep 28, Batch 5 step 3 = Fri Oct 2. Sat-snap-to-Mon verified. Capacity conflict warning verified end-to-end. `retest_needed: false`.
+
+### Deferred (per user spec — explicitly optional)
+- (P3) Item #11 "Create Campaign from Plan" — would auto-create a draft campaign from the computed schedule (selected inbox pool + batch plan + schedule projection, no auto-send). Skipped this iteration to keep the campaign-creation flow untouched. Tracked in backlog.
+
+
 ## Changelog — Iteration 54 (June 2026)
 
 ### Auto-Allocate Copy → Multi-Email Paste Workflow
