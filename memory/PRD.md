@@ -1,6 +1,29 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 53 (June 2026)
+
+### Infrastructure Module — Phase 3 (Auto-Allocation + Capacity Planner)
+- New module `/app/backend/infra_phase3.py` exposing two endpoints (mounted under `/api/infrastructure`):
+  - **`POST /allocate`** — diversification-first inbox picker. Body: `{required, ownership?, min_remaining_per_inbox=10, domain_capacity_floor=10}`. Algorithm: skip Warming Up / Paused / Risky / Fully Reserved inboxes; skip whole domains whose today-remaining is below `domain_capacity_floor`; within each domain rank by highest `remaining_capacity` first; round-robin across domains to maximise diversification (priority 1 = one per domain, priority 2 = highest-capacity). Returns `{requested, allocated, eligible_count, inboxes:[…], domains_used, avg_inboxes_per_domain, warnings, skipped_domains_near_exhaustion}`.
+  - **`POST /planner`** — capacity calculator. Body: `{leads, steps, duration_days, sending_days_per_week=5}`. Computes total_emails, sending_days_in_window, required_daily_volume, required_inboxes (`ceil(daily / median_daily_limit)`), available_inboxes, additional_inboxes_required, estimated_completion_days, domain_diversity. Returns a `status` of `Ready` (enough inboxes AND enough window capacity) or `Insufficient Capacity` with a list of human-readable warnings (e.g. "Need 191 inboxes; available 16. Add 175 more.").
+- Both endpoints inherit the existing `get_infrastructure_user` gate — super_admin OR `can_access_infrastructure`. Non-permitted users get 403.
+
+### Frontend
+- `/infrastructure` page gained two new collapsible sections at the bottom:
+  - **Auto-Allocate Inboxes** (testid `infra-allocator-section`) — Required + Min remaining + Domain floor inputs, "Recommend" button, result panel with summary line (allocated, domains used, avg per domain), warning list, table of picked inboxes, and a one-click **Copy emails** button (verified via `navigator.clipboard.writeText`).
+  - **Capacity Planner** (testid `infra-planner-section`) — Leads / Steps / Duration / Sending days inputs, "Calculate" button, Ready/Insufficient badge, warning list, 8 PlannerStat cards (Total Emails / Required Daily Volume / Required Inboxes / Available Inboxes / Additional Needed / Median Daily Limit / Capacity Today / Capacity Window 120d).
+- Page subheader updated to reflect the full feature set.
+
+### Verification
+- Iteration 53 test report: 25/25 backend pytest pass. Live Playwright confirmed: allocator returns exactly 4 inboxes from 4 distinct domains, copy-to-clipboard reads back the email list, planner shows red `Insufficient Capacity` badge with 175-additional-needed for the 50k×4×30d scenario and green `Ready` badge for the 1k×3×60d scenario. Phase-1 + Phase-2 testids all regressed clean. `retest_needed: false`.
+
+### Backlog
+- (P1) Real Gmail OAuth (still mocked).
+- (P2) Modular refactor of `server.py` (~8,300 lines) into APIRouter modules.
+- (P3) Optional Phase-3.1 follow-up: wire Auto-Allocate directly into the Campaign / Drip create flow so users can populate `account_ids` from the recommendation without copy-paste.
+
+
 ## Changelog — Iteration 52 (June 2026)
 
 ### Infrastructure Module — Phase 2 (120-Day Projection Engine)
