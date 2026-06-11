@@ -1,6 +1,33 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 51 (June 2026)
+
+### Infrastructure Module — Phase 1 (Internal Only)
+- New per-user permission `can_access_infrastructure` (default false). Super Admins toggle it via `PUT /api/admin/users/{user_id}/infrastructure-permission` (body `{can_access_infrastructure: bool}`). Super admins are always-on; normal users with the flag get access without role promotion.
+- New backend dependency `get_infrastructure_user` — gates every `/api/infrastructure/*` endpoint to super_admin OR flag holders.
+- `/auth/me` + `/admin/users` listings now surface `can_access_infrastructure`.
+- New email-account field `ownership` (free-form label e.g. "Client A", "Internal"). `PUT /api/accounts/{account_id}/ownership` lets owners (and super_admin globally) set/clear it.
+- New module `/app/backend/infrastructure_routes.py` mounted under `/api/infrastructure`:
+  - `GET /inboxes` — filterable (ownership / domain / status / warmup_status / min_remaining / search) flat list of every visible inbox with status, daily limit, sent-today, remaining capacity, active-campaign count, warmup status, last activity, and ownership.
+  - `GET /summary` — top-of-page cards: inbox status counts, domain status counts, domain capacity rollup, and today / week / 30-day capacity (week + 30d are explicitly labelled `est.` — Phase 2 will replace with real per-day projection).
+  - `GET /export?type=inboxes|domains&format=xlsx|csv` — Excel/CSV inventory exports with filename `RouteMail_Infrastructure_{type}_{date}.{ext}`.
+- Status engine returns one of: `Available`, `Partially Available`, `Fully Reserved`, `Warming Up`, `Paused`, `Risky`. Deterministic mapping from daily counters + warmup + paused/disconnected flags. Function signature is Phase-2-ready (drop projection data in, no caller change).
+
+### Frontend
+- **Sidebar**: new `nav-infrastructure` link (sky-blue Network icon) visible only to super_admin OR users with `can_access_infrastructure`. Hidden completely otherwise.
+- **AdminDashboard**: new `infra-permission-toggle-{user_id}` button (Network icon) in each user row, disabled for super_admins.
+- **New `/infrastructure` page**: INTERNAL ONLY badge, 6-card status grid, 3-card capacity grid, Domain Capacity table with per-domain rollup, Inbox Availability table with 6 filters (search, ownership, domain, status, warmup, min remaining ≥ 10/25/50) + reset, per-row ownership editor dialog, 3 export buttons (inboxes xlsx, inboxes csv, domains xlsx). Defence-in-depth client redirect to /dashboard for unauthorized users.
+
+### Verification
+- Iteration 51 test report: 31/31 backend pytest pass (perm toggle / 403 enforcement / status mapping / filter combinations / 404-on-mismatch / xlsx + csv export shape / regression). All 24 frontend testids verified live via Playwright (link visibility for super_admin, hide+redirect for regular user, dialog flows, real network responses on export). `retest_needed: false`.
+
+### Phase 2 backlog (next iteration)
+- Per-account rolling 30-day projection (drip_contacts.next_send_at + step delays).
+- Real domain capacity rollup using projected future sends, not just today.
+- Per-inbox calendar drill-down (week + 30-day grid).
+
+
 ## Changelog — Iteration 50 (June 2026)
 
 ### Drip Campaign Scheduling — Start Date
