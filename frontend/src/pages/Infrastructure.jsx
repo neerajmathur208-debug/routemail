@@ -17,6 +17,12 @@ import {
   X,
   Filter,
   CalendarDays,
+  Wand2,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -214,9 +220,8 @@ export default function Infrastructure({ user, setUser }) {
               </span>
             </div>
             <p className="text-slate-500 text-sm max-w-2xl">
-              Live 120-day projection of inbox + domain capacity. Click any inbox to
-              drill into its daily forecast. Auto-allocation and capacity planner are
-              next.
+              Live 120-day projection, per-inbox calendar drill-down, diversification-aware
+              auto-allocation and a capacity planner — all from real send data.
             </p>
           </div>
           <div className="flex gap-2">
@@ -659,6 +664,10 @@ export default function Infrastructure({ user, setUser }) {
           loading={calendarLoading}
         />
 
+        {/* Auto-Allocation + Capacity Planner — Phase 3 */}
+        <AllocatorSection />
+        <PlannerSection />
+
       </main>
     </div>
   );
@@ -934,6 +943,414 @@ function Mini({ label, value, highlight }) {
         }`}
       >
         {(value || 0).toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+
+/* ============================================================
+ *  Auto-Allocation — standalone tool (Phase 3)
+ *  Diversification-aware inbox picker. Calls POST /infrastructure/allocate.
+ * ============================================================ */
+function AllocatorSection() {
+  const [open, setOpen] = useState(true);
+  const [required, setRequired] = useState(8);
+  const [minRemaining, setMinRemaining] = useState(10);
+  const [domainFloor, setDomainFloor] = useState(10);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await api.post("/infrastructure/allocate", {
+        required: Number(required) || 1,
+        min_remaining_per_inbox: Number(minRemaining) || 0,
+        domain_capacity_floor: Number(domainFloor) || 0,
+      });
+      setResult(res.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail?.[0]?.msg || e?.response?.data?.detail || "Allocation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyEmails = async () => {
+    if (!result?.inboxes?.length) return;
+    const text = result.inboxes.map((i) => i.email).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success(`Copied ${result.inboxes.length} emails`);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Clipboard blocked by the browser");
+    }
+  };
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mt-6"
+      data-testid="infra-allocator-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-allocator-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <Wand2 size={18} className="text-violet-600" /> Auto-Allocate Inboxes
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          <p className="text-sm text-slate-500 max-w-3xl">
+            Pick inboxes diversification-first — one per domain before reusing any, prefer
+            highest remaining capacity, skip warming/paused/risky inboxes and domains near
+            today&apos;s exhaustion floor.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                Required inboxes
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                value={required}
+                onChange={(e) => setRequired(e.target.value)}
+                className="w-32"
+                data-testid="allocator-required-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                Min remaining / inbox
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={minRemaining}
+                onChange={(e) => setMinRemaining(e.target.value)}
+                className="w-32"
+                data-testid="allocator-min-remaining-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                Domain capacity floor
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={domainFloor}
+                onChange={(e) => setDomainFloor(e.target.value)}
+                className="w-32"
+                data-testid="allocator-domain-floor-input"
+              />
+            </div>
+            <Button
+              onClick={run}
+              disabled={loading}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              data-testid="allocator-run-btn"
+            >
+              {loading ? (
+                <Loader2 className="mr-2 animate-spin" size={16} />
+              ) : (
+                <Wand2 className="mr-2" size={16} />
+              )}
+              Recommend
+            </Button>
+          </div>
+
+          {result && (
+            <div data-testid="allocator-result" className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="font-semibold text-slate-900">
+                    {result.allocated}
+                  </span>
+                  <span className="text-slate-500">of {result.requested} requested</span>
+                  <span className="text-slate-300">·</span>
+                  <span>
+                    Domains used: <span className="font-semibold">{result.domains_used.length}</span>
+                  </span>
+                  <span className="text-slate-300">·</span>
+                  <span>
+                    Avg per domain:{" "}
+                    <span className="font-semibold">{result.avg_inboxes_per_domain}</span>
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyEmails}
+                  disabled={!result.inboxes.length}
+                  data-testid="allocator-copy-btn"
+                >
+                  {copied ? (
+                    <CheckCircle className="mr-1.5 text-emerald-600" size={14} />
+                  ) : (
+                    <Copy className="mr-1.5" size={14} />
+                  )}
+                  {copied ? "Copied" : "Copy emails"}
+                </Button>
+              </div>
+
+              {result.warnings?.length > 0 && (
+                <ul
+                  className="mb-3 space-y-1 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3"
+                  data-testid="allocator-warnings"
+                >
+                  {result.warnings.map((w, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {result.inboxes.length === 0 ? (
+                <div className="text-sm text-slate-500" data-testid="allocator-empty">
+                  No eligible inboxes match the current filters.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">Email</th>
+                        <th className="text-left px-3 py-2 font-medium">Domain</th>
+                        <th className="text-left px-3 py-2 font-medium">Ownership</th>
+                        <th className="text-right px-3 py-2 font-medium">Daily Limit</th>
+                        <th className="text-right px-3 py-2 font-medium">Remaining</th>
+                        <th className="text-left px-3 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.inboxes.map((i) => (
+                        <tr
+                          key={i.account_id}
+                          className="border-t border-slate-100"
+                          data-testid={`allocator-row-${i.account_id}`}
+                        >
+                          <td className="px-3 py-1.5 font-medium text-slate-900">{i.email}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{i.domain}</td>
+                          <td className="px-3 py-1.5 text-slate-600">
+                            {i.ownership || <span className="text-slate-400 italic">none</span>}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{i.daily_limit}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
+                            {i.remaining_capacity}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                STATUS_COLOR[i.status] || "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              {i.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+/* ============================================================
+ *  Capacity Planner — Phase 3
+ *  Leads × Steps × Duration → required inboxes + Ready/Insufficient verdict.
+ * ============================================================ */
+function PlannerSection() {
+  const [open, setOpen] = useState(true);
+  const [leads, setLeads] = useState(10000);
+  const [steps, setSteps] = useState(3);
+  const [days, setDays] = useState(30);
+  const [sdpw, setSdpw] = useState(5);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await api.post("/infrastructure/planner", {
+        leads: Number(leads) || 1,
+        steps: Number(steps) || 1,
+        duration_days: Number(days) || 1,
+        sending_days_per_week: Number(sdpw) || 5,
+      });
+      setResult(res.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail?.[0]?.msg || e?.response?.data?.detail || "Planner failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const o = result?.outputs;
+  const status = result?.status;
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mt-6 mb-10"
+      data-testid="infra-planner-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-planner-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <Calculator size={18} className="text-emerald-600" /> Capacity Planner
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          <p className="text-sm text-slate-500 max-w-3xl">
+            Tell us the size of the outreach you&apos;re planning — we&apos;ll tell you whether your
+            current inbox pool can absorb it, and how many more inboxes you&apos;d need if not.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <PlannerInput label="Leads" value={leads} onChange={setLeads} testid="planner-leads" min={1} />
+            <PlannerInput label="Steps" value={steps} onChange={setSteps} testid="planner-steps" min={1} max={20} />
+            <PlannerInput label="Duration (days)" value={days} onChange={setDays} testid="planner-days" min={1} max={365} />
+            <PlannerInput label="Sending days / week" value={sdpw} onChange={setSdpw} testid="planner-sdpw" min={1} max={7} />
+            <Button
+              onClick={run}
+              disabled={loading}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              data-testid="planner-run-btn"
+            >
+              {loading ? (
+                <Loader2 className="mr-2 animate-spin" size={16} />
+              ) : (
+                <Calculator className="mr-2" size={16} />
+              )}
+              Calculate
+            </Button>
+          </div>
+
+          {result && (
+            <div
+              data-testid="planner-result"
+              className="border border-slate-200 rounded-lg p-4 bg-slate-50/50"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                {status === "Ready" ? (
+                  <span
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-1"
+                    data-testid="planner-status-ready"
+                  >
+                    <CheckCircle size={14} /> Ready
+                  </span>
+                ) : (
+                  <span
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1"
+                    data-testid="planner-status-insufficient"
+                  >
+                    <AlertTriangle size={14} /> Insufficient Capacity
+                  </span>
+                )}
+                <span className="text-sm text-slate-500">
+                  Estimated completion in{" "}
+                  <span className="font-semibold text-slate-900">
+                    {o?.estimated_completion_days}
+                  </span>{" "}
+                  days
+                </span>
+              </div>
+
+              {result.warnings?.length > 0 && (
+                <ul
+                  className="mb-3 space-y-1 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3"
+                  data-testid="planner-warnings"
+                >
+                  {result.warnings.map((w, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                <PlannerStat label="Total Emails" value={o?.total_emails} />
+                <PlannerStat label="Required Daily Volume" value={o?.required_daily_volume} />
+                <PlannerStat label="Required Inboxes" value={o?.required_inboxes} highlight />
+                <PlannerStat label="Available Inboxes" value={o?.available_inboxes} />
+                <PlannerStat label="Additional Needed" value={o?.additional_inboxes_required} testid="planner-additional-needed" />
+                <PlannerStat label="Median Daily Limit" value={o?.median_daily_limit} />
+                <PlannerStat label="Capacity Today" value={o?.available_capacity_today} />
+                <PlannerStat label="Capacity Window (120d)" value={o?.available_capacity_window} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlannerInput({ label, value, onChange, testid, min, max }) {
+  return (
+    <div>
+      <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+        {label}
+      </Label>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-36"
+        data-testid={testid}
+      />
+    </div>
+  );
+}
+
+function PlannerStat({ label, value, highlight, testid }) {
+  return (
+    <div
+      data-testid={testid}
+      className={`rounded-lg p-3 ${
+        highlight ? "bg-emerald-50 border border-emerald-100" : "bg-white border border-slate-200"
+      }`}
+    >
+      <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div
+        className={`text-xl font-bold tabular-nums ${
+          highlight ? "text-emerald-700" : "text-slate-900"
+        }`}
+      >
+        {(value ?? 0).toLocaleString()}
       </div>
     </div>
   );

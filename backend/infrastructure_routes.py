@@ -31,6 +31,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from infra_projection import build_projection, aggregate_capacity, calendar_for_account
+from infra_phase3 import attach_phase3_routes
 
 DEFAULT_WINDOW_DAYS = 120
 
@@ -538,5 +539,15 @@ def build_infrastructure_router(db, get_infra_user):
             media_type=media,
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
+
+    # Bolt on Phase 3 endpoints (auto-allocate + capacity planner).
+    attach_phase3_routes(
+        router,
+        db,
+        get_infra_user,
+        _load_inboxes,
+        build_projection,
+        aggregate_capacity,
+    )
 
     return router
