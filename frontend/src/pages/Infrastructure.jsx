@@ -23,6 +23,11 @@ import {
   ChevronUp,
   Copy,
   CheckCircle,
+  TrendingUp,
+  Target,
+  Plus,
+  Trash2,
+  Download,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -1742,3 +1747,568 @@ function BatchPlannerForm() {
   );
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// PHASE A — FORECASTING
+// ──────────────────────────────────────────────────────────────────────────
+function ForecastSection() {
+  const [open, setOpen] = useState(true);
+  const [target, setTarget] = useState(1500000);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = useCallback(async (t) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/infrastructure/forecast?monthly_target=${t}`);
+      setData(res.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Forecast failed");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    run(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mb-6"
+      data-testid="infra-forecast-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-forecast-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <TrendingUp size={18} className="text-indigo-600" /> Infrastructure Forecast
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          <p className="text-sm text-slate-500 max-w-3xl">
+            Compare your current sending capacity against your monthly target. We&apos;ll
+            recommend how many additional inboxes / domains you need to close the gap.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                <Target size={12} /> Monthly recipient target
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                step={50000}
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="w-48"
+                data-testid="forecast-target-input"
+              />
+            </div>
+            <Button
+              onClick={() => run(Number(target) || 0)}
+              disabled={loading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              data-testid="forecast-run-btn"
+            >
+              {loading ? (
+                <Loader2 className="mr-2 animate-spin" size={16} />
+              ) : (
+                <Calculator className="mr-2" size={16} />
+              )}
+              Recalculate
+            </Button>
+          </div>
+
+          {data && (
+            <div className="space-y-4" data-testid="forecast-result">
+              {/* Current snapshot */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <ForecastStat
+                  label="Active Domains"
+                  value={`${fmt(data.summary.active_domains)} / ${fmt(data.summary.total_domains)}`}
+                  testid="forecast-active-domains"
+                />
+                <ForecastStat
+                  label="Active Inboxes"
+                  value={`${fmt(data.summary.active_inboxes)} / ${fmt(data.summary.total_inboxes)}`}
+                  testid="forecast-active-inboxes"
+                />
+                <ForecastStat
+                  label="Daily Capacity"
+                  value={fmt(data.summary.total_daily_capacity)}
+                  testid="forecast-daily-capacity"
+                />
+                <ForecastStat
+                  label="Monthly Capacity"
+                  value={fmt(data.summary.total_monthly_capacity)}
+                  testid="forecast-monthly-capacity"
+                />
+              </div>
+
+              {/* Capacity windows */}
+              <div className="grid grid-cols-3 gap-3">
+                <ForecastStat
+                  label="Projected next 30 days"
+                  value={fmt(data.capacity.next_30_days)}
+                  testid="forecast-cap-30"
+                />
+                <ForecastStat
+                  label="Projected next 60 days"
+                  value={fmt(data.capacity.next_60_days)}
+                  testid="forecast-cap-60"
+                />
+                <ForecastStat
+                  label="Projected next 90 days"
+                  value={fmt(data.capacity.next_90_days)}
+                  testid="forecast-cap-90"
+                />
+              </div>
+
+              {/* Gap analysis */}
+              <div
+                className={`border rounded-xl p-4 ${
+                  data.gap.shortfall_monthly > 0
+                    ? "border-amber-200 bg-amber-50/60"
+                    : "border-emerald-200 bg-emerald-50/60"
+                }`}
+                data-testid="forecast-gap-card"
+              >
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">
+                      Gap analysis
+                    </div>
+                    <div className="text-sm text-slate-700">
+                      Target{" "}
+                      <span className="font-semibold tabular-nums">
+                        {fmt(data.gap.target_monthly)}
+                      </span>{" "}
+                      / month · Current capacity{" "}
+                      <span className="font-semibold tabular-nums">
+                        {fmt(data.gap.current_monthly)}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className={`text-2xl font-bold tabular-nums ${
+                      data.gap.shortfall_monthly > 0 ? "text-amber-700" : "text-emerald-700"
+                    }`}
+                    data-testid="forecast-shortfall"
+                  >
+                    {data.gap.shortfall_monthly > 0
+                      ? `-${fmt(data.gap.shortfall_monthly)} short`
+                      : "On target"}
+                  </div>
+                </div>
+
+                {data.gap.shortfall_monthly > 0 && (
+                  <div className="mt-3 pt-3 border-t border-amber-200/70 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Add inboxes
+                      </div>
+                      <div
+                        className="font-semibold text-slate-900 tabular-nums"
+                        data-testid="forecast-add-inboxes"
+                      >
+                        +{fmt(data.recommendation.additional_inboxes)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Add domains
+                      </div>
+                      <div
+                        className="font-semibold text-slate-900 tabular-nums"
+                        data-testid="forecast-add-domains"
+                      >
+                        +{fmt(data.recommendation.additional_domains)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Median daily limit
+                      </div>
+                      <div className="font-semibold text-slate-900 tabular-nums">
+                        {fmt(data.recommendation.median_daily_limit)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Capacity after expansion
+                      </div>
+                      <div className="font-semibold text-emerald-700 tabular-nums">
+                        {fmt(data.recommendation.estimated_capacity_after_expansion)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ForecastStat({ label, value, testid }) {
+  return (
+    <div
+      className="border border-slate-200 rounded-lg p-3 bg-slate-50/40"
+      data-testid={testid}
+    >
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+        {label}
+      </div>
+      <div className="text-lg font-semibold text-slate-900 tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PHASE A — DOMAIN TRACKING (Registrar / Expiry / Renewal report)
+// ──────────────────────────────────────────────────────────────────────────
+function DomainTrackingSection() {
+  const [open, setOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ domains: [], counts: {} });
+  const [editing, setEditing] = useState(null); // {domain, registrar, purchase_date, expiry_date, renewal_date, notes}
+  const [saving, setSaving] = useState(false);
+
+  const fetchDomains = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/infrastructure/domains");
+      setData(res.data || { domains: [], counts: {} });
+    } catch (e) {
+      toast.error("Failed to load tracked domains");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDomains();
+  }, [fetchDomains]);
+
+  const save = async () => {
+    if (!editing?.domain) {
+      toast.error("Domain is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post("/infrastructure/domains", {
+        domain: editing.domain.trim().toLowerCase(),
+        registrar: editing.registrar || null,
+        purchase_date: editing.purchase_date || null,
+        expiry_date: editing.expiry_date || null,
+        renewal_date: editing.renewal_date || null,
+        notes: editing.notes || null,
+      });
+      toast.success("Domain saved");
+      setEditing(null);
+      fetchDomains();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeDomain = async (dom) => {
+    if (!window.confirm(`Stop tracking ${dom}?`)) return;
+    try {
+      await api.delete(`/infrastructure/domains/${dom}`);
+      toast.success("Removed");
+      fetchDomains();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Delete failed");
+    }
+  };
+
+  const downloadRenewal = async (format) => {
+    try {
+      const res = await axios.get(
+        `${API}/infrastructure/domains/renewal-report?format=${format}`,
+        { withCredentials: true, responseType: "blob" }
+      );
+      const cd = res.headers["content-disposition"] || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = m ? m[1] : `renewal-report.${format}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Renewal report downloaded");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
+  const bucketStyle = (days) => {
+    if (days === null || days === undefined) return "bg-slate-100 text-slate-600";
+    if (days < 0) return "bg-red-100 text-red-700";
+    if (days <= 7) return "bg-red-100 text-red-700";
+    if (days <= 30) return "bg-amber-100 text-amber-700";
+    if (days <= 60) return "bg-amber-50 text-amber-600";
+    if (days <= 90) return "bg-sky-50 text-sky-700";
+    return "bg-emerald-50 text-emerald-700";
+  };
+
+  const bucketLabel = (days) => {
+    if (days === null || days === undefined) return "No expiry set";
+    if (days < 0) return `Expired ${Math.abs(days)}d ago`;
+    return `${days} days left`;
+  };
+
+  const c = data.counts || {};
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mb-6"
+      data-testid="infra-domain-tracking-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-domain-tracking-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <Globe size={18} className="text-amber-600" /> Domain Tracking & Expiry
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2">
+          {/* Bucket cards */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+            <BucketCard label="Total tracked" value={c.total ?? 0} tone="slate" testid="dom-bucket-total" />
+            <BucketCard label="Healthy" value={(c.active ?? 0) - ((c.expiring_90 ?? 0) + (c.expiring_60 ?? 0) + (c.expiring_30 ?? 0) + (c.expiring_7 ?? 0))} tone="emerald" testid="dom-bucket-healthy" />
+            <BucketCard label="≤ 90 days" value={c.expiring_90 ?? 0} tone="sky" testid="dom-bucket-90" />
+            <BucketCard label="≤ 60 days" value={c.expiring_60 ?? 0} tone="amber" testid="dom-bucket-60" />
+            <BucketCard label="≤ 30 days" value={c.expiring_30 ?? 0} tone="amber" testid="dom-bucket-30" />
+            <BucketCard label="Expired / ≤ 7 days" value={(c.expired ?? 0) + (c.expiring_7 ?? 0)} tone="rose" testid="dom-bucket-critical" />
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <Button
+              onClick={() =>
+                setEditing({ domain: "", registrar: "", purchase_date: "", expiry_date: "", renewal_date: "", notes: "" })
+              }
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="dom-add-btn"
+            >
+              <Plus size={16} className="mr-1.5" /> Track Domain
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => downloadRenewal("xlsx")}
+              data-testid="dom-renewal-xlsx"
+            >
+              <Download size={16} className="mr-1.5" /> Renewal Report (xlsx)
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => downloadRenewal("csv")}
+              data-testid="dom-renewal-csv"
+            >
+              <FileText size={16} className="mr-1.5" /> CSV
+            </Button>
+          </div>
+
+          {/* Table */}
+          {loading ? (
+            <div className="py-8 text-center text-sm text-slate-500" data-testid="dom-loading">
+              <Loader2 className="inline-block animate-spin mr-2" size={14} /> Loading…
+            </div>
+          ) : data.domains.length === 0 ? (
+            <div className="px-2 py-8 text-sm text-slate-500 text-center border border-dashed border-slate-200 rounded-lg" data-testid="dom-empty">
+              No domains tracked yet. Click <span className="font-medium">Track Domain</span> to add one.
+            </div>
+          ) : (
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="min-w-full text-sm" data-testid="dom-table">
+                <thead className="bg-slate-50 text-slate-600 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Domain</th>
+                    <th className="text-left px-3 py-2 font-medium">Registrar</th>
+                    <th className="text-left px-3 py-2 font-medium">Purchased</th>
+                    <th className="text-left px-3 py-2 font-medium">Expires</th>
+                    <th className="text-right px-3 py-2 font-medium">Age (d)</th>
+                    <th className="text-left px-3 py-2 font-medium">Status</th>
+                    <th className="text-right px-3 py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.domains.map((d) => (
+                    <tr
+                      key={d.domain}
+                      className="border-t border-slate-100"
+                      data-testid={`dom-row-${d.domain}`}
+                    >
+                      <td className="px-3 py-2 font-medium text-slate-800">{d.domain}</td>
+                      <td className="px-3 py-2 text-slate-600">{d.registrar || "—"}</td>
+                      <td className="px-3 py-2 text-slate-600">{d.purchase_date || "—"}</td>
+                      <td className="px-3 py-2 text-slate-600">{d.expiry_date || "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                        {d.days_in_infrastructure ?? "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${bucketStyle(
+                            d.days_to_expiry
+                          )}`}
+                        >
+                          {bucketLabel(d.days_to_expiry)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => setEditing({ ...d })}
+                          className="text-slate-500 hover:text-slate-900 mr-2"
+                          data-testid={`dom-edit-${d.domain}`}
+                          title="Edit"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => removeDomain(d.domain)}
+                          className="text-rose-500 hover:text-rose-700"
+                          data-testid={`dom-delete-${d.domain}`}
+                          title="Delete"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Edit / Add dialog */}
+          <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+            <DialogContent data-testid="dom-edit-dialog">
+              <DialogHeader>
+                <DialogTitle>
+                  {editing?.domain_id ? `Edit ${editing.domain}` : "Track a domain"}
+                </DialogTitle>
+              </DialogHeader>
+              {editing && (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs text-slate-500">Domain *</Label>
+                    <Input
+                      value={editing.domain || ""}
+                      onChange={(e) => setEditing({ ...editing, domain: e.target.value })}
+                      placeholder="example.com"
+                      disabled={!!editing.domain_id}
+                      data-testid="dom-form-domain"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Registrar</Label>
+                    <Input
+                      value={editing.registrar || ""}
+                      onChange={(e) => setEditing({ ...editing, registrar: e.target.value })}
+                      placeholder="GoDaddy, Namecheap, Cloudflare…"
+                      data-testid="dom-form-registrar"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-slate-500">Purchase date</Label>
+                      <Input
+                        type="date"
+                        value={editing.purchase_date || ""}
+                        onChange={(e) => setEditing({ ...editing, purchase_date: e.target.value })}
+                        data-testid="dom-form-purchase"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Expiry date</Label>
+                      <Input
+                        type="date"
+                        value={editing.expiry_date || ""}
+                        onChange={(e) => setEditing({ ...editing, expiry_date: e.target.value })}
+                        data-testid="dom-form-expiry"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Renewal date</Label>
+                    <Input
+                      type="date"
+                      value={editing.renewal_date || ""}
+                      onChange={(e) => setEditing({ ...editing, renewal_date: e.target.value })}
+                      data-testid="dom-form-renewal"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Notes</Label>
+                    <Input
+                      value={editing.notes || ""}
+                      onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
+                      placeholder="Optional"
+                      data-testid="dom-form-notes"
+                    />
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditing(null)} data-testid="dom-form-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={save}
+                  disabled={saving}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  data-testid="dom-form-save"
+                >
+                  {saving ? <Loader2 className="mr-2 animate-spin" size={14} /> : null}
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BucketCard({ label, value, tone = "slate", testid }) {
+  const tones = {
+    slate: "border-slate-200 bg-slate-50/60 text-slate-900",
+    emerald: "border-emerald-200 bg-emerald-50/60 text-emerald-800",
+    sky: "border-sky-200 bg-sky-50/60 text-sky-800",
+    amber: "border-amber-200 bg-amber-50/60 text-amber-800",
+    rose: "border-rose-200 bg-rose-50/60 text-rose-800",
+  };
+  return (
+    <div
+      className={`border rounded-lg px-3 py-2 ${tones[tone] || tones.slate}`}
+      data-testid={testid}
+    >
+      <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
+      <div className="text-xl font-bold tabular-nums">{value}</div>
+    </div>
+  );
+}
