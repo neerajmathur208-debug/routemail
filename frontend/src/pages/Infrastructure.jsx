@@ -234,6 +234,21 @@ export default function Infrastructure({ user, setUser }) {
             </Button>
             <Button
               variant="outline"
+              onClick={async () => {
+                try {
+                  const res = await axios.get(`${API}/infrastructure/accounts/export?format=xlsx`, { withCredentials: true, responseType: "blob" });
+                  const cd = res.headers["content-disposition"] || ""; const m = cd.match(/filename="([^"]+)"/);
+                  const url = window.URL.createObjectURL(new Blob([res.data])); const a = document.createElement("a");
+                  a.href = url; a.download = m ? m[1] : "accounts.xlsx"; a.click(); window.URL.revokeObjectURL(url);
+                  toast.success("Email accounts exported");
+                } catch { toast.error("Export failed"); }
+              }}
+              data-testid="infra-export-accounts-xlsx"
+            >
+              <FileSpreadsheet size={16} className="mr-1.5" /> Email Accounts
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => downloadExport("inboxes", "csv")}
               data-testid="infra-export-inboxes-csv"
             >
@@ -323,6 +338,10 @@ export default function Infrastructure({ user, setUser }) {
             testid="card-cap-120d"
           />
         </section>
+
+        {/* Phase A — Forecasting + Domain Tracking */}
+        <ForecastSection />
+        <DomainTrackingSection />
 
         {/* Domain rollup table */}
         <section
