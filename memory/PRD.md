@@ -1,6 +1,35 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 56 (June 2026)
+
+### Infrastructure Phase A — Forecasting + Domain Tracking (FRONTEND)
+Backend was already shipped in iter-55. This iteration completes the UI.
+
+- **ForecastSection** (`/infrastructure`) — new collapsible card after the capacity cards.
+  - Monthly recipient target input (`forecast-target-input`, default 1,500,000) + `forecast-run-btn`.
+  - Calls `GET /api/infrastructure/forecast?monthly_target=…` on mount and on Recalculate.
+  - Renders 4 summary stats (active domains / inboxes, daily / monthly capacity),
+    3 projected-window stats (30 / 60 / 90 days), and a gap card showing target vs current.
+  - When shortfall > 0, the recommendation row exposes `forecast-add-inboxes`,
+    `forecast-add-domains`, median daily limit, and projected capacity after expansion.
+- **DomainTrackingSection** — new collapsible card with 6 bucket cards
+  (`dom-bucket-{total|healthy|90|60|30|critical}`), a tracked-domains table, and a CRUD dialog.
+  - Add / edit via `dom-add-btn` → `dom-edit-dialog` (domain, registrar, purchase / expiry / renewal
+    dates, notes). Save hits `POST /api/infrastructure/domains`.
+  - Each row shows expiry status badge (≤7 / ≤30 / ≤60 / ≤90 / healthy / expired) computed from
+    `days_to_expiry`. Per-row edit / delete (`DELETE /api/infrastructure/domains/{domain}`).
+  - `dom-renewal-xlsx` / `dom-renewal-csv` download the renewal report from
+    `GET /api/infrastructure/domains/renewal-report?format=…`.
+- **Email Accounts export header button** (`infra-export-accounts-xlsx`) wires the existing
+  `GET /api/infrastructure/accounts/export?format=xlsx` endpoint into the page header.
+
+### Verification
+- Iteration 56 test report: 100% pass on the 22 Phase A testids + both xlsx blob downloads
+  + create→list→delete domain CRUD lifecycle + regression on Allocator and Planner sections.
+  No JS errors. `retest_needed: false`.
+
+
 ## Changelog — Iteration 55 (June 2026)
 
 ### Capacity Planner — Batch-Based Weekly Sending Mode
