@@ -28,6 +28,7 @@ import {
   Plus,
   Trash2,
   Download,
+  RefreshCcw,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -79,6 +80,9 @@ export default function Infrastructure({ user, setUser }) {
   // Ownership edit dialog
   const [ownerEdit, setOwnerEdit] = useState(null); // { account_id, email, ownership }
   const [ownerSaving, setOwnerSaving] = useState(false);
+
+  // Replacement dialog
+  const [replaceFor, setReplaceFor] = useState(null); // {row, preview, loading, saving}
 
   // Per-inbox 120-day calendar drill-down
   const [calendarFor, setCalendarFor] = useState(null); // the inbox row
@@ -614,6 +618,25 @@ export default function Infrastructure({ user, setUser }) {
                           >
                             <Edit2 size={14} />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                            title="Replace this inbox"
+                            data-testid={`inbox-replace-btn-${r.account_id}`}
+                            onClick={async () => {
+                              setReplaceFor({ row: r, preview: null, loading: true, saving: false });
+                              try {
+                                const res = await api.get(`/infrastructure/replacements/candidate/${r.account_id}`);
+                                setReplaceFor({ row: r, preview: res.data, loading: false, saving: false });
+                              } catch (e) {
+                                toast.error(e?.response?.data?.detail || "Preview failed");
+                                setReplaceFor(null);
+                              }
+                            }}
+                          >
+                            <RefreshCcw size={14} />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -691,7 +714,137 @@ export default function Infrastructure({ user, setUser }) {
         {/* Auto-Allocation + Capacity Planner — Phase 3 */}
         <AllocatorSection />
         <PlannerSection />
+        <ReplacementSection
+          onRequestReplace={async (row) => {
+            setReplaceFor({ row, preview: null, loading: true, saving: false });
+            try {
+              const res = await api.get(`/infrastructure/replacements/candidate/${row.account_id}`);
+              setReplaceFor({ row, preview: res.data, loading: false, saving: false });
+            } catch (e) {
+              toast.error(e?.response?.data?.detail || "Preview failed");
+              setReplaceFor(null);
+            }
+          }}
+        />
 
+        {/* Replacement preview / confirm dialog */}
+        <Dialog open={!!replaceFor} onOpenChange={(o) => !o && setReplaceFor(null)}>
+          <DialogContent className="sm:max-w-[640px]" data-testid="replace-dialog">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RefreshCcw size={18} className="text-violet-600" />
+                Replace inbox
+              </DialogTitle>
+            </DialogHeader>
+            {replaceFor?.loading ? (
+              <div className="py-8 text-center text-slate-500 text-sm" data-testid="replace-loading">
+                <Loader2 className="inline-block animate-spin mr-2" size={14} /> Finding the best replacement…
+              </div>
+            ) : replaceFor?.preview ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="border border-rose-200 bg-rose-50/50 rounded-lg p-3" data-testid="replace-from">
+                    <div className="text-[11px] uppercase tracking-wider text-rose-600 mb-1">Replacing</div>
+                    <div className="font-semibold text-slate-900">{replaceFor.preview.replaced.email}</div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      {replaceFor.preview.replaced.domain} · {replaceFor.preview.replaced.status}
+                    </div>
+                  </div>
+                  {replaceFor.preview.candidate ? (
+                    <div className="border border-emerald-200 bg-emerald-50/50 rounded-lg p-3" data-testid="replace-to">
+                      <div className="text-[11px] uppercase tracking-wider text-emerald-700 mb-1">With</div>
+                      <div className="font-semibold text-slate-900">{replaceFor.preview.candidate.email}</div>
+                      <div className="text-xs text-slate-600 mt-1">
+                        {replaceFor.preview.candidate.domain} · {replaceFor.preview.candidate.remaining_capacity} remaining
+                        {replaceFor.preview.candidate.cross_domain && (
+                          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px]">
+                            cross-domain
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border border-amber-200 bg-amber-50/50 rounded-lg p-3" data-testid="replace-nocand">
+                      <div className="text-[11px] uppercase tracking-wider text-amber-700 mb-1">No candidate</div>
+                      <div className="text-xs text-slate-700">{replaceFor.preview.no_candidate_reason}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">Affected workloads</div>
+                  {(replaceFor.preview.affected.campaigns.length === 0 &&
+                    replaceFor.preview.affected.drips.length === 0) ? (
+                    <div className="text-xs text-slate-500" data-testid="replace-noaffected">
+                      No running campaigns or drips currently use this inbox.
+                    </div>
+                  ) : (
+                    <ul className="space-y-1 text-sm" data-testid="replace-affected-list">
+                      {replaceFor.preview.affected.campaigns.map((c) => (
+                        <li key={`c-${c.campaign_id}`} className="text-slate-700">
+                          <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 text-[10px] mr-1.5">
+                            campaign
+                          </span>
+                          {c.name} <span className="text-xs text-slate-400">· {c.status}</span>
+                        </li>
+                      ))}
+                      {replaceFor.preview.affected.drips.map((d) => (
+                        <li key={`d-${d.drip_id}`} className="text-slate-700">
+                          <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] mr-1.5">
+                            drip
+                          </span>
+                          {d.name} <span className="text-xs text-slate-400">· {d.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReplaceFor(null)} data-testid="replace-cancel">
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  !replaceFor?.preview?.candidate || replaceFor?.saving || replaceFor?.loading
+                }
+                onClick={async () => {
+                  if (!replaceFor?.preview?.candidate) return;
+                  setReplaceFor({ ...replaceFor, saving: true });
+                  try {
+                    const res = await api.post(
+                      `/infrastructure/replacements/execute/${replaceFor.row.account_id}`,
+                      {
+                        replacement_account_id: replaceFor.preview.candidate.account_id,
+                        manual: true,
+                      }
+                    );
+                    const sc = res.data?.swap_counts || { campaigns: 0, drips: 0 };
+                    toast.success(
+                      `Replaced — ${sc.campaigns} campaign(s) and ${sc.drips} drip(s) updated`
+                    );
+                    setReplaceFor(null);
+                    fetchInboxes();
+                    fetchSummary();
+                  } catch (e) {
+                    toast.error(e?.response?.data?.detail?.message || e?.response?.data?.detail || "Replacement failed");
+                    setReplaceFor({ ...replaceFor, saving: false });
+                  }
+                }}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+                data-testid="replace-confirm"
+              >
+                {replaceFor?.saving ? (
+                  <Loader2 className="mr-2 animate-spin" size={14} />
+                ) : (
+                  <RefreshCcw className="mr-2" size={14} />
+                )}
+                Confirm Replace
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
@@ -2312,3 +2465,179 @@ function BucketCard({ label, value, tone = "slate", testid }) {
     </div>
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// PHASE B — REPLACEMENT SECTION (recent activity + auto-scan trigger)
+// ──────────────────────────────────────────────────────────────────────────
+function ReplacementSection({ onRequestReplace }) {
+  const [open, setOpen] = useState(true);
+  const [items, setItems] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [atRisk, setAtRisk] = useState([]);
+  const navigate = useNavigate();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [hist, inb] = await Promise.all([
+        api.get("/infrastructure/replacements?limit=5"),
+        api.get("/infrastructure/inboxes?status=paused,risky"),
+      ]);
+      setItems(hist.data?.items || []);
+      setCounts(hist.data?.counts || {});
+      const at = (inb.data?.inboxes || []).filter((r) => r.active_campaign_count > 0);
+      setAtRisk(at);
+    } catch {
+      // silent — section degrades gracefully
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const runScan = async () => {
+    setScanning(true);
+    try {
+      const res = await api.post("/infrastructure/replacements/auto-scan");
+      const c = res.data?.completed?.length || 0;
+      const n = res.data?.no_candidate?.length || 0;
+      if (c === 0 && n === 0) toast.message("No at-risk inboxes found");
+      else toast.success(`Auto-scan complete — ${c} replaced${n ? `, ${n} unresolved` : ""}`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Auto-scan failed");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mt-6"
+      data-testid="infra-replacement-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-replacement-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <RefreshCcw size={18} className="text-violet-600" /> Automatic Infrastructure Replacement
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <BucketCard label="At-risk in campaigns" value={atRisk.length} tone="rose" testid="rep-atrisk" />
+            <BucketCard label="Replacements logged" value={items.length > 0 ? (counts.completed || 0) + (counts.no_candidate || 0) + (counts.failed || 0) : 0} tone="slate" testid="rep-logged" />
+            <BucketCard label="Completed" value={counts.completed || 0} tone="emerald" testid="rep-completed" />
+            <BucketCard label="No candidate" value={counts.no_candidate || 0} tone="amber" testid="rep-nocand" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={runScan}
+              disabled={scanning}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              data-testid="rep-scan-btn"
+            >
+              {scanning ? <Loader2 className="mr-2 animate-spin" size={14} /> : <Wand2 className="mr-2" size={14} />}
+              Scan & Auto-Replace
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate("/infrastructure/replacements")}
+              data-testid="rep-history-link"
+            >
+              View full history →
+            </Button>
+          </div>
+
+          {atRisk.length > 0 && (
+            <div className="border border-rose-200 bg-rose-50/40 rounded-lg p-3" data-testid="rep-atrisk-list">
+              <div className="text-[11px] uppercase tracking-wider text-rose-700 mb-2 flex items-center gap-1">
+                <AlertTriangle size={12} /> At-risk inboxes currently in campaigns
+              </div>
+              <ul className="space-y-1 text-sm">
+                {atRisk.slice(0, 5).map((r) => (
+                  <li key={r.account_id} className="flex items-center justify-between">
+                    <span>
+                      <span className="font-medium text-slate-900">{r.email}</span>
+                      <span className="text-slate-500 text-xs ml-2">
+                        {r.status} · {r.active_campaign_count} active
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => onRequestReplace(r)}
+                      className="text-violet-600 hover:text-violet-700 text-xs font-medium inline-flex items-center gap-1"
+                      data-testid={`rep-row-replace-${r.account_id}`}
+                    >
+                      <RefreshCcw size={11} /> Replace
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Recent activity */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">
+              Recent activity
+            </div>
+            {loading ? (
+              <div className="py-4 text-center text-xs text-slate-500" data-testid="rep-section-loading">
+                <Loader2 className="inline-block animate-spin mr-2" size={12} /> Loading…
+              </div>
+            ) : items.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-500 border border-dashed border-slate-200 rounded-lg" data-testid="rep-section-empty">
+                No replacements yet.
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100 border border-slate-200 rounded-lg" data-testid="rep-recent-list">
+                {items.map((it) => (
+                  <li
+                    key={it.replacement_id}
+                    className="px-3 py-2 text-sm flex items-center justify-between"
+                    data-testid={`rep-recent-${it.replacement_id}`}
+                  >
+                    <div>
+                      <span className="font-medium text-slate-900">{it.replaced_email}</span>
+                      <span className="text-slate-400 mx-1">→</span>
+                      <span className="font-medium text-slate-900">
+                        {it.replacement_email || <span className="italic text-slate-400">—</span>}
+                      </span>
+                      <span className="text-xs text-slate-500 ml-2">
+                        {it.reason} · {it.triggered_by}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        it.status === "completed"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : it.status === "no_candidate"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {it.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
