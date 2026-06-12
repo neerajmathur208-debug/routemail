@@ -29,6 +29,8 @@ import {
   Trash2,
   Download,
   RefreshCcw,
+  ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -350,6 +352,7 @@ export default function Infrastructure({ user, setUser }) {
 
         {/* Phase A — Forecasting + Domain Tracking */}
         <ForecastSection />
+        <ReputationSummaryCard />
         <DomainTrackingSection />
 
         {/* Domain rollup table */}
@@ -726,6 +729,7 @@ export default function Infrastructure({ user, setUser }) {
             }
           }}
         />
+        <IssuesDashboardCard />
 
         {/* Replacement preview / confirm dialog */}
         <Dialog open={!!replaceFor} onOpenChange={(o) => !o && setReplaceFor(null)}>
@@ -2138,12 +2142,21 @@ function DomainTrackingSection() {
   const [data, setData] = useState({ domains: [], counts: {} });
   const [editing, setEditing] = useState(null); // {domain, registrar, purchase_date, expiry_date, renewal_date, notes}
   const [saving, setSaving] = useState(false);
+  const [repByDomain, setRepByDomain] = useState({}); // {domain: {score_30d, score_7d, bucket_30d}}
 
   const fetchDomains = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/infrastructure/domains");
-      setData(res.data || { domains: [], counts: {} });
+      const [domsRes, repRes] = await Promise.all([
+        api.get("/infrastructure/domains"),
+        api.get("/infrastructure/reputation").catch(() => ({ data: { domains: [] } })),
+      ]);
+      setData(domsRes.data || { domains: [], counts: {} });
+      const map = {};
+      for (const d of repRes.data?.domains || []) {
+        map[d.domain] = d;
+      }
+      setRepByDomain(map);
     } catch (e) {
       toast.error("Failed to load tracked domains");
     } finally {
@@ -2304,6 +2317,7 @@ function DomainTrackingSection() {
                     <th className="text-left px-3 py-2 font-medium">Purchased</th>
                     <th className="text-left px-3 py-2 font-medium">Expires</th>
                     <th className="text-right px-3 py-2 font-medium">Age (d)</th>
+                    <th className="text-left px-3 py-2 font-medium">Reputation</th>
                     <th className="text-left px-3 py-2 font-medium">Status</th>
                     <th className="text-right px-3 py-2 font-medium">Actions</th>
                   </tr>
@@ -2321,6 +2335,9 @@ function DomainTrackingSection() {
                       <td className="px-3 py-2 text-slate-600">{d.expiry_date || "—"}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                         {d.days_in_infrastructure ?? "—"}
+                      </td>
+                      <td className="px-3 py-2" data-testid={`dom-rep-${d.domain}`}>
+                        <ReputationBadge rep={repByDomain[d.domain]} />
                       </td>
                       <td className="px-3 py-2">
                         <span
@@ -2635,6 +2652,304 @@ function ReplacementSection({ onRequestReplace }) {
               </ul>
             )}
           </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+// ──────────────────────────────────────────────────────────────────────────
+// PHASE C — REPUTATION SUMMARY CARD + DOMAIN REPUTATION BADGE
+// ──────────────────────────────────────────────────────────────────────────
+function scoreColor(score) {
+  if (score === null || score === undefined) return "bg-slate-100 text-slate-500";
+  if (score >= 80) return "bg-emerald-100 text-emerald-700";
+  if (score >= 60) return "bg-sky-100 text-sky-700";
+  if (score >= 40) return "bg-amber-100 text-amber-700";
+  if (score >= 20) return "bg-orange-100 text-orange-700";
+  return "bg-rose-100 text-rose-700";
+}
+
+function ReputationBadge({ rep }) {
+  if (!rep) return <span className="text-slate-400 italic text-xs">no data</span>;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold w-fit ${scoreColor(
+          rep.score_30d
+        )}`}
+        title="30-day score"
+      >
+        <ShieldCheck size={11} />
+        {Number(rep.score_30d ?? 0).toFixed(0)} / 100
+      </span>
+      <span className="text-[10px] text-slate-500">
+        7-day: {Number(rep.score_7d ?? 0).toFixed(0)}
+      </span>
+    </div>
+  );
+}
+
+function ReputationSummaryCard() {
+  const [open, setOpen] = useState(true);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [recomputing, setRecomputing] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/infrastructure/reputation");
+      setData(res.data);
+    } catch (e) {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const recompute = async () => {
+    setRecomputing(true);
+    try {
+      const r = await api.post("/infrastructure/reputation/recompute");
+      toast.success(`Recomputed ${r.data?.domain_count || 0} domains`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Recompute failed");
+    } finally {
+      setRecomputing(false);
+    }
+  };
+
+  const s = data?.summary || {};
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mb-6"
+      data-testid="infra-reputation-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-reputation-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <ShieldCheck size={18} className="text-emerald-600" /> Domain Reputation
+          {data?.stale && (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+              recomputing…
+            </span>
+          )}
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          {loading ? (
+            <div className="py-6 text-sm text-slate-500 text-center" data-testid="rep-summary-loading">
+              <Loader2 className="inline-block animate-spin mr-2" size={14} /> Loading…
+            </div>
+          ) : !data || data.domains.length === 0 ? (
+            <div className="py-6 text-sm text-slate-500 text-center border border-dashed border-slate-200 rounded-lg" data-testid="rep-summary-empty">
+              No reputation data yet. Click <span className="font-medium">Recompute</span> to build the cache.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <ScoreCard label="Average — 30 days" value={s.avg_score_30d} testid="rep-avg-30d" />
+                <ScoreCard label="Average — 7 days" value={s.avg_score_7d} testid="rep-avg-7d" />
+                <BucketCard label="Domains tracked" value={s.total_domains || 0} tone="slate" testid="rep-total-domains" />
+                <BucketCard
+                  label="Critical / Poor"
+                  value={(s.buckets?.critical || 0) + (s.buckets?.poor || 0)}
+                  tone="rose"
+                  testid="rep-poor-count"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="border border-rose-200 bg-rose-50/40 rounded-lg p-3" data-testid="rep-worst">
+                  <div className="text-[11px] uppercase tracking-wider text-rose-700 mb-2 flex items-center gap-1">
+                    <AlertCircle size={12} /> Worst-performing
+                  </div>
+                  {(s.worst || []).length === 0 ? (
+                    <div className="text-xs text-slate-500">—</div>
+                  ) : (
+                    <ul className="text-sm space-y-1">
+                      {s.worst.map((w) => (
+                        <li key={`worst-${w.domain}`} className="flex justify-between items-center">
+                          <span className="font-medium text-slate-900">{w.domain}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${scoreColor(w.score_30d)}`}>
+                            {Number(w.score_30d).toFixed(0)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-3" data-testid="rep-best">
+                  <div className="text-[11px] uppercase tracking-wider text-emerald-700 mb-2 flex items-center gap-1">
+                    <CheckCircle2 size={12} /> Best-performing
+                  </div>
+                  {(s.best || []).length === 0 ? (
+                    <div className="text-xs text-slate-500">—</div>
+                  ) : (
+                    <ul className="text-sm space-y-1">
+                      {s.best.map((b) => (
+                        <li key={`best-${b.domain}`} className="flex justify-between items-center">
+                          <span className="font-medium text-slate-900">{b.domain}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${scoreColor(b.score_30d)}`}>
+                            {Number(b.score_30d).toFixed(0)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Score formula: Reply 50% · Bounce 20% · Age 10% · Warmup 10% · Unsub 5% · Errors 5%
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={recompute}
+              disabled={recomputing}
+              data-testid="rep-recompute-btn"
+            >
+              {recomputing ? <Loader2 className="mr-1.5 animate-spin" size={12} /> : <RefreshCcw className="mr-1.5" size={12} />}
+              Recompute
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ScoreCard({ label, value, testid }) {
+  const s = Number(value || 0);
+  return (
+    <div
+      className={`border rounded-lg p-3 ${scoreColor(s)} bg-opacity-50`}
+      data-testid={testid}
+    >
+      <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
+      <div className="text-3xl font-bold tabular-nums">{s.toFixed(1)}</div>
+      <div className="text-[10px] opacity-70">/ 100</div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PHASE C — INLINE ISSUES DASHBOARD CARD
+// ──────────────────────────────────────────────────────────────────────────
+function IssuesDashboardCard() {
+  const [open, setOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ counts: {}, paused: [], risky: [], errored: [] });
+  const navigate = useNavigate();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/infrastructure/issues");
+      setData(res.data);
+    } catch (e) {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const cards = [
+    { label: "Paused", count: data.counts.paused || 0, tone: "amber" },
+    { label: "Risky", count: data.counts.risky || 0, tone: "rose" },
+    { label: "Errored", count: data.counts.errored || 0, tone: "slate" },
+  ];
+
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-2xl p-4 mt-6"
+      data-testid="infra-issues-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2"
+        data-testid="infra-issues-toggle"
+      >
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <AlertCircle size={18} className="text-rose-600" /> Issues Dashboard
+        </h2>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="mt-4 px-2 space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            {cards.map((c) => (
+              <BucketCard
+                key={c.label}
+                label={c.label}
+                value={c.count}
+                tone={c.tone}
+                testid={`issue-bucket-${c.label.toLowerCase()}`}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500">
+              {loading
+                ? "Loading…"
+                : (data.counts.total || 0) === 0
+                ? "Everything looks healthy."
+                : `${data.counts.total} inboxes need attention.`}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/infrastructure/issues")}
+              data-testid="issues-page-link"
+            >
+              Open Issues Dashboard →
+            </Button>
+          </div>
+
+          {!loading && (data.counts.total || 0) > 0 && (
+            <ul className="divide-y divide-slate-100 border border-slate-200 rounded-lg" data-testid="issues-preview-list">
+              {[...data.paused, ...data.risky, ...data.errored].slice(0, 5).map((r) => (
+                <li
+                  key={`issue-${r.account_id}`}
+                  className="px-3 py-2 text-sm flex items-center justify-between"
+                  data-testid={`issue-preview-${r.account_id}`}
+                >
+                  <div>
+                    <span className="font-medium text-slate-900">{r.email}</span>
+                    <span className="text-slate-500 text-xs ml-2">
+                      {r.domain} · {r.status} · {r.active_campaign_count} active
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </section>

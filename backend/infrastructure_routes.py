@@ -34,6 +34,7 @@ from infra_projection import build_projection, aggregate_capacity, calendar_for_
 from infra_phase3 import attach_phase3_routes
 from infra_phase_a import attach_phase_a_routes
 from infra_phase_b import attach_phase_b_routes
+from infra_phase_c import attach_phase_c_routes
 
 DEFAULT_WINDOW_DAYS = 120
 
@@ -557,5 +558,8 @@ def build_infrastructure_router(db, get_infra_user):
 
     # Phase B — automatic infrastructure replacement
     attach_phase_b_routes(router, db, get_infra_user, _load_inboxes)
+
+    # Phase C — domain reputation monitoring + issues dashboard
+    attach_phase_c_routes(router, db, get_infra_user, _load_inboxes)
 
     return router

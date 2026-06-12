@@ -33,6 +33,7 @@ import AdminUserDetail from "./pages/AdminUserDetail";
 import SystemBackupRestore from "./pages/SystemBackupRestore";
 import Infrastructure from "./pages/Infrastructure";
 import InfrastructureReplacements from "./pages/InfrastructureReplacements";
+import InfrastructureIssues from "./pages/InfrastructureIssues";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
@@ -253,6 +254,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <InfrastructureReplacements user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/infrastructure/issues"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <InfrastructureIssues user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />
