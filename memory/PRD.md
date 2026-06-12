@@ -1,6 +1,50 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 57 (June 2026)
+
+### Infrastructure Phase B — Automatic Replacement
+Replaces paused/risky inboxes in running campaigns + drips with a free, healthy,
+cross-domain-preferred inbox.
+
+**Backend** (`/app/backend/infra_phase_b.py`, 306 lines — single module, no server.py changes):
+- `GET /api/infrastructure/replacements/candidate/{account_id}` — preview:
+  returns `{replaced, candidate, affected, no_candidate_reason}`. Candidate must
+  be a healthy inbox NOT already assigned to any running/scheduled/paused
+  campaign or drip (the "free pool" rule). Cross-domain first → highest
+  remaining capacity → highest daily limit.
+- `POST /api/infrastructure/replacements/execute/{account_id}` body
+  `{replacement_account_id?, reason?, manual}` — runs the swap atomically across
+  every running campaign + drip, dedupes any accidental duplicates, logs a row
+  to `tracked_replacements`. On no candidate, still logs a `no_candidate` entry
+  before returning 409.
+- `POST /api/infrastructure/replacements/auto-scan` — scans all visible inboxes,
+  replaces every Paused/Risky one currently assigned to a campaign, returns
+  `{scanned, candidates, completed[], no_candidate[]}`.
+- `GET /api/infrastructure/replacements?limit=&status=&triggered_by=` — history,
+  newest-first, with by-status + by-trigger counts.
+
+**Frontend**:
+- `Infrastructure.jsx` — new `ReplacementSection` after Capacity Planner with
+  4 bucket cards (at-risk / logged / completed / no-candidate), "Scan & Auto-
+  Replace" CTA, "View full history" link, an at-risk inbox list with per-row
+  Replace links, and a Recent Activity list (last 5 swaps).
+- `Infrastructure.jsx` — every Inbox Activity row now has a violet
+  `inbox-replace-btn-<account_id>` icon that opens the shared replace-dialog.
+- `replace-dialog` shows replaced-vs-with cards, cross-domain badge, the list
+  of affected campaigns + drips, and a single Confirm button.
+- New page `/infrastructure/replacements` (`InfrastructureReplacements.jsx`) —
+  full history table with status + trigger filters, count cards, and a header
+  Auto-Scan button.
+
+### Verification
+- Iteration 57 test report: **7/7 pytest pass + full UI E2E pass**. Backend
+  busy-pool exclusion and cross-domain preference proven; campaign+drip
+  `account_ids` rewrites verified directly in Mongo; UI flow click → dialog →
+  confirm → DB swap → history row → cross-domain badge all green.
+  `retest_needed: false`.
+
+
 ## Changelog — Iteration 56 (June 2026)
 
 ### Infrastructure Phase A — Forecasting + Domain Tracking (FRONTEND)
