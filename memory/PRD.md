@@ -1,6 +1,55 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 58 (June 2026)
+
+### Infrastructure Phase C — Domain Reputation Monitoring + Issues Dashboard
+
+**Reputation engine** (`/app/backend/infra_phase_c.py`, 522 lines, independent):
+- User-confirmed score formula (weights sum to 1.00):
+  reply 50% · age 10% · warmup 10% · bounce 20% · unsubscribe 5% · errors 5%
+- Both **7-day** and **30-day** windows surfaced per domain + per inbox.
+- Cache lives in `domain_reputation` (one doc per `(user_id, domain)`).
+  Lazy 24h TTL — `GET /reputation` returns current cache and schedules a
+  background recompute via `asyncio.create_task` when stale. `POST
+  /reputation/recompute` forces a synchronous recompute.
+- Data sources: `email_queue` (status sent/bounced/failed) + `drip_logs`
+  (status sent/bounced/failed) + `replies` (received_at) + `drip_contacts`
+  (status unsubscribed). Age from `email_accounts.created_at`. Warmup from
+  `email_accounts.warmup_status`.
+
+**Issues Dashboard backend**:
+- `GET /issues` → paused / risky / errored inboxes (uses the same loader as
+  the rest of the Infra module → role-scoped).
+- `POST /issues/bulk` with `action ∈ {resume, pause, replace, delete}` and
+  `account_ids: [...]`. `replace` re-implements the free-pool + cross-domain
+  picker inline (no Phase B coupling) and logs to `tracked_replacements`.
+  `delete` $pulls the account from every `campaigns.account_ids` and
+  `drip_campaigns.account_ids` array before removing the inbox row.
+
+**Frontend**:
+- `Infrastructure.jsx`:
+  - `ReputationSummaryCard` between Forecast and Domain Tracking — avg 30d /
+    avg 7d / total domains / poor count + worst/best lists + Recompute btn.
+  - New **Reputation** column in the Domain Tracking table (`dom-rep-<domain>`
+    cell renders a `ReputationBadge` with score-30d pill + 7d subtext).
+  - `IssuesDashboardCard` below `ReplacementSection` — 3 bucket counts +
+    `Open Issues Dashboard` link + 5-row preview list.
+- New page `/infrastructure/issues` (`InfrastructureIssues.jsx`): 4 count
+  cards, checkbox table, bulk action bar (Resume / Pause / Auto-Replace /
+  Delete). Bulk buttons disabled when no row selected.
+- New route registered in `App.js`.
+
+### Verification — iteration_58
+- 12/12 pytest pass (`/app/backend/tests/test_infra_phase_c.py`) — every
+  endpoint + formula clamp + bulk validation + DB side effects checked.
+- Frontend E2E: all 18+ testids verified, select-all → bulk-resume →
+  toast → DB flip → counts refresh end-to-end clean.
+- Regression: Forecast, Domain Tracking (with new column), Auto-Allocator,
+  Capacity Planner, ReplacementSection, replace-dialog all still render.
+  `retest_needed: false`.
+
+
 ## Changelog — Iteration 57 (June 2026)
 
 ### Infrastructure Phase B — Automatic Replacement
