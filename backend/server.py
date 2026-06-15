@@ -8364,6 +8364,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Backup-Summary", "Content-Disposition"],
 )
 
 @app.on_event("shutdown")

@@ -343,6 +343,30 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         ).to_list(20000)
         responses_leads = {"folders": lead_folders, "leads": leads_all}
 
+        # Phase 3 Batch 3 — Infrastructure module (tracked_domains, reputation
+        # cache, replacement history). Scoped by user_id like every other
+        # collection above.
+        tracked_domains = await db.tracked_domains.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(50000)
+        domain_reputation = await db.domain_reputation.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(50000)
+        tracked_replacements = await db.tracked_replacements.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(50000)
+        sent_emails = await db.sent_emails.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(200000)
+        replies = await db.replies.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).to_list(200000)
+        infrastructure = {
+            "tracked_domains": tracked_domains,
+            "domain_reputation": domain_reputation,
+            "tracked_replacements": tracked_replacements,
+        }
+
         metadata = {
             "schema_version": BACKUP_SCHEMA_VERSION,
             "routemail_version": ROUTEMAIL_VERSION,
@@ -357,6 +381,12 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 "do_not_email_lists": len(dne_lists),
                 "responses_leads_folders": len(lead_folders),
                 "responses_leads_items": len(leads_all),
+                "sent_emails": len(sent_emails),
+                "replies": len(replies),
+                # Infrastructure module — Phase 3 Batch 3
+                "tracked_domains": len(tracked_domains),
+                "domain_reputation_rows": len(domain_reputation),
+                "tracked_replacements": len(tracked_replacements),
                 # backward-compat alias
                 "unsubscribe_lists": len(dne_lists),
             },
@@ -369,16 +399,29 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             zf.writestr("drip_campaigns.json", json.dumps(drips, indent=2, default=str))
             zf.writestr("email_accounts.json", json.dumps(accounts, indent=2, default=str))
             zf.writestr("email_lists.json", json.dumps(lists, indent=2, default=str))
-            # Canonical filename per spec + legacy alias kept for older readers
             zf.writestr("do_not_email_lists.json", json.dumps(dne_lists, indent=2, default=str))
             zf.writestr("unsubscribe_lists.json", json.dumps(dne_lists, indent=2, default=str))
             zf.writestr("responses_leads.json", json.dumps(responses_leads, indent=2, default=str))
+            zf.writestr("sent_emails.json", json.dumps(sent_emails, indent=2, default=str))
+            zf.writestr("replies.json", json.dumps(replies, indent=2, default=str))
+            zf.writestr("infrastructure.json", json.dumps(infrastructure, indent=2, default=str))
         buf.seek(0)
         fname = f"routemail-backup-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+        # Expose a compact JSON summary in a response header so the UI can show
+        # a "Backup created successfully" alert with item counts without having
+        # to crack open the zip on the client.
+        summary_header = json.dumps({
+            "exported_at": metadata["exported_at"],
+            "counts": metadata["counts"],
+        }, default=str)
         return StreamingResponse(
             iter([buf.read()]),
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{fname}"',
+                "X-Backup-Summary": summary_header,
+                "Access-Control-Expose-Headers": "X-Backup-Summary, Content-Disposition",
+            },
         )
 
     # =====================================================================
@@ -751,6 +794,142 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         return stats
 
     # =====================================================================
+    # IMPORT — Infrastructure (Phase 3 Batch 3)
+    # =====================================================================
+
+    async def _import_infrastructure(payload: Dict[str, Any], conflict: str, user) -> Dict[str, int]:
+        """Restore the Infrastructure module: tracked_domains, domain_reputation,
+        tracked_replacements. payload is the dict written to infrastructure.json
+        at export time. tracked_replacements is append-only history; the others
+        are upserted by (user_id, domain).
+        """
+        stats = {
+            "tracked_domains_imported": 0,
+            "tracked_domains_skipped": 0,
+            "tracked_domains_replaced": 0,
+            "domain_reputation_imported": 0,
+            "domain_reputation_skipped": 0,
+            "domain_reputation_replaced": 0,
+            "tracked_replacements_imported": 0,
+        }
+        if not isinstance(payload, dict):
+            return stats
+
+        # tracked_domains — unique on (user_id, domain)
+        for item in payload.get("tracked_domains") or []:
+            domain = (item.get("domain") or "").strip().lower()
+            if not domain:
+                continue
+            doc = {k: v for k, v in item.items() if k != "_id"}
+            doc["user_id"] = user.user_id
+            doc["domain"] = domain
+            doc.setdefault("created_at", _now())
+            existing = await db.tracked_domains.find_one(
+                {"user_id": user.user_id, "domain": domain}, {"_id": 0}
+            )
+            if existing:
+                if conflict == "skip":
+                    stats["tracked_domains_skipped"] += 1
+                    continue
+                if conflict == "replace":
+                    await db.tracked_domains.update_one(
+                        {"user_id": user.user_id, "domain": domain},
+                        {"$set": doc},
+                    )
+                    stats["tracked_domains_replaced"] += 1
+                    continue
+                # copy → already-exists is treated as skip (domains are unique)
+                stats["tracked_domains_skipped"] += 1
+                continue
+            await db.tracked_domains.insert_one(doc)
+            stats["tracked_domains_imported"] += 1
+
+        # domain_reputation — unique on (user_id, domain)
+        for item in payload.get("domain_reputation") or []:
+            domain = (item.get("domain") or "").strip().lower()
+            if not domain:
+                continue
+            doc = {k: v for k, v in item.items() if k != "_id"}
+            doc["user_id"] = user.user_id
+            doc["domain"] = domain
+            existing = await db.domain_reputation.find_one(
+                {"user_id": user.user_id, "domain": domain}, {"_id": 0}
+            )
+            if existing:
+                if conflict == "skip":
+                    stats["domain_reputation_skipped"] += 1
+                    continue
+                if conflict == "replace":
+                    await db.domain_reputation.update_one(
+                        {"user_id": user.user_id, "domain": domain},
+                        {"$set": doc},
+                    )
+                    stats["domain_reputation_replaced"] += 1
+                    continue
+                stats["domain_reputation_skipped"] += 1
+                continue
+            await db.domain_reputation.insert_one(doc)
+            stats["domain_reputation_imported"] += 1
+
+        # tracked_replacements — append-only history
+        for item in payload.get("tracked_replacements") or []:
+            doc = {k: v for k, v in item.items() if k != "_id"}
+            doc["user_id"] = user.user_id
+            doc.setdefault("created_at", _now())
+            await db.tracked_replacements.insert_one(doc)
+            stats["tracked_replacements_imported"] += 1
+
+        return stats
+
+    async def _import_sent_emails(items: List[Dict[str, Any]], conflict: str, user) -> Dict[str, int]:
+        """Restore sent_emails (and replies share the exact same shape). Dedup
+        on (user_id, message_id) when present; otherwise dedup on
+        (user_id, sender_email, recipient_email, subject, sent_at).
+        """
+        stats = {"imported": 0, "skipped": 0}
+        for item in items or []:
+            doc = {k: v for k, v in item.items() if k != "_id"}
+            doc["user_id"] = user.user_id
+            msg_id = (doc.get("message_id") or "").strip().strip("<>")
+            query: Dict[str, Any]
+            if msg_id:
+                doc["message_id"] = msg_id
+                query = {"user_id": user.user_id, "message_id": msg_id}
+            else:
+                query = {
+                    "user_id": user.user_id,
+                    "sender_email": doc.get("sender_email"),
+                    "recipient_email": doc.get("recipient_email"),
+                    "subject": doc.get("subject"),
+                    "sent_at": doc.get("sent_at"),
+                }
+            existing = await db.sent_emails.find_one(query, {"_id": 0, "message_id": 1})
+            if existing:
+                stats["skipped"] += 1
+                continue
+            await db.sent_emails.insert_one(doc)
+            stats["imported"] += 1
+        return stats
+
+    async def _import_replies(items: List[Dict[str, Any]], conflict: str, user) -> Dict[str, int]:
+        stats = {"imported": 0, "skipped": 0}
+        for item in items or []:
+            doc = {k: v for k, v in item.items() if k != "_id"}
+            doc["user_id"] = user.user_id
+            msg_id = (doc.get("message_id") or "").strip().strip("<>")
+            if msg_id:
+                doc["message_id"] = msg_id
+                existing = await db.replies.find_one(
+                    {"user_id": user.user_id, "message_id": msg_id}, {"_id": 0}
+                )
+                if existing:
+                    stats["skipped"] += 1
+                    continue
+            await db.replies.insert_one(doc)
+            stats["imported"] += 1
+        return stats
+
+    # =====================================================================
     # IMPORT — individual JSON endpoints
     # =====================================================================
 
@@ -852,6 +1031,7 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 if not dne:
                     dne = _read_list("unsubscribe_lists.json")
                 responses_leads = _read_obj("responses_leads.json")
+                infrastructure = _read_obj("infrastructure.json")
                 return {
                     "metadata": metadata,
                     "campaigns": _read_list("campaigns.json"),
@@ -862,6 +1042,9 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                     # legacy alias kept for callers/UI that still use the old key
                     "unsubscribe_lists": dne,
                     "responses_leads": responses_leads,
+                    "infrastructure": infrastructure,
+                    "sent_emails": _read_list("sent_emails.json"),
+                    "replies": _read_list("replies.json"),
                 }
         except zipfile.BadZipFile:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive")
@@ -871,6 +1054,7 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
         content = await file.read()
         parsed = _parse_zip(content)
         rl = parsed.get("responses_leads") or {}
+        infra = parsed.get("infrastructure") or {}
         return {
             "metadata": parsed["metadata"],
             "summary": {
@@ -881,6 +1065,11 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
                 "do_not_email_lists": len(parsed["do_not_email_lists"]),
                 "responses_leads_folders": len(rl.get("folders", [])),
                 "responses_leads_items": len(rl.get("leads", [])),
+                "sent_emails": len(parsed.get("sent_emails") or []),
+                "replies": len(parsed.get("replies") or []),
+                "tracked_domains": len(infra.get("tracked_domains") or []),
+                "domain_reputation_rows": len(infra.get("domain_reputation") or []),
+                "tracked_replacements": len(infra.get("tracked_replacements") or []),
                 # backward-compat alias
                 "unsubscribe_lists": len(parsed["unsubscribe_lists"]),
             },
@@ -902,6 +1091,9 @@ def build_backup_router(db, get_current_user):  # noqa: C901 — single feature 
             "email_lists": await _import_email_lists(parsed["email_lists"], conflict, user),
             "do_not_email_lists": await _import_dne_lists(parsed["do_not_email_lists"], conflict, user),
             "responses_leads": await _import_responses_leads(parsed.get("responses_leads") or {}, conflict, user),
+            "infrastructure": await _import_infrastructure(parsed.get("infrastructure") or {}, conflict, user),
+            "sent_emails": await _import_sent_emails(parsed.get("sent_emails") or [], conflict, user),
+            "replies": await _import_replies(parsed.get("replies") or [], conflict, user),
         }
         # Backward-compat alias for older UI keys
         results["unsubscribe_lists"] = results["do_not_email_lists"]

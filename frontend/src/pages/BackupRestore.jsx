@@ -106,6 +106,9 @@ export default function BackupRestore({ user, setUser }) {
   const [importFormat, setImportFormat] = useState("json");
   const [importResult, setImportResult] = useState(null);
 
+  // Full backup export success state (inline alert with item counts)
+  const [exportSummary, setExportSummary] = useState(null);
+
   // Full backup restore dialog state
   const [fullRestoreOpen, setFullRestoreOpen] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
@@ -140,6 +143,7 @@ export default function BackupRestore({ user, setUser }) {
 
   const exportFullBackup = async () => {
     setBusyFor("export-full", true);
+    setExportSummary(null);
     try {
       const params = new URLSearchParams();
       params.append("include_credentials", includeCreds);
@@ -149,7 +153,20 @@ export default function BackupRestore({ user, setUser }) {
       });
       const fname = `routemail-backup-${new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19)}.zip`;
       downloadBlob(res.data, fname);
-      toast.success("Full backup downloaded");
+      // Parse the X-Backup-Summary header for counts and show inline success alert
+      const summaryHeader =
+        res.headers?.["x-backup-summary"] || res.headers?.get?.("x-backup-summary");
+      if (summaryHeader) {
+        try {
+          const parsed = JSON.parse(summaryHeader);
+          setExportSummary({ ...parsed, filename: fname });
+        } catch {
+          setExportSummary({ filename: fname });
+        }
+      } else {
+        setExportSummary({ filename: fname });
+      }
+      toast.success("Backup created successfully");
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Failed to export full backup");
     } finally {
@@ -359,6 +376,69 @@ export default function BackupRestore({ user, setUser }) {
                 Import Backup (ZIP)
               </Button>
             </div>
+
+            {exportSummary && (
+              <div
+                className="mt-4 bg-emerald-50 border border-emerald-200 rounded-md p-4"
+                data-testid="export-success-alert"
+              >
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-emerald-800 text-sm">
+                      Backup Created Successfully
+                    </p>
+                    {exportSummary.filename && (
+                      <p className="text-xs text-emerald-700 mt-0.5 break-all">
+                        {exportSummary.filename}
+                      </p>
+                    )}
+                    {exportSummary.counts && (
+                      <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-sm text-emerald-800">
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.email_accounts ?? 0}</span>{" "}
+                          Inboxes
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.campaigns ?? 0}</span>{" "}
+                          Campaigns
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.drip_campaigns ?? 0}</span>{" "}
+                          Drip Campaigns
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.email_lists ?? 0}</span>{" "}
+                          Email Lists
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.do_not_email_lists ?? 0}</span>{" "}
+                          DNE Lists
+                        </li>
+                        <li>
+                          <span className="font-semibold">
+                            {exportSummary.counts.responses_leads_items ?? 0}
+                          </span>{" "}
+                          Saved Leads
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.tracked_domains ?? 0}</span>{" "}
+                          Tracked Domains
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.sent_emails ?? 0}</span>{" "}
+                          Sent Emails
+                        </li>
+                        <li>
+                          <span className="font-semibold">{exportSummary.counts.replies ?? 0}</span>{" "}
+                          Replies
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Individual Modules */}
@@ -541,6 +621,11 @@ export default function BackupRestore({ user, setUser }) {
                   <li><span className="font-semibold">{restorePreview.summary.do_not_email_lists ?? restorePreview.summary.unsubscribe_lists ?? 0}</span> Do Not Email Lists</li>
                   <li><span className="font-semibold">{restorePreview.summary.responses_leads_folders ?? 0}</span> Lead Folders</li>
                   <li><span className="font-semibold">{restorePreview.summary.responses_leads_items ?? 0}</span> Saved Leads</li>
+                  <li><span className="font-semibold">{restorePreview.summary.tracked_domains ?? 0}</span> Tracked Domains</li>
+                  <li><span className="font-semibold">{restorePreview.summary.domain_reputation_rows ?? 0}</span> Reputation Rows</li>
+                  <li><span className="font-semibold">{restorePreview.summary.tracked_replacements ?? 0}</span> Replacement History</li>
+                  <li><span className="font-semibold">{restorePreview.summary.sent_emails ?? 0}</span> Sent Emails</li>
+                  <li><span className="font-semibold">{restorePreview.summary.replies ?? 0}</span> Replies</li>
                 </ul>
                 <p className="text-xs text-slate-500 mt-2">
                   Exported {restorePreview.metadata.exported_at?.slice(0, 19).replace("T", " ")} by{" "}
@@ -568,12 +653,18 @@ export default function BackupRestore({ user, setUser }) {
                 <p className="font-semibold text-emerald-800 mb-1 flex items-center gap-1">
                   <CheckCircle2 size={14} /> Restore complete
                 </p>
-                <ul className="text-emerald-700 grid grid-cols-2 gap-y-0.5">
-                  {Object.entries(restoreResult.results).map(([k, v]) => (
-                    <li key={k}>
-                      {k}: imported {v.imported}, skipped {v.skipped}, replaced {v.replaced}
-                    </li>
-                  ))}
+                <ul className="text-emerald-700 grid grid-cols-1 gap-y-0.5">
+                  {Object.entries(restoreResult.results).map(([k, v]) => {
+                    if (k === "unsubscribe_lists") return null; // alias of do_not_email_lists
+                    const parts = Object.entries(v || {}).map(
+                      ([sk, sv]) => `${sk.replace(/_/g, " ")}: ${sv}`
+                    );
+                    return (
+                      <li key={k}>
+                        <span className="font-semibold">{k.replace(/_/g, " ")}</span> — {parts.join(", ")}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}

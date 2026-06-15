@@ -1,5 +1,57 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 64 (June 2026)
+
+### Phase 3 Batch 3 — Backup & Restore enhancements (Infrastructure + success UI)
+
+**Backend** — `backup_routes.py`
+- `GET /api/backup/export/full` now packs **3 additional collections** into
+  the ZIP under `infrastructure.json`: `tracked_domains`, `domain_reputation`,
+  `tracked_replacements`. `sent_emails.json` and `replies.json` are restored
+  by the same endpoint as well (were exported but never re-imported before).
+- New response header `X-Backup-Summary` carries a compact JSON with
+  `exported_at` + per-collection counts so the UI can show a
+  "Backup Created Successfully" inline alert without cracking the ZIP open
+  on the client. Exposed via `Access-Control-Expose-Headers` (server.py
+  CORS middleware updated to `expose_headers=["X-Backup-Summary", "Content-Disposition"]`).
+- New import helpers `_import_infrastructure`, `_import_sent_emails`,
+  `_import_replies`. Conflict semantics:
+    • `tracked_domains` / `domain_reputation` — unique on `(user_id, domain)`;
+      `skip` skips existing, `replace` overwrites, `copy` falls back to skip
+      (domains are unique).
+    • `tracked_replacements` — append-only history (audit log).
+    • `sent_emails` / `replies` — dedupe on `(user_id, message_id)` when present,
+      else `(user_id, sender_email, recipient_email, subject, sent_at)`.
+- `_parse_zip` + `/backup/import/full/preview` + `/backup/import/full` updated
+  to surface `tracked_domains`, `domain_reputation_rows`, `tracked_replacements`,
+  `sent_emails`, `replies` counts.
+
+**Frontend** — `BackupRestore.jsx`
+- After a successful full-export, a green inline alert
+  (`data-testid="export-success-alert"`) renders under the Full Account Backup
+  card showing: filename + per-collection counts (Inboxes, Campaigns, Drip
+  Campaigns, Email Lists, DNE Lists, Saved Leads, Tracked Domains, Sent Emails,
+  Replies). Counts parsed from the `X-Backup-Summary` response header.
+- Restore preview now shows additional rows: Tracked Domains, Reputation Rows,
+  Replacement History, Sent Emails, Replies.
+- Restore-complete results UI rewritten to handle the new heterogeneous result
+  shapes (infrastructure has `*_imported`/`*_skipped`/`*_replaced` per
+  sub-collection; sent_emails/replies have `imported`/`skipped`).
+
+### Verification — iteration_64
+- New pytest file `tests/test_iter64_phase3_batch3_backup.py` — **5/5 pass**
+  (export header + zip contents, preview counts, skip-mode round-trip,
+  replace-mode overwrite, sent_emails message_id dedupe).
+- Regression: all **28** pre-existing `test_iteration_49_blog_permissions_backup.py`
+  tests still pass.
+- End-to-end smoke (real preview URL): authenticated full-export → preview →
+  restore-skip works; `X-Backup-Summary` header is delivered with item counts.
+
+### Skipped this iteration (per user direction)
+- Infrastructure page desktop whitespace + mobile responsive polish.
+
+
+
 
 ## Changelog — Iteration 63 (June 2026)
 
