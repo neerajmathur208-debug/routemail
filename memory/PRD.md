@@ -1,6 +1,60 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 59 (June 2026)
+
+### Phase 2 Batch A — Critical fixes + Multi-brand foundation
+
+**Variable rendering bug (CRITICAL)** — `/app/backend/template_render.py`
+- Recipients were getting literal `{{Dhruv}}`, `{}` and `&nbsp;` in delivered
+  emails. Root cause was a divergent code path in `process_drip_contact` that
+  used single-brace `{key}` replacement and silently left `{{double}}` tokens
+  untouched. Campaigns also lacked HTML-entity cleanup.
+- New unified renderer handles `{{var}}` and `{var}`, is case + whitespace
+  tolerant (`{{First Name}}` ≡ `{{first_name}}`), strips stray `{}`, `{{}}`
+  and any un-resolved `{{tokens}}`, and decodes `&nbsp;` / HTML entities.
+- Resolution order: contact data → per-campaign `variable_fallbacks` → generic
+  fallback (`first_name`/`name` → "there") → empty string. Result: an
+  un-rendered placeholder can NEVER reach the recipient.
+- Drop-in shim `replace_variables(template, data)` keeps existing callers
+  working unchanged.
+
+**Pre-send validation (`#13`)**
+- `POST /api/campaigns/{id}/preflight` and
+  `POST /api/drip-campaigns/{id}/preflight` analyse subject+body+each-drip-step
+  against the actual contact list and return
+  `{variables, total_contacts, missing_per_variable, unresolved_samples[],
+  warnings[], ok}`.
+- Frontend Campaign editor's Send-Now flow opens `preflight-dialog` with
+  warnings + sample-recipient list. User can "Fix issues first" or "Send
+  anyway".
+
+**Campaign → Folder linking (`#1`, `#2`, `#7`)**
+- `CreateCampaignRequest`/`UpdateCampaignRequest`/`CreateDripCampaignRequest`/
+  `UpdateDripCampaignRequest` gained `folder_id` + `variable_fallbacks`.
+- `_ensure_default_folder_id()` find-or-creates a per-user `Default`
+  lead_folder when callers omit `folder_id` — guarantees every campaign has a
+  folder.
+- `register_sent_email()` now also accepts `folder_id`, `body_html`,
+  `body_text`, `from_name` (the last three for the upcoming Sent Email
+  Viewer); persists them on `sent_emails`.
+- IMAP reply ingestion copies `folder_id` from the matched `sent_email` onto
+  every new `replies` doc — replies auto-land in the campaign's brand folder.
+- `GET /api/leads/folders` now returns per-folder `reply_count` plus
+  workspace-level `unassigned_reply_count`.
+
+**Frontend** — `Campaign.jsx` + `DripCampaigns.jsx`
+- "Brand / Folder *" Select directly under Campaign Name
+  (`campaign-folder-select`) + on the Drip create dialog (`drip-folder-select`).
+- Preflight modal with warnings + sample list + Cancel/Send-anyway buttons.
+
+### Verification — iteration_59
+- 24/24 backend pytest pass (`/app/backend/tests/test_iter59_phase2_batch_a.py`).
+- Frontend UI verified — folder selects + preflight modal all render with
+  the expected testids on /campaign and /drip-campaigns.
+- iter-58 regression (12/12) re-run intact. `retest_needed: false`.
+
+
 ## Changelog — Iteration 58 (June 2026)
 
 ### Infrastructure Phase C — Domain Reputation Monitoring + Issues Dashboard
