@@ -148,6 +148,7 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
     # ───────────── 2. INFRASTRUCTURE FORECASTING ─────────────
     @router.get("/forecast")
     async def forecast(monthly_target: int = Query(1_500_000, ge=0, le=100_000_000),
+                       preferred_inboxes_per_domain: int = Query(5, ge=1, le=100),
                        user=Depends(get_infra_user)):
         rows = await load_inboxes_fn(db, user)
         projection = await build_projection(db, user, window_days=120)
@@ -163,15 +164,18 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         monthly_capacity = total_daily * 30
 
         shortfall = max(monthly_target - monthly_capacity, 0)
-        # Recommendation — use the median daily limit and average inboxes/domain
-        from statistics import median, mean
+        # Median daily limit drives the per-inbox monthly capacity.
+        # The user explicitly tells us how many inboxes they want PER NEW
+        # DOMAIN (via `preferred_inboxes_per_domain`) — we must NOT silently
+        # fall back to the empirical current ratio (that produced unrealistic
+        # numbers like "327 domains" for a 19-inbox / 6-domain pool).
+        from statistics import median
         med_limit = int(median([r["daily_limit"] for r in active])) if active else 50
-        avg_per_domain = (
-            len(active) / len(active_domains) if active_domains else 5
-        )
-        additional_inboxes = (shortfall + (med_limit * 30) - 1) // (med_limit * 30) if shortfall else 0
-        additional_domains = int(-(-additional_inboxes // max(int(avg_per_domain), 1))) if additional_inboxes else 0
-        projected_capacity_after = monthly_capacity + additional_inboxes * med_limit * 30
+        per_inbox_monthly = max(med_limit * 30, 1)
+        per_domain_monthly = per_inbox_monthly * max(int(preferred_inboxes_per_domain), 1)
+        additional_inboxes = -(-shortfall // per_inbox_monthly) if shortfall else 0
+        additional_domains = -(-shortfall // per_domain_monthly) if shortfall else 0
+        projected_capacity_after = monthly_capacity + additional_inboxes * per_inbox_monthly
 
         return {
             "summary": {
@@ -197,6 +201,9 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
                 "additional_inboxes": int(additional_inboxes),
                 "additional_domains": int(additional_domains),
                 "median_daily_limit": med_limit,
+                "preferred_inboxes_per_domain": int(preferred_inboxes_per_domain),
+                "monthly_capacity_per_inbox": int(per_inbox_monthly),
+                "monthly_capacity_per_domain": int(per_domain_monthly),
                 "estimated_capacity_after_expansion": int(projected_capacity_after),
             },
         }

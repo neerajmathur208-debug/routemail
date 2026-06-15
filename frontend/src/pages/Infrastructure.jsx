@@ -1790,13 +1790,16 @@ function BatchPlannerForm() {
 function ForecastSection() {
   const [open, setOpen] = useState(true);
   const [target, setTarget] = useState(1500000);
+  const [preferredPerDomain, setPreferredPerDomain] = useState(5);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const run = useCallback(async (t) => {
+  const run = useCallback(async (t, p) => {
     setLoading(true);
     try {
-      const res = await api.get(`/infrastructure/forecast?monthly_target=${t}`);
+      const res = await api.get(
+        `/infrastructure/forecast?monthly_target=${t}&preferred_inboxes_per_domain=${p}`
+      );
       setData(res.data);
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Forecast failed");
@@ -1806,7 +1809,7 @@ function ForecastSection() {
   }, []);
 
   useEffect(() => {
-    run(target);
+    run(target, preferredPerDomain);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1851,8 +1854,22 @@ function ForecastSection() {
                 data-testid="forecast-target-input"
               />
             </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                Preferred Inboxes Per Domain
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={preferredPerDomain}
+                onChange={(e) => setPreferredPerDomain(e.target.value)}
+                className="w-48"
+                data-testid="forecast-preferred-per-domain-input"
+              />
+            </div>
             <Button
-              onClick={() => run(Number(target) || 0)}
+              onClick={() => run(Number(target) || 0, Number(preferredPerDomain) || 5)}
               disabled={loading}
               className="bg-indigo-600 hover:bg-indigo-700 text-white"
               data-testid="forecast-run-btn"
@@ -1949,7 +1966,7 @@ function ForecastSection() {
                 </div>
 
                 {data.gap.shortfall_monthly > 0 && (
-                  <div className="mt-3 pt-3 border-t border-amber-200/70 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="mt-3 pt-3 border-t border-amber-200/70 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
                     <div>
                       <div className="text-[11px] uppercase tracking-wider text-slate-500">
                         Add inboxes
@@ -1982,9 +1999,31 @@ function ForecastSection() {
                     </div>
                     <div>
                       <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Monthly / Inbox
+                      </div>
+                      <div
+                        className="font-semibold text-slate-900 tabular-nums"
+                        data-testid="forecast-monthly-per-inbox"
+                      >
+                        {fmt(data.recommendation.monthly_capacity_per_inbox)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+                        Monthly / Domain
+                      </div>
+                      <div
+                        className="font-semibold text-slate-900 tabular-nums"
+                        data-testid="forecast-monthly-per-domain"
+                      >
+                        {fmt(data.recommendation.monthly_capacity_per_domain)}
+                      </div>
+                    </div>
+                    <div className="md:col-span-3 lg:col-span-5 pt-2 border-t border-amber-200/50">
+                      <div className="text-[11px] uppercase tracking-wider text-slate-500">
                         Capacity after expansion
                       </div>
-                      <div className="font-semibold text-emerald-700 tabular-nums">
+                      <div className="font-semibold text-emerald-700 tabular-nums text-lg">
                         {fmt(data.recommendation.estimated_capacity_after_expansion)}
                       </div>
                     </div>
