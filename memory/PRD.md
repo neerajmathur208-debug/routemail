@@ -1,6 +1,53 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 63 (June 2026)
+
+### Phase 3 Batch 2 — Inbox Availability dedicated page + Capacity Planner v2
+
+**Backend** — `infrastructure_routes.py` + `infra_phase3.py`
+- `GET /api/infrastructure/inboxes` now supports server-side **sort + paginate**
+  on top of the existing filters. Whitelisted `sort_by` (email |
+  remaining_capacity | daily_limit | domain | status | ownership) with safe
+  fallback; `limit` (1-500), `skip`. `filter_options` captured once from the
+  unfiltered universe (single `_load_inboxes` call after iter-63 perf fix).
+- **Capacity Planner v2** — `PlannerRequest` gained
+  `daily_limit_per_inbox` and `preferred_inboxes_per_domain` (both Optional;
+  fall back to empirical median and 5). New outputs: `required_domains`,
+  `daily_capacity_total`, `daily_capacity_per_domain`, `daily_sends_per_inbox`,
+  `additional_domains_required`, `current_inboxes`, `current_domains`,
+  `current_avg_inboxes_per_domain`, `current_daily_per_domain`. New
+  diversification warnings: (a) ≤ 4 distinct domains, (b)
+  `current_daily_per_domain > 1.5 * daily_capacity_per_domain`,
+  (c) additional domains needed.
+- `POST /api/infrastructure/planner/export?format=xlsx|csv` — binary blob
+  with `Content-Disposition: capacity-planner.{xlsx|csv}`.
+
+**Frontend**
+- `/infrastructure` Inbox section now renders 6 **summary cards**
+  (Total / Available / Partially Available / In Use / Paused / Risky) +
+  `view-inbox-availability-btn` CTA. The full inline table was REMOVED.
+- New page `/infrastructure/inboxes` (`InfrastructureInboxes.jsx`) — search,
+  5 filter selects, sort, page-size 25/50/100/250, XLSX + CSV export, all
+  17 testids verified.
+- `PlannerSection` adds two new inputs and renders 5 new output stats +
+  XLSX + CSV export buttons.
+
+### Verification — iteration_63
+- Backend **17/17 pytest pass**. Math spec verified (leads=10000, steps=3,
+  duration=30 → Required Inboxes=32, Required Domains=7, Per Domain=230,
+  Per Inbox=46 ✓).
+- Frontend E2E — summary cards + CTA navigation + dedicated page (16
+  testids + 19 rows) + Planner v2 (2 new inputs + 5 new outputs + warnings +
+  XLSX/CSV) all pass.
+- Regression: 117/120 pre-existing (3 unrelated env-only failures —
+  turnstile env var + an asyncio.get_event_loop deprecation in iter59).
+  Phase 3 Batch 2 introduces **zero new failures**.
+- Perf fix applied post-review: `_load_inboxes` was being called twice per
+  request; collapsed to one call (~50 % fewer Mongo round-trips for that
+  endpoint).
+
+
 ## Changelog — Iteration 62 (June 2026)
 
 ### Phase 3 Batch 1 — Google removal + Domain auto-detect + Email List search

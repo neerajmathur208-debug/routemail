@@ -331,6 +331,11 @@ def build_infrastructure_router(db, get_infra_user):
             r["projected_window_total"] = sum(per_acc.values())
             r["projected_window_days"] = DEFAULT_WINDOW_DAYS
 
+        # Capture filter-dropdown options from the FULL (unfiltered) set BEFORE
+        # narrowing — single $find, no double Mongo round-trip.
+        ownership_options = sorted({r["ownership"] for r in rows if r["ownership"]})
+        domain_options = sorted({r["domain"] for r in rows if r["domain"]})
+
         # apply filters in python — list is small enough (per-tenant) that
         # this is dramatically simpler than building dynamic Mongo queries.
         if ownership:
@@ -362,13 +367,6 @@ def build_infrastructure_router(db, get_infra_user):
         ) else "email"
         reverse = sort_dir.lower() == "desc"
         rows.sort(key=lambda r: (r.get(sort_field) is None, r.get(sort_field) or ""), reverse=reverse)
-
-        # Collect ownership + domain dropdowns from the unfiltered base set so
-        # the UI can render filter selectors even when the current filter
-        # zeros out the data.
-        all_rows = await _load_inboxes(db, user)
-        ownership_options = sorted({r["ownership"] for r in all_rows if r["ownership"]})
-        domain_options = sorted({r["domain"] for r in all_rows if r["domain"]})
 
         total = len(rows)
         if limit is not None:
