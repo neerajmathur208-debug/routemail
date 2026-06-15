@@ -1,6 +1,63 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 61 (June 2026)
+
+### Phase 2 Batch B — Unibox rebuild
+
+**Backend** (`/app/backend/unibox_routes.py`):
+- `GET /api/unibox/replies` now supports every Phase-2 filter / search / sort
+  / pagination param. The single Mongo query composes: `unread_only`,
+  `archived` (default excludes — pass `archived=true` to read the archive),
+  `campaign_id`, `drip_id`, `account_id`, `folder_id` (incl
+  `__unassigned__` → matches `folder_id=null`), `domain` (suffix regex match
+  on `from_email`), `date_from` + `date_to` or `date_preset`
+  (`today|yesterday|last_7|last_30|last_90`), free-text `q` across recipient
+  / subject / body / campaign_name / drip_campaign_name / received_on_email,
+  `sort_by` (whitelist with safe fallback), `sort_dir`, `limit` clamped to
+  500 via Pydantic, `skip`. Response items are enriched with `domain`
+  (parsed from `from_email`), `folder_name` (joined from `lead_folders`),
+  and `sending_account_email` (joined from `email_accounts`) — single `$in`
+  lookups, no N+1.
+- New bulk endpoints — `POST /unibox/replies/move | archive | delete` all
+  take `{reply_ids: [...]}`; `move` adds `folder_id` with 404 on unknown,
+  `archived`/`delete` are idempotent; every endpoint is naturally
+  cross-tenant safe via `user_id` scoping.
+- `POST /unibox/dne/domain/preview` returns `{lead_count,
+  list_contact_count, drip_contact_count, reply_count,
+  estimated_suppressed}` powering the "Suppress 47 contacts?" confirm copy.
+- `POST /unibox/dne/domain` stores a wildcard `@domain.com` entry in
+  `dne_emails` with `source='unibox_domain'`. The existing send pipeline
+  already substring-matches recipients against DNE entries, so a wildcard
+  entry blocks **every** address on that domain at send-time without
+  touching the send code.
+
+**Frontend** — `/app/frontend/src/pages/Unibox.jsx`:
+- Card list → real **table** with the 6 problem-statement columns
+  (Brand / Folder, Subject, Campaign, Drip, Account, Domain, Reply Date).
+- Full filter bar (`filter-folder`, `filter-campaign`, `filter-drip`,
+  `filter-account`, `filter-domain`, `filter-date-preset`,
+  `filter-date-from/to`, `filter-status`) + free-text search +
+  `unibox-sort-by` / `unibox-sort-dir` + page-size 25/50/100/250
+  (`unibox-page-size`) + `unibox-pagination` (prev/next).
+- Bulk-action bar gains **Move to Folder** (`bulk-move` → `move-dialog`),
+  **Archive / Unarchive** (`bulk-archive`), **Delete** (`bulk-delete`).
+- Per-row 🛡 **Suppress whole domain** button
+  (`reply-domain-dne-<reply_id>`) → `domain-dne-dialog` with live preview
+  counts.
+
+### Verification — iteration_61
+- **30/30 backend pytest pass** (`/app/backend/tests/test_iter61_phase2_batch_b.py`)
+  across 6 classes; cross-tenant isolation verified empirically.
+- Frontend UI verified — all 16 filter/table/search/sort/pagination testids
+  + 7 bulk buttons + 6 reply-row sub-cells + both new dialogs end-to-end.
+- Regression: iter-58 (12/12) + iter-59 (24/24) + iter-60 (26/26) = 62/62
+  still green. `retest_needed: false`.
+- Fixed: added `DialogDescription` on `move-dialog` for accessibility.
+
+### Phase 2 — All three batches now SHIPPED (A + B + C)
+
+
 ## Changelog — Iteration 60 (June 2026)
 
 ### Phase 2 Batch C — Sent Email Viewer + Campaign Reporting

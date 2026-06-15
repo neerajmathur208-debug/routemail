@@ -1120,6 +1120,10 @@ export default function Unibox({ user, setUser }) {
         <DialogContent data-testid="move-dialog">
           <DialogHeader>
             <DialogTitle>Move {selectedIds.length} repl{selectedIds.length === 1 ? "y" : "ies"} to…</DialogTitle>
+            <DialogDescription>
+              Pick the brand / folder where these replies should land. This only re-files the selected
+              replies — future replies will still auto-route to whatever folder is set on their campaign.
+            </DialogDescription>
           </DialogHeader>
           <Select value={moveFolderId} onValueChange={setMoveFolderId}>
             <SelectTrigger data-testid="move-folder-select"><SelectValue placeholder="Select a brand / folder" /></SelectTrigger>
