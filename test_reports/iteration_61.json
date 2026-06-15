@@ -1,0 +1,63 @@
+{
+  "summary": "Iteration 61 — RouteMail Phase 2 Batch B (Unibox rebuild) end-to-end PASSED. Backend pytest: created /app/backend/tests/test_iter61_phase2_batch_b.py with 30 cases across 6 classes (TestListReplies x15, TestMoveReplies x5, TestArchiveReplies x2, TestDeleteReplies x3, TestDomainDNE x4, TestFoldersRegression x1). All 30 PASS in 2.28s (100%). Coverage: (1) GET /api/unibox/replies — all new query params verified independently: unread_only, archived (default excludes, archived=true returns only archived), campaign_id, drip_id, account_id, folder_id incl. '__unassigned__'=null match, domain regex (from_email suffix match), date_preset last_7 vs 40-day-old row filtering, q free-text across from_email/subject/body/campaign_name/drip_campaign_name/received_on_email, sort_by whitelist fallback (invalid 'drop_table; DROP' falls back silently — no 500), sort_by=from_email asc lexicographic, limit=600 returns 422 (Pydantic Query le=500), pagination via skip yields disjoint pages, enrichment fields populated (domain parsed from from_email, folder_name joined from lead_folders, sending_account_email joined from email_accounts). (2) POST /api/unibox/replies/move — moves to folder, moves to unassigned (folder_id=None when body folder_id omitted), 404 on foldr_nope, 400 on empty reply_ids, cross-tenant silent (modified=0, doc untouched). (3) POST /api/unibox/replies/archive — archive→GET excludes; archived=true→returns; unarchive flips back; empty 400. (4) POST /api/unibox/replies/delete — deletes seeded row (deleted=1), 400 on empty, cross-tenant returns deleted=0 + foreign doc intact. (5) POST /api/unibox/dne/domain/preview — returns {domain,lead_count,list_contact_count,drip_contact_count,reply_count,estimated_suppressed} with correct counts after seeding leads on that domain; invalid empty 400; invalid 'no-tld-here' 400. (6) POST /api/unibox/dne/domain — first call adds wildcard '@dom' with source='unibox_domain', second call returns {added:false, message:'Already suppressed'}, idempotent; '@' alone returns 400. (7) Regression GET /api/leads/folders — still returns folders[] with reply_count + lead_count + top-level unassigned_reply_count. Regression: re-ran iter59 Phase 2 Batch A (24) + iter60 Phase 2 Batch C (26) = 50/50 PASS. Frontend (Playwright via Mongo session-token TEST_iter61ui_*): /unibox renders all 16 expected filter+table+sort+search+page-size testids (unibox-filters, unibox-search, unibox-search-btn, unibox-reset-btn, filter-folder, filter-campaign, filter-drip, filter-account, filter-domain, filter-date-preset, filter-status, unibox-sort-by, unibox-sort-dir, unibox-page-size, unibox-total, unibox-table); unibox-total shows '3 replies' matching seed. 3 reply-row-<id> rendered, each with sub-cells reply-folder/reply-campaign/reply-drip/reply-account/reply-domain/reply-date/reply-domain-dne. Domain column shows 'bigcorp-iter61.com' (server-enriched from from_email). Selecting all rows reveals bulk-bar with all 7 buttons (bulk-mark-read, bulk-mark-unread, bulk-move, bulk-archive, bulk-delete, bulk-save-lead, bulk-add-dne). bulk-move opens move-dialog with move-folder-select + move-confirm + move-cancel. Per-row reply-domain-dne-<id> button opens domain-dne-dialog with domain-dne-preview text 'This will suppress approximately: 0 lead(s) 0 contact(s) on email lists 0 drip contact(s) 3 existing repl(y/ies) tracked' + domain-dne-confirm + domain-dne-cancel (cancels cleanly without firing the POST). unibox-pagination correctly absent because total=3 < limit=50 (only renders when total > limit). All seeded data (TEST_iter61_* + TEST_iter61ui_* across user_sessions, lead_folders, email_accounts, replies, leads, dne_emails, dne_lists) cleaned post-run. Mongo verified clean.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Unibox table (reply rows)",
+        "issue": "React hydration warning logged twice on /unibox: '<span> cannot be a child of <tr>' and '<span> cannot be a child of <tbody>'. The wrapping element is `<span data-ve-dynamic=\"true\" x-excluded=\"true\" style={{display:\"contents\"}}>` which is injected by the visual-editor instrumentation around <tbody>/<tr>. Page renders correctly but warning is noisy (same root cause as iter60 — visual-editor wrapper on iterated table rows + tbody). Either suppress data-ve-dynamic wrappers on table descendants, or render rows outside an iterable wrapper.",
+        "selector": "[data-testid=\"unibox-table\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "MoveDialog + DomainDneDialog (DialogContent)",
+        "issue": "Console warning: 'Missing Description or aria-describedby={undefined} for {DialogContent}.' fires on both move-dialog and domain-dne-dialog. Add a <DialogDescription> (or aria-describedby prop) under each DialogContent for screen-reader accessibility.",
+        "selector": "[data-testid=\"move-dialog\"], [data-testid=\"domain-dne-dialog\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/unibox filter row (date custom range)",
+        "issues": ["When filter-date-preset='custom', the filter-date-from / filter-date-to inputs use the browser-default <input type=date> picker (mm/dd/yyyy) instead of the shadcn Calendar/Popover used elsewhere — same inconsistency flagged on /sent-emails in iter60."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter61_phase2_batch_b.py",
+    "/app/test_reports/pytest/iter61_phase2_batch_b_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Suppress / move the visual-editor's `<span data-ve-dynamic>` wrapper that's emitting `<span>` as direct child of `<tbody>` / `<tr>` on /unibox (and previously /sent-emails). React hydration warnings only; page renders fine.",
+    "(LOW) Add a DialogDescription (or aria-describedby) to both move-dialog and domain-dne-dialog's DialogContent in Unibox.jsx for accessibility.",
+    "(LOW) Replace `<input type='date'>` on the custom date range with shadcn Calendar popovers for visual consistency."
+  ],
+  "critical_code_review_comments": [
+    "unibox_routes.py list_replies cleanly composes a single Mongo query — filters, sort_by whitelist, limit clamp via Pydantic Query (ge=1, le=500), pagination via skip/limit, and a single enrichment $in lookup per related collection (lead_folders + email_accounts) avoiding N+1. Excellent. Tested cross-tenant isolation via user_id scoping on all bulk endpoints — verified empirically (modified=0 / deleted=0 on foreign reply_ids).",
+    "Domain DNE endpoints reject '@' / empty / no-TLD inputs with 400 and store '@domain.com' wildcard entries with source='unibox_domain'. Idempotency check (find_one before insert) is correct — second call returns added:false. Note: dne_emails uniqueness is enforced application-side (no unique index on {list_id,user_id,email}) — consider adding for race-safety if multiple browser tabs hit this concurrently.",
+    "archived filter semantics: default excludes (archived:{$ne:true}), archived=true returns ONLY archived. This means there is no current way to fetch BOTH archived+non-archived in one call. Acceptable per spec; document if user wants 'all'.",
+    "date_preset overrides date_from/date_to silently if both provided. The endpoint accepts both but preset wins. Minor footgun — fine as-is.",
+    "Free-text q search uses unescaped regex — passing '.*' or '(?P<n>x)' would still be parsed by Mongo. No injection risk (Mongo regex isn't shell-injectable), but a malicious user could pass an ReDoS-prone pattern. Consider re.escape() before composing the regex.",
+    "Bulk endpoints all use db.replies.update_many / delete_many with {user_id: user.user_id, reply_id: {$in: req.reply_ids}} — naturally cross-tenant safe (verified).",
+    "Unibox.jsx is now ~1180 lines — over the 700-line guideline. Consider splitting filter-bar, bulk-bar, and the two dialogs into sub-components for maintainability.",
+    "submitMove (bulk) issues a single POST /unibox/replies/move with the full reply_ids list — correct batched call.",
+    "confirmSingleDomainDne triggers the POST after preview load — UX flow matches the spec (preview → confirm → toast).",
+    "Window.confirm() is used for delete confirmation (per agent note for speed) — works but inconsistent with the shadcn dialog pattern used everywhere else. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter61_phase2_batch_b.py (new)",
+    "/app/test_reports/iteration_61.json (new)",
+    "/app/test_reports/pytest/iter61_phase2_batch_b_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (30/30 pytest pass; regression 50/50 iter59+iter60)",
+    "frontend": "100% — all 16 required filter/table/search/sort testids + 7 bulk action buttons + 6 reply-row sub-cells + move-dialog + domain-dne-dialog with live preview verified on /unibox"
+  },
+  "test_credentials": "Super admin user_b3e333b0f467 via Mongo-injected session_token TEST_iter61_* (pytest) and TEST_iter61ui_* (Playwright). All deleted post-run.",
+  "seed_data_creation": "Pytest module-scope fixture seeded 1 folder + 1 email_account + 5 replies (4 main + 1 cross-tenant under OTHER_USER_ID=user_dfda57d9d20a) + 1 lead, all tagged TEST_iter61_<8hex>. Autouse cleanup fixture deletes by _tag after the module. Wildcard DNE entries created during testing removed by separate regex match. Playwright seeded 1 folder + 1 account + 3 replies under TAG TEST_iter61ui_11c98b6d on domain bigcorp-iter61.com; cleaned 5 docs post-run via direct Mongo delete_many. Zero residue.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 Batch B endpoints: GET /api/unibox/replies now supports unread_only, archived, campaign_id, drip_id, account_id, folder_id (incl '__unassigned__'), domain, date_from/date_to or date_preset (today|yesterday|last_7|last_30|last_90), q, sort_by ∈ {received_at|campaign_name|folder_id|from_email|account_id} with safe fallback, sort_dir, limit 1-500 (422 above), skip ≥0. Response items include domain, folder_name, sending_account_email enrichment. Bulk endpoints: POST /api/unibox/replies/{move,archive,delete} all take {reply_ids:[]} with 400 on empty; move also takes folder_id (404 unknown, null=unassigned). POST /api/unibox/dne/domain/preview returns counts; POST /api/unibox/dne/domain stores '@domain.com' wildcard idempotently. Frontend testids on /unibox: filter-{folder,campaign,drip,account,domain,date-preset,date-from,date-to,status}, unibox-{search,search-btn,reset-btn,sort-by,sort-dir,page-size,total,table,select-all,pagination,prev-page,next-page,loading,empty}; reply rows: reply-row-<id> + reply-{folder,campaign,drip,account,domain,date,domain-dne}-<id>; bulk-bar shows bulk-{mark-read,mark-unread,move,archive,delete,save-lead,add-dne}; move-dialog has move-folder-select + move-folder-option-<id> + move-confirm + move-cancel; domain-dne-dialog has domain-dne-preview + domain-dne-confirm + domain-dne-cancel. unibox-pagination only renders when total > limit (not absent because of bug). Window.confirm() is used for delete; bulk-archive label toggles based on current filter.archived state. Cross-tenant testing: use OTHER_USER_ID='user_dfda57d9d20a' for foreign reply_ids.",
+  "rca of the issue": "Not applicable — no functional bugs. 30/30 backend tests passed, all 4 dialog/table flows verified via Playwright with seeded data, regression 50/50 iter59+iter60 still green. Three LOW-priority cosmetic findings logged: (a) React hydration warnings caused by visual-editor `<span data-ve-dynamic>` wrappers around <tbody>/<tr> (same root cause flagged in iter60 for /sent-emails); (b) DialogContent missing aria-describedby on move-dialog + domain-dne-dialog; (c) browser-default date picker in custom date range. None block release."
+}

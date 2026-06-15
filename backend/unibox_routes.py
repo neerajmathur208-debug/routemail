@@ -371,6 +371,24 @@ class BulkDNERequest(BaseModel):
     reply_ids: List[str]
 
 
+class MoveRepliesRequest(BaseModel):
+    reply_ids: List[str]
+    folder_id: Optional[str] = None  # None = "Unassigned"
+
+
+class ArchiveRepliesRequest(BaseModel):
+    reply_ids: List[str]
+    archived: bool = True
+
+
+class DeleteRepliesRequest(BaseModel):
+    reply_ids: List[str]
+
+
+class DomainDNERequest(BaseModel):
+    domain: str
+
+
 class CreateFolderRequest(BaseModel):
     name: str
 
@@ -398,40 +416,123 @@ def build_unibox_router(db, get_current_user, fernet):  # noqa: C901
     @router.get("/unibox/replies")
     async def list_replies(
         unread_only: bool = Query(False),
+        archived: Optional[bool] = Query(False, description="Include archived only (true) or exclude archived (false / null)"),
         campaign_id: Optional[str] = Query(None),
         drip_id: Optional[str] = Query(None),
         account_id: Optional[str] = Query(None),
+        folder_id: Optional[str] = Query(None, description="'__unassigned__' to fetch folder=null replies"),
+        domain: Optional[str] = Query(None, description="Recipient domain to filter by (matches from_email suffix)"),
         date_from: Optional[str] = Query(None),
         date_to: Optional[str] = Query(None),
-        limit: int = Query(100),
-        skip: int = Query(0),
+        date_preset: Optional[str] = Query(None, description="today | yesterday | last_7 | last_30 | last_90"),
+        q: Optional[str] = Query(None, description="Free-text search across from_email, subject, body, campaign/drip name, account_id, domain"),
+        sort_by: str = Query("received_at", description="received_at | campaign_name | folder_name | from_email | account_id"),
+        sort_dir: str = Query("desc"),
+        limit: int = Query(50, ge=1, le=500),
+        skip: int = Query(0, ge=0),
         user=Depends(get_current_user),
     ):
-        q: Dict[str, Any] = {"user_id": user.user_id}
+        from datetime import timedelta
+        mongo_q: Dict[str, Any] = {"user_id": user.user_id}
+
         if unread_only:
-            q["read"] = False
+            mongo_q["read"] = False
+        # archived filter — default exclude (False); pass true to fetch archive
+        if archived is True:
+            mongo_q["archived"] = True
+        else:
+            mongo_q["archived"] = {"$ne": True}
         if campaign_id:
-            q["campaign_id"] = campaign_id
+            mongo_q["campaign_id"] = campaign_id
         if drip_id:
-            q["drip_campaign_id"] = drip_id
+            mongo_q["drip_campaign_id"] = drip_id
         if account_id:
-            q["account_id"] = account_id
+            mongo_q["account_id"] = account_id
+        if folder_id:
+            mongo_q["folder_id"] = None if folder_id == "__unassigned__" else folder_id
+        if domain:
+            mongo_q["from_email"] = {"$regex": f"@{domain.lower().lstrip('@')}$", "$options": "i"}
+
+        # Date preset shortcuts (override explicit date_from/date_to if set)
+        now = datetime.now(timezone.utc)
+        if date_preset:
+            preset_map = {
+                "today": (now.replace(hour=0, minute=0, second=0, microsecond=0), now),
+                "yesterday": (
+                    (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0),
+                    (now - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0),
+                ),
+                "last_7": (now - timedelta(days=7), now),
+                "last_30": (now - timedelta(days=30), now),
+                "last_90": (now - timedelta(days=90), now),
+            }
+            if date_preset in preset_map:
+                start, end = preset_map[date_preset]
+                date_from = start.isoformat()
+                date_to = end.isoformat()
         if date_from or date_to:
             d: Dict[str, Any] = {}
             if date_from:
                 d["$gte"] = date_from
             if date_to:
                 d["$lte"] = date_to
-            q["received_at"] = d
-        total = await db.replies.count_documents(q)
-        unread_count = await db.replies.count_documents({"user_id": user.user_id, "read": False})
-        items = (
-            await db.replies.find(q, {"_id": 0})
-            .sort("received_at", -1)
+            mongo_q["received_at"] = d
+
+        # Free-text search
+        if q:
+            esc = q.strip()
+            mongo_q["$or"] = [
+                {"from_email": {"$regex": esc, "$options": "i"}},
+                {"subject": {"$regex": esc, "$options": "i"}},
+                {"body": {"$regex": esc, "$options": "i"}},
+                {"campaign_name": {"$regex": esc, "$options": "i"}},
+                {"drip_campaign_name": {"$regex": esc, "$options": "i"}},
+                {"received_on_email": {"$regex": esc, "$options": "i"}},
+            ]
+
+        direction = -1 if sort_dir.lower() == "desc" else 1
+        if sort_by not in ("received_at", "campaign_name", "folder_id", "from_email", "account_id"):
+            sort_by = "received_at"
+
+        total = await db.replies.count_documents(mongo_q)
+        unread_count = await db.replies.count_documents(
+            {"user_id": user.user_id, "read": False, "archived": {"$ne": True}}
+        )
+
+        items = await (
+            db.replies.find(mongo_q, {"_id": 0})
+            .sort(sort_by, direction)
             .skip(skip)
             .limit(limit)
             .to_list(limit)
         )
+
+        # Enrich each row with derived display fields the UI needs:
+        # - domain (from from_email)
+        # - folder_name (joined from lead_folders)
+        # - sending_account_email (joined from email_accounts)
+        folder_ids = {it.get("folder_id") for it in items if it.get("folder_id")}
+        account_ids = {it.get("account_id") for it in items if it.get("account_id")}
+        folder_name_by_id: Dict[str, str] = {}
+        account_email_by_id: Dict[str, str] = {}
+        if folder_ids:
+            async for f in db.lead_folders.find(
+                {"user_id": user.user_id, "folder_id": {"$in": list(folder_ids)}},
+                {"_id": 0, "folder_id": 1, "name": 1},
+            ):
+                folder_name_by_id[f["folder_id"]] = f["name"]
+        if account_ids:
+            async for a in db.email_accounts.find(
+                {"user_id": user.user_id, "account_id": {"$in": list(account_ids)}},
+                {"_id": 0, "account_id": 1, "email": 1},
+            ):
+                account_email_by_id[a["account_id"]] = a["email"]
+        for it in items:
+            fe = (it.get("from_email") or "")
+            it["domain"] = fe.split("@", 1)[1].lower() if "@" in fe else ""
+            it["folder_name"] = folder_name_by_id.get(it.get("folder_id") or "")
+            it["sending_account_email"] = account_email_by_id.get(it.get("account_id") or "")
+
         return {
             "items": items,
             "total": total,
@@ -499,6 +600,122 @@ def build_unibox_router(db, get_current_user, fernet):  # noqa: C901
                 {"$inc": {"email_count": added}},
             )
         return {"added": added, "list_id": dne["list_id"]}
+
+    @router.post("/unibox/replies/move")
+    async def move_replies(req: MoveRepliesRequest, user=Depends(get_current_user)):
+        """Manually move one or more replies into a different brand folder."""
+        if not req.reply_ids:
+            raise HTTPException(status_code=400, detail="No replies selected")
+        if req.folder_id:
+            # Verify the folder belongs to this user
+            f = await db.lead_folders.find_one(
+                {"folder_id": req.folder_id, "user_id": user.user_id}, {"_id": 0}
+            )
+            if not f:
+                raise HTTPException(status_code=404, detail="Folder not found")
+        res = await db.replies.update_many(
+            {"user_id": user.user_id, "reply_id": {"$in": req.reply_ids}},
+            {"$set": {"folder_id": req.folder_id}},
+        )
+        return {"matched": res.matched_count, "modified": res.modified_count, "folder_id": req.folder_id}
+
+    @router.post("/unibox/replies/archive")
+    async def archive_replies(req: ArchiveRepliesRequest, user=Depends(get_current_user)):
+        if not req.reply_ids:
+            raise HTTPException(status_code=400, detail="No replies selected")
+        res = await db.replies.update_many(
+            {"user_id": user.user_id, "reply_id": {"$in": req.reply_ids}},
+            {"$set": {"archived": bool(req.archived)}},
+        )
+        return {"matched": res.matched_count, "modified": res.modified_count, "archived": req.archived}
+
+    @router.post("/unibox/replies/delete")
+    async def delete_replies(req: DeleteRepliesRequest, user=Depends(get_current_user)):
+        if not req.reply_ids:
+            raise HTTPException(status_code=400, detail="No replies selected")
+        res = await db.replies.delete_many(
+            {"user_id": user.user_id, "reply_id": {"$in": req.reply_ids}}
+        )
+        return {"deleted": res.deleted_count}
+
+    @router.post("/unibox/dne/domain/preview")
+    async def preview_domain_dne(req: DomainDNERequest, user=Depends(get_current_user)):
+        """Count how many contacts would be suppressed if we add an entire
+        domain to the Global DNE — surfaced in the confirmation dialog (#9 4a)."""
+        domain = (req.domain or "").strip().lower().lstrip("@")
+        if not domain or "." not in domain:
+            raise HTTPException(status_code=400, detail="Invalid domain")
+
+        # Count distinct leads + contacts on that domain
+        regex = f"@{domain}$"
+        lead_count = await db.leads.count_documents(
+            {"user_id": user.user_id, "contact_email": {"$regex": regex, "$options": "i"}}
+        )
+        list_contact_count = await db.email_list_contacts.count_documents(
+            {"user_id": user.user_id, "email": {"$regex": regex, "$options": "i"}}
+        )
+        drip_contact_count = await db.drip_contacts.count_documents(
+            {"user_id": user.user_id, "contact_email": {"$regex": regex, "$options": "i"}}
+        )
+        reply_count = await db.replies.count_documents(
+            {"user_id": user.user_id, "from_email": {"$regex": regex, "$options": "i"}}
+        )
+        return {
+            "domain": domain,
+            "lead_count": lead_count,
+            "list_contact_count": list_contact_count,
+            "drip_contact_count": drip_contact_count,
+            "reply_count": reply_count,
+            "estimated_suppressed": lead_count + list_contact_count + drip_contact_count,
+        }
+
+    @router.post("/unibox/dne/domain")
+    async def add_domain_to_dne(req: DomainDNERequest, user=Depends(get_current_user)):
+        """One-click suppression of an entire domain on the Global DNE list.
+
+        Stored as a wildcard entry ``@example.com`` — the campaign send
+        pipeline already lowercases and substring-matches the recipient
+        against existing DNE entries, so an ``@domain`` entry blocks every
+        address on that domain at send-time.
+        """
+        domain = (req.domain or "").strip().lower().lstrip("@")
+        if not domain or "." not in domain:
+            raise HTTPException(status_code=400, detail="Invalid domain")
+        wildcard = f"@{domain}"
+        dne = await db.dne_lists.find_one(
+            {"user_id": user.user_id, "is_global": True}, {"_id": 0}
+        )
+        if not dne:
+            dne = {
+                "list_id": f"dne_{uuid.uuid4().hex[:12]}",
+                "user_id": user.user_id,
+                "name": "Global Do Not Email",
+                "is_global": True,
+                "email_count": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.dne_lists.insert_one(dne)
+        existing = await db.dne_emails.find_one(
+            {"list_id": dne["list_id"], "user_id": user.user_id, "email": wildcard},
+            {"_id": 0},
+        )
+        if existing:
+            return {"added": False, "domain": domain, "list_id": dne["list_id"], "message": "Already suppressed"}
+        await db.dne_emails.insert_one(
+            {
+                "list_id": dne["list_id"],
+                "user_id": user.user_id,
+                "email": wildcard,
+                "domain": domain,
+                "source": "unibox_domain",
+                "added_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        await db.dne_lists.update_one(
+            {"list_id": dne["list_id"]},
+            {"$inc": {"email_count": 1}},
+        )
+        return {"added": True, "domain": domain, "list_id": dne["list_id"]}
 
     @router.get("/unibox/status")
     async def unibox_status(user=Depends(get_current_user)):

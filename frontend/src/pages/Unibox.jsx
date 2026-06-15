@@ -129,20 +129,44 @@ function classifyAccountStatus(a) {
 
 export default function Unibox({ user, setUser }) {
   const [replies, setReplies] = useState([]);
+  const [total, setTotal] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ unread_only: false, account_id: "" });
-  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter] = useState({
+    unread_only: false,
+    account_id: "",
+    folder_id: "",
+    campaign_id: "",
+    drip_id: "",
+    domain: "",
+    date_preset: "",
+    date_from: "",
+    date_to: "",
+    archived: false,
+  });
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("received_at");
+  const [sortDir, setSortDir] = useState("desc");
+  const [limit, setLimit] = useState(50);
+  const [skip, setSkip] = useState(0);
   const [selectedReply, setSelectedReply] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [statusAccounts, setStatusAccounts] = useState([]);
   const [folders, setFolders] = useState([]);
+  const [campaignsList, setCampaignsList] = useState([]);
+  const [dripList, setDripList] = useState([]);
   const [saveDialog, setSaveDialog] = useState(false);
   const [saveFolderId, setSaveFolderId] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
+  const [moveDialog, setMoveDialog] = useState(false);
+  const [moveFolderId, setMoveFolderId] = useState("");
+  const [moveBusy, setMoveBusy] = useState(false);
   const [dneDialogOpen, setDneDialogOpen] = useState(false);
   const [dneScope, setDneScope] = useState("email"); // "email" | "domain"
+  const [dneDomainTarget, setDneDomainTarget] = useState(""); // single-row domain DNE
+  const [dneDomainPreview, setDneDomainPreview] = useState(null);
   const [dneBusy, setDneBusy] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
 
@@ -151,16 +175,33 @@ export default function Unibox({ user, setUser }) {
     try {
       const params = new URLSearchParams();
       if (filter.unread_only) params.set("unread_only", "true");
+      if (filter.archived) params.set("archived", "true");
       if (filter.account_id) params.set("account_id", filter.account_id);
+      if (filter.folder_id) params.set("folder_id", filter.folder_id);
+      if (filter.campaign_id) params.set("campaign_id", filter.campaign_id);
+      if (filter.drip_id) params.set("drip_id", filter.drip_id);
+      if (filter.domain) params.set("domain", filter.domain);
+      if (filter.date_preset) params.set("date_preset", filter.date_preset);
+      else {
+        if (filter.date_from) params.set("date_from", filter.date_from);
+        if (filter.date_to) params.set("date_to", filter.date_to);
+      }
+      if (search.trim()) params.set("q", search.trim());
+      params.set("sort_by", sortBy);
+      params.set("sort_dir", sortDir);
+      params.set("limit", String(limit));
+      params.set("skip", String(skip));
+
       const res = await api.get(`/unibox/replies?${params}`);
       setReplies(res.data.items || []);
+      setTotal(res.data.total || 0);
       setUnreadCount(res.data.unread_count || 0);
     } catch (err) {
       toast.error("Failed to load replies");
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, search, sortBy, sortDir, limit, skip]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -180,26 +221,28 @@ export default function Unibox({ user, setUser }) {
     }
   }, []);
 
+  const fetchCampaignsAndDrips = useCallback(async () => {
+    try {
+      const [c, d] = await Promise.all([
+        api.get("/campaigns").catch(() => ({ data: [] })),
+        api.get("/drip-campaigns").catch(() => ({ data: [] })),
+      ]);
+      setCampaignsList(c.data || []);
+      setDripList(d.data || []);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchReplies(), fetchStatus(), fetchFolders()]);
-  }, [fetchReplies, fetchStatus, fetchFolders]);
+    Promise.all([fetchReplies(), fetchStatus(), fetchFolders(), fetchCampaignsAndDrips()]);
+  }, [fetchReplies, fetchStatus, fetchFolders, fetchCampaignsAndDrips]);
 
   const toggleSel = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
   const clearSel = () => setSelectedIds([]);
-  const allSelected = selectedIds.length > 0 && selectedIds.length === filteredReplies().length;
-
-  function filteredReplies() {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return replies;
-    return replies.filter(
-      (r) =>
-        (r.from_email || "").toLowerCase().includes(term) ||
-        (r.subject || "").toLowerCase().includes(term) ||
-        (r.body || "").toLowerCase().includes(term)
-    );
-  }
+  const allSelected = selectedIds.length > 0 && selectedIds.length === replies.length;
 
   const markRead = async (read) => {
     if (selectedIds.length === 0) return;
@@ -210,6 +253,81 @@ export default function Unibox({ user, setUser }) {
       fetchReplies();
     } catch (err) {
       toast.error("Failed to mark replies");
+    }
+  };
+
+  const bulkArchive = async (archived) => {
+    if (selectedIds.length === 0) return;
+    try {
+      await api.post("/unibox/replies/archive", { reply_ids: selectedIds, archived });
+      toast.success(`${archived ? "Archived" : "Unarchived"} ${selectedIds.length} repl${selectedIds.length === 1 ? "y" : "ies"}`);
+      clearSel();
+      fetchReplies();
+    } catch (err) {
+      toast.error("Failed to archive");
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Permanently delete ${selectedIds.length} repl${selectedIds.length === 1 ? "y" : "ies"}? This cannot be undone.`)) return;
+    try {
+      const res = await api.post("/unibox/replies/delete", { reply_ids: selectedIds });
+      toast.success(`Deleted ${res.data.deleted} repl${res.data.deleted === 1 ? "y" : "ies"}`);
+      clearSel();
+      fetchReplies();
+    } catch (err) {
+      toast.error("Failed to delete");
+    }
+  };
+
+  const submitMove = async () => {
+    if (selectedIds.length === 0 || !moveFolderId) return;
+    setMoveBusy(true);
+    try {
+      const folder_id = moveFolderId === "__unassigned__" ? null : moveFolderId;
+      await api.post("/unibox/replies/move", { reply_ids: selectedIds, folder_id });
+      toast.success(`Moved ${selectedIds.length} repl${selectedIds.length === 1 ? "y" : "ies"}`);
+      setMoveDialog(false);
+      setMoveFolderId("");
+      clearSel();
+      fetchReplies();
+      fetchFolders();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Move failed");
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const openSingleDomainDne = async (domain) => {
+    if (!domain) return;
+    setDneDomainTarget(domain);
+    setDneDomainPreview(null);
+    try {
+      const res = await api.post("/unibox/dne/domain/preview", { domain });
+      setDneDomainPreview(res.data);
+    } catch {
+      // ignore — dialog still opens
+    }
+  };
+
+  const confirmSingleDomainDne = async () => {
+    if (!dneDomainTarget) return;
+    setDneBusy(true);
+    try {
+      const res = await api.post("/unibox/dne/domain", { domain: dneDomainTarget });
+      if (res.data?.added) {
+        toast.success(`Suppressed entire domain ${dneDomainTarget}`);
+      } else {
+        toast.message(`${dneDomainTarget} was already suppressed`);
+      }
+      setDneDomainTarget("");
+      setDneDomainPreview(null);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to suppress domain");
+    } finally {
+      setDneBusy(false);
     }
   };
 
@@ -280,54 +398,6 @@ export default function Unibox({ user, setUser }) {
     } finally {
       setSaveBusy(false);
     }
-  };
-
-  const renderReplyRow = (r) => {
-    const sel = selectedIds.includes(r.reply_id);
-    return (
-      <motion.div
-        key={r.reply_id}
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`border rounded-md p-4 mb-2 cursor-pointer transition-colors ${
-          sel ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white hover:border-slate-300"
-        } ${!r.read ? "ring-1 ring-blue-200" : ""}`}
-        onClick={() => setSelectedReply(r)}
-        data-testid={`reply-row-${r.reply_id}`}
-      >
-        <div className="flex items-start gap-3">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSel(r.reply_id);
-            }}
-            className="mt-1"
-            data-testid={`reply-select-${r.reply_id}`}
-            aria-label={sel ? "Deselect" : "Select"}
-          >
-            {sel ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-slate-400" />}
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                {!r.read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
-                <span className="font-semibold text-slate-900 truncate">{r.from_email}</span>
-                {(r.campaign_name || r.drip_campaign_name) && (
-                  <Badge className="bg-violet-100 text-violet-700 border border-violet-200 hover:bg-violet-100 text-xs">
-                    {r.campaign_name || r.drip_campaign_name}
-                    {r.drip_step_number != null && ` · step ${r.drip_step_number + 1}`}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-xs text-slate-500 flex-shrink-0">{formatTime(r.received_at)}</span>
-            </div>
-            <p className="text-sm text-slate-700 truncate mt-0.5">{r.subject || "(no subject)"}</p>
-            <p className="text-xs text-slate-500 truncate mt-1">{(r.body || "").slice(0, 160)}</p>
-            <p className="text-xs text-slate-400 mt-1">received on {r.received_on_email}</p>
-          </div>
-        </div>
-      </motion.div>
-    );
   };
 
   return (
@@ -424,45 +494,198 @@ export default function Unibox({ user, setUser }) {
           })()}
 
           {/* Filters + search */}
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="mb-4 space-y-2" data-testid="unibox-filters">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSkip(0);
+                setSearch(searchInput);
+              }}
+              className="flex flex-wrap items-center gap-2"
+            >
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Search email, company, campaign, folder, domain…"
+                  className="pl-9"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  data-testid="unibox-search"
+                />
+              </div>
+              <Button type="submit" size="sm" data-testid="unibox-search-btn">Search</Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSearchInput("");
+                  setSearch("");
+                  setFilter({
+                    unread_only: false, account_id: "", folder_id: "", campaign_id: "",
+                    drip_id: "", domain: "", date_preset: "", date_from: "", date_to: "",
+                    archived: false,
+                  });
+                  setSkip(0);
+                }}
+                data-testid="unibox-reset-btn"
+              >
+                Reset
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={filter.folder_id || "_all"}
+                onValueChange={(v) => { setFilter({ ...filter, folder_id: v === "_all" ? "" : v }); setSkip(0); }}
+              >
+                <SelectTrigger className="w-44" data-testid="filter-folder"><SelectValue placeholder="All brands" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">All brands</SelectItem>
+                  <SelectItem value="__unassigned__">Unassigned</SelectItem>
+                  {folders.map((f) => (
+                    <SelectItem key={f.folder_id} value={f.folder_id}>
+                      {f.name} ({f.reply_count || 0})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filter.campaign_id || "_all"}
+                onValueChange={(v) => { setFilter({ ...filter, campaign_id: v === "_all" ? "" : v }); setSkip(0); }}
+              >
+                <SelectTrigger className="w-44" data-testid="filter-campaign"><SelectValue placeholder="All campaigns" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">All campaigns</SelectItem>
+                  {campaignsList.map((c) => (
+                    <SelectItem key={c.campaign_id} value={c.campaign_id}>{c.name || c.campaign_id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filter.drip_id || "_all"}
+                onValueChange={(v) => { setFilter({ ...filter, drip_id: v === "_all" ? "" : v }); setSkip(0); }}
+              >
+                <SelectTrigger className="w-44" data-testid="filter-drip"><SelectValue placeholder="All drips" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">All drips</SelectItem>
+                  {dripList.map((d) => (
+                    <SelectItem key={d.drip_id} value={d.drip_id}>{d.name || d.drip_id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filter.account_id || "_all"}
+                onValueChange={(v) => { setFilter({ ...filter, account_id: v === "_all" ? "" : v }); setSkip(0); }}
+              >
+                <SelectTrigger className="w-44" data-testid="filter-account"><SelectValue placeholder="All accounts" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">All accounts</SelectItem>
+                  {statusAccounts.map((a) => (
+                    <SelectItem key={a.account_id} value={a.account_id}>{a.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
-                placeholder="Search replies…"
-                className="pl-9"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                data-testid="unibox-search"
+                placeholder="Domain (e.g. company.com)"
+                value={filter.domain}
+                onChange={(e) => { setFilter({ ...filter, domain: e.target.value }); }}
+                onBlur={() => setSkip(0)}
+                className="w-44"
+                data-testid="filter-domain"
               />
+              <Select
+                value={filter.date_preset || "_all"}
+                onValueChange={(v) => {
+                  setFilter({
+                    ...filter,
+                    date_preset: v === "_all" ? "" : v === "custom" ? "" : v,
+                    date_from: v === "custom" ? filter.date_from : "",
+                    date_to: v === "custom" ? filter.date_to : "",
+                  });
+                  setSkip(0);
+                }}
+              >
+                <SelectTrigger className="w-40" data-testid="filter-date-preset"><SelectValue placeholder="Any date" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">Any date</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="last_7">Last 7 days</SelectItem>
+                  <SelectItem value="last_30">Last 30 days</SelectItem>
+                  <SelectItem value="last_90">Last 90 days</SelectItem>
+                  <SelectItem value="custom">Custom…</SelectItem>
+                </SelectContent>
+              </Select>
+              {!filter.date_preset && (filter.date_from || filter.date_to) && (
+                <>
+                  <Input
+                    type="date"
+                    value={filter.date_from}
+                    onChange={(e) => { setFilter({ ...filter, date_from: e.target.value }); setSkip(0); }}
+                    className="w-36"
+                    data-testid="filter-date-from"
+                  />
+                  <Input
+                    type="date"
+                    value={filter.date_to}
+                    onChange={(e) => { setFilter({ ...filter, date_to: e.target.value }); setSkip(0); }}
+                    className="w-36"
+                    data-testid="filter-date-to"
+                  />
+                </>
+              )}
+              <Select
+                value={filter.unread_only ? "unread" : (filter.archived ? "archived" : "all")}
+                onValueChange={(v) => {
+                  setFilter({
+                    ...filter,
+                    unread_only: v === "unread",
+                    archived: v === "archived",
+                  });
+                  setSkip(0);
+                }}
+              >
+                <SelectTrigger className="w-40" data-testid="filter-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All replies</SelectItem>
+                  <SelectItem value="unread">Unread only</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select
-              value={filter.unread_only ? "unread" : "all"}
-              onValueChange={(v) => setFilter({ ...filter, unread_only: v === "unread" })}
-            >
-              <SelectTrigger className="w-40" data-testid="filter-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All replies</SelectItem>
-                <SelectItem value="unread">Unread only</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={filter.account_id || "_all"}
-              onValueChange={(v) => setFilter({ ...filter, account_id: v === "_all" ? "" : v })}
-            >
-              <SelectTrigger className="w-56" data-testid="filter-account">
-                <SelectValue placeholder="Filter by account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All accounts</SelectItem>
-                {statusAccounts.map((a) => (
-                  <SelectItem key={a.account_id} value={a.account_id}>
-                    {a.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            {/* Sort + page size */}
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span data-testid="unibox-total">{total.toLocaleString()} repl{total === 1 ? "y" : "ies"}</span>
+              <span className="ml-auto">Sort:</span>
+              <Select value={sortBy} onValueChange={(v) => { setSortBy(v); setSkip(0); }}>
+                <SelectTrigger className="h-8 w-36" data-testid="unibox-sort-by"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="received_at">Reply date</SelectItem>
+                  <SelectItem value="campaign_name">Campaign</SelectItem>
+                  <SelectItem value="folder_id">Folder</SelectItem>
+                  <SelectItem value="from_email">From email</SelectItem>
+                  <SelectItem value="account_id">Account</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortDir} onValueChange={(v) => { setSortDir(v); setSkip(0); }}>
+                <SelectTrigger className="h-8 w-24" data-testid="unibox-sort-dir"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="desc">Newest</SelectItem>
+                  <SelectItem value="asc">Oldest</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="ml-3">Show:</span>
+              <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setSkip(0); }}>
+                <SelectTrigger className="h-8 w-20" data-testid="unibox-page-size"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[25, 50, 100, 250].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Bulk action bar */}
@@ -476,6 +699,21 @@ export default function Unibox({ user, setUser }) {
               </Button>
               <Button size="sm" variant="outline" onClick={() => markRead(false)} data-testid="bulk-mark-unread">
                 Mark unread
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setMoveDialog(true)} data-testid="bulk-move">
+                <FolderPlus size={14} className="mr-1" /> Move to folder
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => bulkArchive(!filter.archived)} data-testid="bulk-archive">
+                {filter.archived ? "Unarchive" : "Archive"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                onClick={bulkDelete}
+                data-testid="bulk-delete"
+              >
+                Delete
               </Button>
               <Button size="sm" variant="outline" onClick={() => setSaveDialog(true)} data-testid="bulk-save-lead">
                 <FolderPlus size={14} className="mr-1" />
@@ -510,30 +748,119 @@ export default function Unibox({ user, setUser }) {
             </div>
           )}
 
-          {/* Replies list */}
+          {/* Replies table — Phase 2 Batch B columns */}
           {loading ? (
             <p className="text-sm text-slate-500" data-testid="unibox-loading">Loading…</p>
-          ) : filteredReplies().length === 0 ? (
+          ) : replies.length === 0 ? (
             <div className="bg-white border border-dashed border-slate-200 rounded-md p-12 text-center" data-testid="unibox-empty">
               <Inbox className="mx-auto text-slate-300" size={36} />
-              <p className="font-medium text-slate-700 mt-2">No replies yet</p>
-              <p className="text-sm text-slate-500 mt-1">
-                Replies will appear here as soon as IMAP sync picks them up. Make sure your accounts have IMAP receiving settings configured.
-              </p>
+              <p className="font-medium text-slate-700 mt-2">No replies match these filters</p>
+              <p className="text-sm text-slate-500 mt-1">Try resetting filters or wait for IMAP sync.</p>
             </div>
           ) : (
-            <div data-testid="reply-list">
-              {filteredReplies().length > 0 && (
-                <button
-                  className="text-xs text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1"
-                  onClick={() => (allSelected ? clearSel() : setSelectedIds(filteredReplies().map((r) => r.reply_id)))}
-                  data-testid="unibox-select-all"
-                >
-                  {allSelected ? <CheckSquare size={14} className="text-blue-600" /> : <Square size={14} />}
-                  {allSelected ? "Deselect all" : "Select all visible"}
-                </button>
-              )}
-              {filteredReplies().map(renderReplyRow)}
+            <div className="bg-white border border-slate-200 rounded-md overflow-x-auto" data-testid="reply-list">
+              <table className="min-w-full text-sm" data-testid="unibox-table">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-8">
+                      <button
+                        onClick={() => allSelected ? clearSel() : setSelectedIds(replies.map((r) => r.reply_id))}
+                        data-testid="unibox-select-all"
+                      >
+                        {allSelected ? <CheckSquare size={14} className="text-blue-600" /> : <Square size={14} />}
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">From</th>
+                    <th className="px-3 py-2 text-left font-medium">Brand / Folder</th>
+                    <th className="px-3 py-2 text-left font-medium">Subject</th>
+                    <th className="px-3 py-2 text-left font-medium">Campaign</th>
+                    <th className="px-3 py-2 text-left font-medium">Drip</th>
+                    <th className="px-3 py-2 text-left font-medium">Account</th>
+                    <th className="px-3 py-2 text-left font-medium">Domain</th>
+                    <th className="px-3 py-2 text-left font-medium">Reply Date</th>
+                    <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {replies.map((r) => {
+                    const sel = selectedIds.includes(r.reply_id);
+                    return (
+                      <tr
+                        key={r.reply_id}
+                        className={`border-t border-slate-100 ${sel ? "bg-blue-50/40" : "hover:bg-slate-50"} ${!r.read ? "font-semibold" : ""}`}
+                        data-testid={`reply-row-${r.reply_id}`}
+                      >
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSel(r.reply_id); }}
+                            data-testid={`reply-select-${r.reply_id}`}
+                          >
+                            {sel ? <CheckSquare size={14} className="text-blue-600" /> : <Square size={14} className="text-slate-400" />}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 cursor-pointer max-w-[180px] truncate" onClick={() => setSelectedReply(r)}>
+                          <span className="text-slate-900">{r.from_email}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.folder_name ? (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px]" data-testid={`reply-folder-${r.reply_id}`}>
+                              📁 {r.folder_name}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs">unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 cursor-pointer max-w-[260px] truncate text-slate-700" onClick={() => setSelectedReply(r)}>
+                          {r.subject || "(no subject)"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" data-testid={`reply-campaign-${r.reply_id}`}>
+                          {r.campaign_name || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" data-testid={`reply-drip-${r.reply_id}`}>
+                          {r.drip_campaign_name ? `${r.drip_campaign_name}${r.drip_step_number != null ? " · step " + (r.drip_step_number + 1) : ""}` : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 max-w-[160px] truncate" data-testid={`reply-account-${r.reply_id}`}>
+                          {r.sending_account_email || r.received_on_email || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 text-xs" data-testid={`reply-domain-${r.reply_id}`}>
+                          {r.domain || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 text-xs whitespace-nowrap" data-testid={`reply-date-${r.reply_id}`}>
+                          {formatTime(r.received_at)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-rose-600 hover:text-rose-700"
+                            onClick={(e) => { e.stopPropagation(); openSingleDomainDne(r.domain); }}
+                            disabled={!r.domain}
+                            data-testid={`reply-domain-dne-${r.reply_id}`}
+                            title={`Suppress @${r.domain}`}
+                          >
+                            <ShieldOff size={12} />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {total > limit && (
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500" data-testid="unibox-pagination">
+              <span>Showing {skip + 1}–{Math.min(skip + limit, total)} of {total}</span>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="outline" disabled={skip === 0} onClick={() => setSkip(Math.max(0, skip - limit))} data-testid="unibox-prev-page">
+                  Prev
+                </Button>
+                <Button size="sm" variant="outline" disabled={skip + limit >= total} onClick={() => setSkip(skip + limit)} data-testid="unibox-next-page">
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -783,6 +1110,70 @@ export default function Unibox({ user, setUser }) {
               data-testid="issues-refresh"
             >
               <RefreshCw size={14} className="mr-1.5" /> Re-check
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Phase 2 Batch B — Move-to-folder dialog */}
+      <Dialog open={moveDialog} onOpenChange={(o) => !o && setMoveDialog(false)}>
+        <DialogContent data-testid="move-dialog">
+          <DialogHeader>
+            <DialogTitle>Move {selectedIds.length} repl{selectedIds.length === 1 ? "y" : "ies"} to…</DialogTitle>
+          </DialogHeader>
+          <Select value={moveFolderId} onValueChange={setMoveFolderId}>
+            <SelectTrigger data-testid="move-folder-select"><SelectValue placeholder="Select a brand / folder" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__unassigned__">Unassigned</SelectItem>
+              {folders.map((f) => (
+                <SelectItem key={f.folder_id} value={f.folder_id} data-testid={`move-folder-option-${f.folder_id}`}>
+                  {f.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveDialog(false)} data-testid="move-cancel">Cancel</Button>
+            <Button onClick={submitMove} disabled={moveBusy || !moveFolderId} data-testid="move-confirm">
+              {moveBusy ? "Moving…" : "Move"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Phase 2 Batch B — Single-row domain DNE confirmation */}
+      <Dialog open={!!dneDomainTarget} onOpenChange={(o) => !o && setDneDomainTarget("")}>
+        <DialogContent data-testid="domain-dne-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-rose-600">
+              Suppress entire domain @{dneDomainTarget}?
+            </DialogTitle>
+            <DialogDescription>
+              No email from <b>RouteMail</b> will be sent to any address on this domain after you confirm.
+            </DialogDescription>
+          </DialogHeader>
+          {dneDomainPreview ? (
+            <div className="text-sm space-y-1" data-testid="domain-dne-preview">
+              <div className="text-slate-700">This will suppress approximately:</div>
+              <ul className="ml-4 list-disc text-slate-600 text-xs space-y-0.5">
+                <li><b>{dneDomainPreview.lead_count}</b> lead(s)</li>
+                <li><b>{dneDomainPreview.list_contact_count}</b> contact(s) on email lists</li>
+                <li><b>{dneDomainPreview.drip_contact_count}</b> drip contact(s)</li>
+                <li><b>{dneDomainPreview.reply_count}</b> existing repl(y/ies) tracked</li>
+              </ul>
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">Calculating…</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDneDomainTarget("")} data-testid="domain-dne-cancel">Cancel</Button>
+            <Button
+              onClick={confirmSingleDomainDne}
+              disabled={dneBusy}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+              data-testid="domain-dne-confirm"
+            >
+              {dneBusy ? "Suppressing…" : "Suppress domain"}
             </Button>
           </DialogFooter>
         </DialogContent>
