@@ -1,6 +1,57 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 62 (June 2026)
+
+### Phase 3 Batch 1 — Google removal + Domain auto-detect + Email List search
+
+**Google OAuth removal**
+- `POST /api/auth/session` route DELETED. Frontend has no Google UI left
+  (verified — Login/Register/Settings are already free of Google traces).
+- `GET /api/auth/me` now returns `password_setup_required` (True iff
+  `provider=='google'` OR `password_hash` is missing). The frontend can use
+  this flag to show a forced "set password" screen.
+- New `POST /api/auth/set-initial-password` body `{password, confirm_password}`.
+  Validates min 8 chars + match. Hashes with `bcrypt.hashpw` (matches the
+  /auth/login verification path). Flips `provider` to `'email'`, records
+  `password_set_at`, and clears `password_setup_required` on next
+  `/auth/me`.
+- `POST /api/auth/forgot-password` no longer short-circuits for legacy
+  Google users — they can now reset their way into an email/password
+  account.
+- `POST /api/admin/users/{uid}/force-password-reset` no longer rejects
+  legacy Google users.
+- `/auth/register` now points repeat-existing-google-users at the Forgot
+  Password flow instead of asking them to "sign in with Google".
+
+**Domain auto-detection** (`/app/backend/infra_phase_a.py`)
+- New helper `ensure_domain_record(db, user_id, email)`:
+  * idempotent — find_one + `$inc` for repeat domains
+  * silent — no toast, no notification
+  * manually-edited rows are **never** overwritten; only
+    `linked_inbox_count` increments
+  * defaults: `purchase_date = date_added = today`, `expiry_date = today +
+    361 days`, `renewal_date = expiry_date`, `auto_created = True`
+- Wired into `POST /api/accounts/smtp` and
+  `POST /api/accounts/smtp/bulk-import` (single-domain CSV with 3 inboxes
+  → exactly 1 tracked_domains row, `linked_inbox_count = 3`).
+
+**Email List search** — `/app/frontend/src/pages/ListDetails.jsx`
+- Inline search input (`list-search-input`) + clear button
+  (`list-search-clear`) + result counter (`list-result-count`).
+- Multi-token AND partial-match, case-insensitive, across **every** column
+  header value (email, first_name, last_name, company, phone, linkedin, …).
+  `john acme` matches a row with `John` + `Acme Corp` etc.
+
+### Verification — iteration_62
+- Backend **21/21 pytest pass** (`/app/backend/tests/test_iter62_phase3_batch_1.py`).
+- Regression **99/99** across iter59 + iter60 + iter61 + infra_phase_b +
+  infra_phase_c. Critical bug found + fixed by the testing agent:
+  `pwd_context.hash` → `bcrypt.hashpw` on `set_initial_password`
+  (server.py:2420). Verified in-source.
+- Frontend search code review confirmed compliance; all 3 testids present.
+
+
 ## Changelog — Iteration 61 (June 2026)
 
 ### Phase 2 Batch B — Unibox rebuild
