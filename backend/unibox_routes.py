@@ -53,8 +53,17 @@ async def register_sent_email(
     drip_campaign_id: Optional[str] = None,
     drip_campaign_name: Optional[str] = None,
     drip_step_number: Optional[int] = None,
+    folder_id: Optional[str] = None,
+    body_html: Optional[str] = None,
+    body_text: Optional[str] = None,
+    from_name: Optional[str] = None,
 ) -> None:
-    """Persist outbound message metadata so we can match incoming replies later."""
+    """Persist outbound message metadata so we can match incoming replies later.
+
+    Phase-2: also accepts ``folder_id`` (so the matched reply can be auto-routed
+    to the campaign's brand folder) and the rendered ``body_html``/``body_text``
+    (so the Sent Email Viewer can show exactly what the recipient received).
+    """
     try:
         doc = {
             "sent_id": f"sent_{uuid.uuid4().hex[:12]}",
@@ -69,6 +78,10 @@ async def register_sent_email(
             "drip_campaign_id": drip_campaign_id,
             "drip_campaign_name": drip_campaign_name,
             "drip_step_number": drip_step_number,
+            "folder_id": folder_id,
+            "from_name": from_name,
+            "body_html": body_html,
+            "body_text": body_text,
             "sent_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.sent_emails.insert_one(doc)
@@ -270,11 +283,13 @@ async def _process_imap_account(db, fernet, account: Dict[str, Any]) -> None:
                 "references": m["references"],
                 "received_at": m["received_at"],
                 "read": False,
+                "archived": False,
                 "campaign_id": matched.get("campaign_id") if matched else None,
                 "campaign_name": matched.get("campaign_name") if matched else None,
                 "drip_campaign_id": matched.get("drip_campaign_id") if matched else None,
                 "drip_campaign_name": matched.get("drip_campaign_name") if matched else None,
                 "drip_step_number": matched.get("drip_step_number") if matched else None,
+                "folder_id": matched.get("folder_id") if matched else None,
                 "sent_id": matched.get("sent_id") if matched else None,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -514,12 +529,20 @@ def build_unibox_router(db, get_current_user, fernet):  # noqa: C901
         folders = await db.lead_folders.find(
             {"user_id": user.user_id}, {"_id": 0}
         ).sort("created_at", -1).to_list(500)
-        # attach counts
+        # attach lead + reply counts (Phase 2 — folder reply counts are
+        # displayed in the sidebar so users see brand-level reply volume).
         for f in folders:
             f["lead_count"] = await db.leads.count_documents(
                 {"user_id": user.user_id, "folder_id": f["folder_id"]}
             )
-        return {"folders": folders}
+            f["reply_count"] = await db.replies.count_documents(
+                {"user_id": user.user_id, "folder_id": f["folder_id"]}
+            )
+        # "Unassigned" pseudo-folder for replies whose campaign had no folder
+        unassigned_reply_count = await db.replies.count_documents(
+            {"user_id": user.user_id, "folder_id": None}
+        )
+        return {"folders": folders, "unassigned_reply_count": unassigned_reply_count}
 
     @router.post("/leads/folders")
     async def create_folder(req: CreateFolderRequest, user=Depends(get_current_user)):

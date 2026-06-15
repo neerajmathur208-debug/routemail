@@ -745,14 +745,18 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     # Prepare email content
     subject = step.get("subject", "")
     body = step.get("body", "")
-    
-    # Replace placeholders with contact data
-    contact_data = contact.get("data", {})
-    for key, value in contact_data.items():
-        placeholder = "{" + key + "}"
-        subject = subject.replace(placeholder, str(value) if value else "")
-        body = body.replace(placeholder, str(value) if value else "")
-    
+
+    # Use the unified renderer so {{var}}, {var}, missing variables and stray
+    # HTML entities are all handled identically across campaigns and drips.
+    from template_render import render_template as _render_tmpl
+    contact_data = contact.get("data", {}) or {}
+    # Merge top-level contact fields (email, first_name, last_name etc.) into
+    # the data dict so they're addressable inside the template.
+    merged_data = {**contact_data, **{k: v for k, v in contact.items() if k not in ("data", "_id")}}
+    fallbacks = campaign.get("variable_fallbacks") or {}
+    subject = _render_tmpl(subject, merged_data, fallbacks=fallbacks)
+    body = _render_tmpl(body, merged_data, fallbacks=fallbacks)
+
     recipient_email = contact.get("email")
     
     # Resolve {{unsubscribe_url}} (per-recipient) so that an Unsubscribe link inserted
@@ -769,7 +773,7 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
         success = bool(send_result.get("success"))
 
         if success:
-            # Track outbound for Unibox reply matching
+            # Track outbound for Unibox reply matching + Sent Email Viewer
             await register_sent_email(
                 db,
                 user_id=campaign.get("user_id", ""),
@@ -781,6 +785,9 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
                 drip_campaign_id=campaign.get("drip_id"),
                 drip_campaign_name=campaign.get("name"),
                 drip_step_number=current_step,
+                folder_id=campaign.get("folder_id"),
+                body_html=body,
+                from_name=campaign.get("from_name"),
             )
             # Update account send count
             await db.email_accounts.update_one(
@@ -2210,6 +2217,9 @@ class CreateCampaignRequest(BaseModel):
     send_range_start: Optional[int] = None
     send_range_end: Optional[int] = None
     add_unsubscribe_footer: Optional[bool] = False
+    # Phase-2 additions
+    folder_id: Optional[str] = None  # Brand / Responses folder this campaign belongs to
+    variable_fallbacks: Optional[Dict[str, str]] = None
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -2226,6 +2236,8 @@ class UpdateCampaignRequest(BaseModel):
     send_range_start: Optional[int] = None
     send_range_end: Optional[int] = None
     add_unsubscribe_footer: Optional[bool] = None
+    folder_id: Optional[str] = None
+    variable_fallbacks: Optional[Dict[str, str]] = None
 
 class AddToSuppressionRequest(BaseModel):
     email: str
@@ -2261,6 +2273,9 @@ class CreateDripCampaignRequest(BaseModel):
     stop_on_reply: bool = True
     stop_on_bounce: bool = True
     suppression_list_ids: List[str] = []
+    # Phase-2 additions
+    folder_id: Optional[str] = None
+    variable_fallbacks: Optional[Dict[str, str]] = None
 
 class UpdateDripCampaignRequest(BaseModel):
     name: Optional[str] = None
@@ -2271,6 +2286,8 @@ class UpdateDripCampaignRequest(BaseModel):
     stop_on_reply: Optional[bool] = None
     stop_on_bounce: Optional[bool] = None
     suppression_list_ids: Optional[List[str]] = None
+    folder_id: Optional[str] = None
+    variable_fallbacks: Optional[Dict[str, str]] = None
 
 class AddDripContactsRequest(BaseModel):
     list_id: str
@@ -4556,6 +4573,35 @@ async def export_campaign_logs(campaign_id: str, user: User = Depends(get_curren
         headers={"Content-Disposition": f"attachment; filename=campaign_{campaign_id}_logs.csv"}
     )
 
+# Phase-2 helper — keep this above the routes that use it.
+async def _ensure_default_folder_id(user_id: str, requested: Optional[str]) -> str:
+    """Resolve a folder_id for a campaign/drip.
+
+    * If the caller provided a real folder_id and it exists for the user, return it.
+    * Otherwise, find-or-create the per-user "Default" folder so every campaign
+      always has a brand/folder linkage.
+    """
+    if requested:
+        existing = await db.lead_folders.find_one(
+            {"folder_id": requested, "user_id": user_id}, {"_id": 0, "folder_id": 1}
+        )
+        if existing:
+            return existing["folder_id"]
+    default = await db.lead_folders.find_one(
+        {"user_id": user_id, "name": "Default"}, {"_id": 0, "folder_id": 1}
+    )
+    if default:
+        return default["folder_id"]
+    fid = f"foldr_{uuid.uuid4().hex[:10]}"
+    await db.lead_folders.insert_one({
+        "folder_id": fid,
+        "user_id": user_id,
+        "name": "Default",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return fid
+
+
 @api_router.post("/campaigns")
 async def create_campaign(request: CreateCampaignRequest, user: User = Depends(get_current_user)):
     """Create a new campaign"""
@@ -4605,8 +4651,19 @@ async def create_campaign(request: CreateCampaignRequest, user: User = Depends(g
         camp_dict["scheduled_at"] = camp_dict["scheduled_at"].isoformat()
     
     await db.campaigns.insert_one(camp_dict)
-    
-    return {"campaign_id": campaign.campaign_id, "status": campaign.status, "scheduled_at": request.scheduled_at}
+
+    # Phase-2: persist folder linkage + fallback config (added after .model_dump
+    # so we don't have to touch the Campaign model schema).
+    folder_id = await _ensure_default_folder_id(user.user_id, request.folder_id)
+    await db.campaigns.update_one(
+        {"campaign_id": campaign.campaign_id},
+        {"$set": {
+            "folder_id": folder_id,
+            "variable_fallbacks": request.variable_fallbacks or {},
+        }},
+    )
+
+    return {"campaign_id": campaign.campaign_id, "status": campaign.status, "scheduled_at": request.scheduled_at, "folder_id": folder_id}
 
 @api_router.put("/campaigns/{campaign_id}")
 async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user: User = Depends(get_current_user)):
@@ -4668,6 +4725,10 @@ async def update_campaign(campaign_id: str, request: UpdateCampaignRequest, user
         update_data["send_range_end"] = request.send_range_end
     if request.add_unsubscribe_footer is not None:
         update_data["add_unsubscribe_footer"] = bool(request.add_unsubscribe_footer)
+    if request.folder_id is not None:
+        update_data["folder_id"] = await _ensure_default_folder_id(user.user_id, request.folder_id)
+    if request.variable_fallbacks is not None:
+        update_data["variable_fallbacks"] = request.variable_fallbacks or {}
     
     await db.campaigns.update_one(
         {"campaign_id": campaign_id},
@@ -5213,6 +5274,51 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
             except Exception:
                 pass
 
+@api_router.post("/campaigns/{campaign_id}/preflight")
+async def preflight_campaign(campaign_id: str, user: User = Depends(get_current_user)):
+    """Pre-send validation — flag unresolved variables before launch."""
+    from template_render import analyse_contacts
+    campaign = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user.user_id},
+        {"_id": 0},
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    contacts: List[Dict[str, Any]] = []
+    if campaign.get("list_id"):
+        contacts = await db.email_list_contacts.find(
+            {"list_id": campaign["list_id"], "user_id": user.user_id, "is_valid": True},
+            {"_id": 0},
+        ).limit(2000).to_list(2000)
+    result = analyse_contacts(
+        [campaign.get("subject", ""), campaign.get("body", ""), campaign.get("body_text", "") or ""],
+        contacts,
+    )
+    return result
+
+
+@api_router.post("/drip-campaigns/{drip_id}/preflight")
+async def preflight_drip(drip_id: str, user: User = Depends(get_current_user)):
+    """Pre-send validation for a drip campaign — checks every step."""
+    from template_render import analyse_contacts
+    drip = await db.drip_campaigns.find_one(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0},
+    )
+    if not drip:
+        raise HTTPException(status_code=404, detail="Drip campaign not found")
+    contacts = await db.drip_contacts.find(
+        {"drip_id": drip_id, "user_id": user.user_id},
+        {"_id": 0},
+    ).limit(2000).to_list(2000)
+    template_parts: List[str] = []
+    for step in (drip.get("steps") or []):
+        template_parts.append(step.get("subject", "") or "")
+        template_parts.append(step.get("body", "") or "")
+    result = analyse_contacts(template_parts, contacts)
+    return result
+
+
 @api_router.post("/campaigns/{campaign_id}/start")
 async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)):
     """Start a campaign"""
@@ -5537,6 +5643,8 @@ async def create_drip_campaign(request: CreateDripCampaignRequest, user: User = 
         "status": "draft",  # draft, running, paused, completed
         "total_sent": 0,
         "total_contacts": 0,
+        "folder_id": await _ensure_default_folder_id(user.user_id, request.folder_id),
+        "variable_fallbacks": request.variable_fallbacks or {},
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -5614,7 +5722,11 @@ async def update_drip_campaign(drip_id: str, request: UpdateDripCampaignRequest,
         update_data["stop_on_bounce"] = request.stop_on_bounce
     if request.suppression_list_ids is not None:
         update_data["suppression_list_ids"] = request.suppression_list_ids
-    
+    if request.folder_id is not None:
+        update_data["folder_id"] = await _ensure_default_folder_id(user.user_id, request.folder_id)
+    if request.variable_fallbacks is not None:
+        update_data["variable_fallbacks"] = request.variable_fallbacks or {}
+
     await db.drip_campaigns.update_one({"drip_id": drip_id}, {"$set": update_data})
     return {"message": "Drip campaign updated", "drip_id": drip_id}
 
@@ -6659,13 +6771,10 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
 # ==================== BACKGROUND EMAIL PROCESSING ====================
 
 def replace_variables(template: str, data: dict) -> str:
-    """Replace {{variable}} with values from data"""
-    def replacer(match):
-        var_name = match.group(1).strip().lower()
-        return str(data.get(var_name, ""))
-    
-    result = re.sub(r'\{\{(\w+)\}\}', replacer, template)
-    return result
+    """Deprecated — kept for callers. Delegates to template_render.render_template
+    which handles {{var}}, {var}, fallbacks, HTML entities, and strips stray braces."""
+    from template_render import render_template as _render
+    return _render(template, data or {})
 
 async def send_email_smtp(account: dict, to_email: str, subject: str, body_html: str, body_text: str, from_name: str, user_id: str, add_unsubscribe_footer: bool = False) -> dict:
     """Send email via SMTP"""
@@ -6845,11 +6954,13 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
             )
             break
         
-        # Replace variables
-        recipient_data = queue_item.get("recipient_data", {})
-        subject = replace_variables(campaign["subject"], recipient_data)
-        body_html = replace_variables(campaign["body"], recipient_data)
-        body_text = replace_variables(campaign.get("body_text", ""), recipient_data) if campaign.get("body_text") else ""
+        # Replace variables — use the unified renderer with campaign-level fallbacks
+        from template_render import render_template as _render_tmpl
+        recipient_data = queue_item.get("recipient_data", {}) or {}
+        fallbacks = campaign.get("variable_fallbacks") or {}
+        subject = _render_tmpl(campaign["subject"], recipient_data, fallbacks=fallbacks)
+        body_html = _render_tmpl(campaign["body"], recipient_data, fallbacks=fallbacks)
+        body_text = _render_tmpl(campaign.get("body_text", ""), recipient_data, fallbacks=fallbacks) if campaign.get("body_text") else ""
         # From Name resolution: campaign-level override takes priority over account-level
         campaign_from_name = (campaign.get("from_name") or "").strip()
         account_from_name = (account.get("from_name") or "").strip() or account.get("display_name", "")
@@ -6876,7 +6987,7 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
         
         # Update queue item
         if result.get("success"):
-            # Track outbound for Unibox reply matching
+            # Track outbound for Unibox reply matching + Sent Email Viewer
             await register_sent_email(
                 db,
                 user_id=user_id,
@@ -6887,6 +6998,10 @@ async def process_campaign_queue(campaign_id: str, user_id: str):
                 message_id=result.get("message_id"),
                 campaign_id=campaign_id,
                 campaign_name=campaign.get("name"),
+                folder_id=campaign.get("folder_id"),
+                body_html=body_html,
+                body_text=body_text,
+                from_name=from_name,
             )
             await db.email_queue.update_one(
                 {"queue_id": queue_item["queue_id"]},

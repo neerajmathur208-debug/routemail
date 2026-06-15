@@ -118,16 +118,21 @@ export default function Campaign({ user, setUser }) {
     send_range_start: 1,
     send_range_end: 100,
     add_unsubscribe_footer: false,
+    folder_id: "",
   });
   const [dneLists, setDneLists] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [preflightOpen, setPreflightOpen] = useState(false);
+  const [preflight, setPreflight] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [listsRes, accountsRes, campaignsRes, dneRes] = await Promise.all([
+      const [listsRes, accountsRes, campaignsRes, dneRes, foldersRes] = await Promise.all([
         api.get("/lists"),
         api.get("/accounts"),
         api.get("/campaigns"),
         api.get("/dne-lists"),
+        api.get("/leads/folders"),
       ]);
 
       setLists(listsRes.data);
@@ -136,6 +141,7 @@ export default function Campaign({ user, setUser }) {
       setAccounts(Array.isArray(accountsData) ? accountsData : []);
       setCampaigns(campaignsRes.data);
       setDneLists(dneRes.data || []);
+      setFolders(foldersRes.data?.folders || []);
 
       // Find running campaign
       const running = campaignsRes.data.find(
@@ -164,6 +170,7 @@ export default function Campaign({ user, setUser }) {
             send_range_start: campaign.send_range_start || 1,
             send_range_end: campaign.send_range_end || 100,
             add_unsubscribe_footer: campaign.add_unsubscribe_footer || false,
+            folder_id: campaign.folder_id || "",
           });
           setView("edit");
           
@@ -401,6 +408,18 @@ export default function Campaign({ user, setUser }) {
         toast.error("Could not save campaign — please fill in name and subject first.");
         return;
       }
+      // Phase-2: pre-send validation — block on warnings, surface them in a dialog
+      try {
+        const pf = await api.post(`/campaigns/${targetId}/preflight`);
+        if (pf.data?.warnings?.length > 0 && !pf.data?._user_confirmed) {
+          setPreflight({ ...pf.data, _campaignId: targetId });
+          setPreflightOpen(true);
+          return;
+        }
+      } catch (e) {
+        // Preflight is best-effort — don't block sending if endpoint hiccups
+        console.warn("Preflight failed", e);
+      }
       await api.post(`/campaigns/${targetId}/start`);
       toast.success("Campaign saved & started successfully!");
       setStartDialogOpen(false);
@@ -409,6 +428,23 @@ export default function Campaign({ user, setUser }) {
     } catch (error) {
       const message = error.response?.data?.detail || "Failed to start campaign";
       toast.error(message);
+    }
+  };
+
+  // Called from the Preflight modal — user has reviewed and chose to send anyway
+  const confirmPreflightAndStart = async () => {
+    if (!preflight?._campaignId) return;
+    const cid = preflight._campaignId;
+    setPreflightOpen(false);
+    setPreflight(null);
+    try {
+      await api.post(`/campaigns/${cid}/start`);
+      toast.success("Campaign started — proceeding despite preflight warnings");
+      setStartDialogOpen(false);
+      setView("list");
+      navigate("/campaign");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to start campaign");
     }
   };
 
@@ -808,6 +844,44 @@ export default function Campaign({ user, setUser }) {
                   className="mt-1.5"
                   data-testid="campaign-name-input"
                 />
+              </div>
+
+              {/* Brand / Folder — required Phase-2 field */}
+              <div>
+                <Label htmlFor="folder" className="text-amber-700">
+                  Brand / Folder *
+                </Label>
+                <p className="text-xs text-slate-500 mt-0.5 mb-1.5">
+                  Replies to this campaign will land in this folder under Responses / Leads.
+                </p>
+                <Select
+                  value={formData.folder_id}
+                  onValueChange={(v) => setFormData({ ...formData, folder_id: v })}
+                >
+                  <SelectTrigger className="mt-1" data-testid="campaign-folder-select">
+                    <SelectValue placeholder="Select a brand / folder…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {folders.length === 0 ? (
+                      <SelectItem value="__default__" disabled>
+                        No folders yet — a Default folder will be created
+                      </SelectItem>
+                    ) : (
+                      folders.map((f) => (
+                        <SelectItem
+                          key={f.folder_id}
+                          value={f.folder_id}
+                          data-testid={`campaign-folder-option-${f.folder_id}`}
+                        >
+                          {f.name}{" "}
+                          <span className="text-slate-400 text-xs">
+                            ({f.reply_count || 0} replies)
+                          </span>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* From Name */}
@@ -1850,6 +1924,74 @@ Best regards"
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Phase-2 Preflight validation modal */}
+      <Dialog open={preflightOpen} onOpenChange={(o) => !o && setPreflightOpen(false)}>
+        <DialogContent className="sm:max-w-[560px]" data-testid="preflight-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertCircle size={18} />
+              Pre-send validation
+            </DialogTitle>
+          </DialogHeader>
+          {preflight && (
+            <div className="space-y-3 text-sm">
+              <p className="text-slate-700">
+                We found {preflight.warnings?.length || 0} potential issue
+                {(preflight.warnings?.length || 0) === 1 ? "" : "s"} that could affect delivery:
+              </p>
+              <ul className="space-y-1.5" data-testid="preflight-warnings">
+                {(preflight.warnings || []).map((w, i) => (
+                  <li
+                    key={`pfw-${i}`}
+                    className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded"
+                  >
+                    <AlertCircle size={14} className="mt-0.5 text-amber-600 flex-shrink-0" />
+                    <span className="text-amber-900">{w}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {preflight.unresolved_samples?.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-slate-500 mb-1.5 mt-2">
+                    Sample recipients with missing variables
+                  </div>
+                  <ul className="text-xs text-slate-600 space-y-0.5 max-h-32 overflow-y-auto" data-testid="preflight-samples">
+                    {preflight.unresolved_samples.slice(0, 8).map((s, i) => (
+                      <li key={`pfs-${i}`}>
+                        <code className="bg-slate-100 px-1 rounded">{s.email || "(no email)"}</code>{" "}
+                        — missing: {s.missing.join(", ")}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-500 pt-1">
+                Missing values will be replaced with the configured fallback (e.g. <code>{"{{first_name}}"}</code> → <em>there</em>).
+                You can still send, or close this dialog to fix the variables first.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPreflightOpen(false)}
+              data-testid="preflight-cancel"
+            >
+              Fix issues first
+            </Button>
+            <Button
+              onClick={confirmPreflightAndStart}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="preflight-confirm-send"
+            >
+              Send anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

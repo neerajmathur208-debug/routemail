@@ -65,6 +65,8 @@ export default function DripCampaigns({ user, setUser }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [newFolderId, setNewFolderId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -178,8 +180,12 @@ export default function DripCampaigns({ user, setUser }) {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      const res = await api.get("/drip-campaigns");
+      const [res, foldersRes] = await Promise.all([
+        api.get("/drip-campaigns"),
+        api.get("/leads/folders").catch(() => ({ data: { folders: [] } })),
+      ]);
       setCampaigns(res.data || []);
+      setFolders(foldersRes.data?.folders || []);
     } catch (e) {
       console.error("Failed to load drip campaigns", e);
       toast.error("Failed to load drip campaigns");
@@ -212,10 +218,12 @@ export default function DripCampaigns({ user, setUser }) {
         stop_on_reply: true,
         stop_on_bounce: true,
         account_ids: [],
+        folder_id: newFolderId || null,
       });
       toast.success("Drip campaign created");
       setCreateOpen(false);
       setNewName("");
+      setNewFolderId("");
       navigate(`/drip-campaigns/${res.data.drip_id}`);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to create");
@@ -444,6 +452,34 @@ export default function DripCampaigns({ user, setUser }) {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               />
+              <Label htmlFor="drip-folder" className="text-amber-700 pt-1">
+                Brand / Folder *
+              </Label>
+              <p className="text-xs text-slate-500">
+                Replies will be routed to this folder in Responses / Leads.
+              </p>
+              <Select value={newFolderId} onValueChange={setNewFolderId}>
+                <SelectTrigger data-testid="drip-folder-select">
+                  <SelectValue placeholder="Select a brand / folder…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {folders.length === 0 ? (
+                    <SelectItem value="__default__" disabled>
+                      No folders yet — a Default folder will be created
+                    </SelectItem>
+                  ) : (
+                    folders.map((f) => (
+                      <SelectItem
+                        key={f.folder_id}
+                        value={f.folder_id}
+                        data-testid={`drip-folder-option-${f.folder_id}`}
+                      >
+                        {f.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)}>
