@@ -420,233 +420,55 @@ export default function Infrastructure({ user, setUser }) {
           )}
         </section>
 
-        {/* Inbox table + filters */}
+        {/* Inbox Availability summary card (Phase 3 Batch 2 — full table moved to /infrastructure/inboxes) */}
         <section
           className="bg-white border border-slate-200 rounded-2xl p-4"
           data-testid="infra-inbox-section"
         >
-          <div className="flex items-center justify-between mb-3 px-2 flex-wrap gap-3">
+          <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Inbox size={18} className="text-sky-600" /> Inbox Availability
             </h2>
-            <div className="text-xs text-slate-500">{inboxes.length} inboxes shown</div>
-          </div>
-
-          {/* Filter row */}
-          <div
-            className="flex flex-wrap items-end gap-2 mb-4 px-2"
-            data-testid="infra-filter-row"
-          >
-            <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-              />
-              <Input
-                placeholder="Search email"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 w-56"
-                data-testid="infra-search-input"
-              />
-            </div>
-            <FilterSelect
-              label="Ownership"
-              value={ownership}
-              onChange={setOwnership}
-              options={filterOptions.ownership}
-              testid="infra-filter-ownership"
-            />
-            <FilterSelect
-              label="Domain"
-              value={domain}
-              onChange={setDomain}
-              options={filterOptions.domain}
-              testid="infra-filter-domain"
-            />
-            <FilterSelect
-              label="Status"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                "Available",
-                "Partially Available",
-                "Fully Reserved",
-                "Warming Up",
-                "Paused",
-                "Risky",
-              ]}
-              testid="infra-filter-status"
-            />
-            <FilterSelect
-              label="Warmup"
-              value={warmupFilter}
-              onChange={setWarmupFilter}
-              options={["Active", "Warming", "—"]}
-              testid="infra-filter-warmup"
-            />
-            <div className="flex flex-col">
-              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
-                Min remaining
-              </Label>
-              <Select value={minRemaining} onValueChange={setMinRemaining}>
-                <SelectTrigger className="w-28" data-testid="infra-filter-min-remaining">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Any</SelectItem>
-                  <SelectItem value="10">≥ 10</SelectItem>
-                  <SelectItem value="25">≥ 25</SelectItem>
-                  <SelectItem value="50">≥ 50</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={resetFilters}
-              data-testid="infra-reset-filters"
-              className="mb-0.5"
+              onClick={() => navigate("/infrastructure/inboxes")}
+              data-testid="view-inbox-availability-btn"
             >
-              <Filter size={14} className="mr-1" /> Reset
+              View Inbox Availability →
             </Button>
           </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-slate-500" data-testid="infra-loading">
-              <Loader2 className="inline animate-spin mr-2" size={16} /> Loading…
-            </div>
-          ) : inboxes.length === 0 ? (
-            <div className="py-12 text-center text-slate-500" data-testid="infra-empty">
-              No inboxes match the current filters.
-            </div>
-          ) : (
-            <div className="overflow-x-auto" data-testid="infra-inbox-table">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium">Email</th>
-                    <th className="text-left px-3 py-2 font-medium">Domain</th>
-                    <th className="text-left px-3 py-2 font-medium">Ownership</th>
-                    <th className="text-left px-3 py-2 font-medium">Workspace</th>
-                    <th className="text-left px-3 py-2 font-medium">Status</th>
-                    <th className="text-right px-3 py-2 font-medium">Sent / Limit</th>
-                    <th className="text-right px-3 py-2 font-medium">Remaining</th>
-                    <th className="text-right px-3 py-2 font-medium">Projected (120d)</th>
-                    <th className="text-right px-3 py-2 font-medium">Campaigns</th>
-                    <th className="text-left px-3 py-2 font-medium">Warmup</th>
-                    <th className="text-left px-3 py-2 font-medium">Last Activity</th>
-                    <th className="text-right px-3 py-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inboxes.map((r) => (
-                    <tr
-                      key={r.account_id}
-                      className="border-t border-slate-100 hover:bg-slate-50"
-                      data-testid={`inbox-row-${r.account_id}`}
-                    >
-                      <td className="px-3 py-2 font-medium text-slate-900">
-                        <button
-                          onClick={() => setCalendarFor(r)}
-                          className="hover:text-sky-700 hover:underline text-left"
-                          data-testid={`inbox-open-calendar-${r.account_id}`}
-                        >
-                          {r.email}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">{r.domain}</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {r.ownership || (
-                          <span className="text-slate-400 italic">none</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600 truncate max-w-[180px]">
-                        {r.workspace}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          data-testid={`inbox-status-${r.account_id}`}
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                            STATUS_COLOR[r.status] || "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          {r.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                        {r.emails_sent_today}/{r.daily_limit}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                        {r.remaining_capacity}
-                      </td>
-                      <td
-                        className="px-3 py-2 text-right tabular-nums text-slate-700"
-                        data-testid={`inbox-projected-${r.account_id}`}
-                      >
-                        {(r.projected_window_total || 0).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {r.active_campaign_count}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">{r.warmup_status}</td>
-                      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-                        {r.last_activity_at ? r.last_activity_at.slice(0, 10) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="View 120-day calendar"
-                            data-testid={`inbox-calendar-btn-${r.account_id}`}
-                            onClick={() => setCalendarFor(r)}
-                          >
-                            <CalendarDays size={14} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="Edit ownership"
-                            data-testid={`inbox-edit-ownership-${r.account_id}`}
-                            onClick={() =>
-                              setOwnerEdit({
-                                account_id: r.account_id,
-                                email: r.email,
-                                ownership: r.ownership || "",
-                              })
-                            }
-                          >
-                            <Edit2 size={14} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
-                            title="Replace this inbox"
-                            data-testid={`inbox-replace-btn-${r.account_id}`}
-                            onClick={async () => {
-                              setReplaceFor({ row: r, preview: null, loading: true, saving: false });
-                              try {
-                                const res = await api.get(`/infrastructure/replacements/candidate/${r.account_id}`);
-                                setReplaceFor({ row: r, preview: res.data, loading: false, saving: false });
-                              } catch (e) {
-                                toast.error(e?.response?.data?.detail || "Preview failed");
-                                setReplaceFor(null);
-                              }
-                            }}
-                          >
-                            <RefreshCcw size={14} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-2" data-testid="inbox-summary-cards">
+            {(() => {
+              const counts = { total: inboxes.length };
+              for (const r of inboxes) {
+                const k = (r.status || "").replace(/\s+/g, "_").toLowerCase();
+                counts[k] = (counts[k] || 0) + 1;
+              }
+              const items = [
+                { label: "Total Inboxes", value: counts.total, tone: "slate", testid: "inbox-stat-total" },
+                { label: "Available", value: counts.available || 0, tone: "emerald", testid: "inbox-stat-available" },
+                { label: "Partially Available", value: counts.partially_available || 0, tone: "sky", testid: "inbox-stat-partial" },
+                { label: "In Use", value: (counts.in_use || 0) + (counts.fully_reserved || 0), tone: "amber", testid: "inbox-stat-in-use" },
+                { label: "Paused", value: counts.paused || 0, tone: "slate", testid: "inbox-stat-paused" },
+                { label: "Risky", value: counts.risky || 0, tone: "rose", testid: "inbox-stat-risky" },
+              ];
+              return items.map((c) => <BucketCard key={c.label} {...c} />);
+            })()}
+          </div>
+
+          {inboxes.length > 0 && (
+            <p className="text-xs text-slate-500 mt-3 px-2">
+              The full searchable, filterable, exportable table now lives on{" "}
+              <button
+                onClick={() => navigate("/infrastructure/inboxes")}
+                className="text-indigo-600 hover:text-indigo-700 underline"
+                data-testid="inbox-summary-cta-link"
+              >
+                Inbox Availability
+              </button>.
+            </p>
           )}
         </section>
 
@@ -1371,24 +1193,50 @@ function PlannerSection() {
   const [steps, setSteps] = useState(3);
   const [days, setDays] = useState(30);
   const [sdpw, setSdpw] = useState(5);
+  const [dailyLimit, setDailyLimit] = useState(50);
+  const [preferredPerDomain, setPreferredPerDomain] = useState(5);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const buildPayload = () => ({
+    leads: Number(leads) || 1,
+    steps: Number(steps) || 1,
+    duration_days: Number(days) || 1,
+    sending_days_per_week: Number(sdpw) || 5,
+    daily_limit_per_inbox: Number(dailyLimit) || 50,
+    preferred_inboxes_per_domain: Number(preferredPerDomain) || 5,
+  });
 
   const run = async () => {
     setLoading(true);
     setResult(null);
     try {
-      const res = await api.post("/infrastructure/planner", {
-        leads: Number(leads) || 1,
-        steps: Number(steps) || 1,
-        duration_days: Number(days) || 1,
-        sending_days_per_week: Number(sdpw) || 5,
-      });
+      const res = await api.post("/infrastructure/planner", buildPayload());
       setResult(res.data);
     } catch (e) {
       toast.error(e?.response?.data?.detail?.[0]?.msg || e?.response?.data?.detail || "Planner failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const exportPlan = async (fmt) => {
+    try {
+      const res = await axios.post(
+        `${API}/infrastructure/planner/export?format=${fmt}`,
+        buildPayload(),
+        { withCredentials: true, responseType: "blob" }
+      );
+      const cd = res.headers["content-disposition"] || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = m ? m[1] : `capacity-planner.${fmt}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Export failed");
     }
   };
 
@@ -1457,6 +1305,8 @@ function PlannerSection() {
             <PlannerInput label="Steps" value={steps} onChange={setSteps} testid="planner-steps" min={1} max={20} />
             <PlannerInput label="Duration (days)" value={days} onChange={setDays} testid="planner-days" min={1} max={365} />
             <PlannerInput label="Sending days / week" value={sdpw} onChange={setSdpw} testid="planner-sdpw" min={1} max={7} />
+            <PlannerInput label="Daily limit / inbox" value={dailyLimit} onChange={setDailyLimit} testid="planner-daily-limit" min={1} max={10000} />
+            <PlannerInput label="Inboxes / domain" value={preferredPerDomain} onChange={setPreferredPerDomain} testid="planner-preferred-per-domain" min={1} max={100} />
             <Button
               onClick={run}
               disabled={loading}
@@ -1469,6 +1319,22 @@ function PlannerSection() {
                 <Calculator className="mr-2" size={16} />
               )}
               Calculate
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportPlan("xlsx")}
+              data-testid="planner-export-xlsx"
+            >
+              <FileSpreadsheet size={14} className="mr-1.5" /> XLSX
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportPlan("csv")}
+              data-testid="planner-export-csv"
+            >
+              <FileText size={14} className="mr-1.5" /> CSV
             </Button>
           </div>
 
@@ -1520,11 +1386,15 @@ function PlannerSection() {
                 <PlannerStat label="Total Emails" value={o?.total_emails} />
                 <PlannerStat label="Required Daily Volume" value={o?.required_daily_volume} />
                 <PlannerStat label="Required Inboxes" value={o?.required_inboxes} highlight />
+                <PlannerStat label="Required Domains" value={o?.required_domains} highlight testid="planner-required-domains" />
+                <PlannerStat label="Daily Capacity (total)" value={o?.daily_capacity_total} testid="planner-daily-capacity" />
+                <PlannerStat label="Per Domain / day" value={o?.daily_capacity_per_domain} testid="planner-per-domain" />
+                <PlannerStat label="Per Inbox / day" value={o?.daily_sends_per_inbox} testid="planner-per-inbox" />
                 <PlannerStat label="Available Inboxes" value={o?.available_inboxes} />
-                <PlannerStat label="Additional Needed" value={o?.additional_inboxes_required} testid="planner-additional-needed" />
-                <PlannerStat label="Median Daily Limit" value={o?.median_daily_limit} />
-                <PlannerStat label="Capacity Today" value={o?.available_capacity_today} />
-                <PlannerStat label="Capacity Window (120d)" value={o?.available_capacity_window} />
+                <PlannerStat label="Additional Inboxes" value={o?.additional_inboxes_required} testid="planner-additional-needed" />
+                <PlannerStat label="Additional Domains" value={o?.additional_domains_required} testid="planner-additional-domains" />
+                <PlannerStat label="Current Inboxes" value={o?.current_inboxes} />
+                <PlannerStat label="Current Domains" value={o?.current_domains} />
               </div>
             </div>
           )}

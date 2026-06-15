@@ -36,6 +36,11 @@ class PlannerRequest(BaseModel):
     steps: int = Field(..., ge=1, le=20)
     duration_days: int = Field(..., ge=1, le=365)
     sending_days_per_week: int = Field(5, ge=1, le=7)
+    # Phase 3 Batch 2 — new inputs
+    daily_limit_per_inbox: Optional[int] = Field(None, ge=1, le=10_000,
+        description="Override the median daily_limit (e.g. 50 emails/day/inbox).")
+    preferred_inboxes_per_domain: Optional[int] = Field(None, ge=1, le=100,
+        description="Diversification target — how many inboxes you want to keep on each domain.")
 
 
 # -- Batch-based weekly sending planner --
@@ -423,13 +428,35 @@ def _plan(
         if r["status"] not in {"Warming Up", "Paused", "Risky"}
     ]
     if eligible:
-        med_limit = max(int(median(r["daily_limit"] for r in eligible)), 1)
+        median_limit = max(int(median(r["daily_limit"] for r in eligible)), 1)
     else:
-        med_limit = 50  # sane fallback if there are no usable inboxes at all
+        median_limit = 50  # sane fallback if there are no usable inboxes at all
+
+    # Phase 3 Batch 2 — explicit override beats the empirical median.
+    med_limit = int(req.daily_limit_per_inbox or median_limit)
 
     required_inboxes = ceil(required_daily_volume / med_limit)
     available_inboxes = len(eligible)
     additional_needed = max(0, required_inboxes - available_inboxes)
+
+    # Phase 3 Batch 2 — domain math driven by the diversification target.
+    preferred_inboxes_per_domain = int(req.preferred_inboxes_per_domain or 5)
+    required_domains = max(1, ceil(required_inboxes / preferred_inboxes_per_domain))
+    daily_capacity_per_domain = med_limit * preferred_inboxes_per_domain
+    daily_capacity_total = med_limit * required_inboxes
+
+    # Existing infrastructure snapshot for "current vs required" recommendations.
+    current_inboxes = len(eligible)
+    current_domains = len({r["domain"] for r in eligible if r.get("domain")})
+    if current_domains == 0:
+        current_avg_inboxes_per_domain = 0
+    else:
+        current_avg_inboxes_per_domain = round(current_inboxes / current_domains, 1)
+    current_daily_per_domain = (
+        round(sum(r["daily_limit"] for r in eligible) / current_domains)
+        if current_domains else 0
+    )
+    additional_domains_needed = max(0, required_domains - current_domains)
 
     today = capacity.get("today", 0)
     window = capacity.get("window", capacity.get("month_30", 0))
@@ -464,21 +491,45 @@ def _plan(
             f"{available_inboxes} eligible inboxes. Spread risk concentrates."
         )
 
+    # Phase 3 Batch 2 — concrete diversification check against the preferred
+    # target (default 5 inboxes / domain → 250 emails / domain / day).
+    if current_daily_per_domain > daily_capacity_per_domain * 1.5:
+        warnings.append(
+            f"Current sending pace is {current_daily_per_domain}/day/domain, "
+            f"target is {daily_capacity_per_domain}/day/domain. Add more domains."
+        )
+    if additional_domains_needed > 0:
+        warnings.append(
+            f"Need {required_domains} domains for the target; you have {current_domains}. "
+            f"Add {additional_domains_needed} more."
+        )
+
     return {
         "inputs": {
             "leads": req.leads,
             "steps": req.steps,
             "duration_days": req.duration_days,
             "sending_days_per_week": req.sending_days_per_week,
+            "daily_limit_per_inbox": med_limit,
+            "preferred_inboxes_per_domain": preferred_inboxes_per_domain,
         },
         "outputs": {
             "total_emails": total_emails,
             "sending_days_in_window": sending_days_in_window,
             "required_daily_volume": required_daily_volume,
             "required_inboxes": required_inboxes,
+            "required_domains": required_domains,
+            "daily_capacity_total": daily_capacity_total,
+            "daily_capacity_per_domain": daily_capacity_per_domain,
+            "daily_sends_per_inbox": med_limit,
             "available_inboxes": available_inboxes,
             "additional_inboxes_required": additional_needed,
-            "median_daily_limit": med_limit,
+            "additional_domains_required": additional_domains_needed,
+            "current_inboxes": current_inboxes,
+            "current_domains": current_domains,
+            "current_avg_inboxes_per_domain": current_avg_inboxes_per_domain,
+            "current_daily_per_domain": current_daily_per_domain,
+            "median_daily_limit": median_limit,
             "available_capacity_today": today,
             "available_capacity_window": window,
             "estimated_completion_days": estimated_completion_days,
@@ -514,6 +565,76 @@ def attach_phase3_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn,
         projection = await build_projection_fn(db, user, window_days=120)
         capacity = aggregate_capacity_fn(rows, projection, 120)
         return _plan(rows, capacity, req)
+
+    @router.post("/planner/export")
+    async def planner_export(
+        req: PlannerRequest,
+        format: str = Query("xlsx", description="xlsx | csv"),
+        user=Depends(get_infra_user),
+    ):
+        """Export the Capacity Planner outputs as XLSX or CSV (Phase 3 Batch 2)."""
+        from fastapi.responses import Response as _Resp
+        import csv
+        import io
+        rows = await load_inboxes_fn(db, user)
+        projection = await build_projection_fn(db, user, window_days=120)
+        capacity = aggregate_capacity_fn(rows, projection, 120)
+        plan = _plan(rows, capacity, req)
+        inp = plan["inputs"]
+        out = plan["outputs"]
+        headers = ["Field", "Value"]
+        body_rows = [
+            ["Leads", inp["leads"]],
+            ["Steps", inp["steps"]],
+            ["Duration (days)", inp["duration_days"]],
+            ["Sending days / week", inp["sending_days_per_week"]],
+            ["Daily limit / inbox", inp["daily_limit_per_inbox"]],
+            ["Preferred inboxes / domain", inp["preferred_inboxes_per_domain"]],
+            ["", ""],
+            ["Required Inboxes", out["required_inboxes"]],
+            ["Required Domains", out["required_domains"]],
+            ["Daily Capacity (total)", out["daily_capacity_total"]],
+            ["Daily Capacity / Domain", out["daily_capacity_per_domain"]],
+            ["Daily Sends / Inbox", out["daily_sends_per_inbox"]],
+            ["Current Inboxes", out["current_inboxes"]],
+            ["Current Domains", out["current_domains"]],
+            ["Additional Inboxes Needed", out["additional_inboxes_required"]],
+            ["Additional Domains Needed", out["additional_domains_required"]],
+            ["Estimated Completion (days)", out["estimated_completion_days"]],
+            ["Status", plan["status"]],
+        ]
+        for w in plan.get("warnings", []):
+            body_rows.append(["Warning", w])
+        if format == "csv":
+            buf = io.StringIO()
+            wcsv = csv.writer(buf)
+            wcsv.writerow(headers)
+            for r in body_rows:
+                wcsv.writerow(r)
+            return _Resp(
+                content=buf.getvalue(),
+                media_type="text/csv",
+                headers={"Content-Disposition": 'attachment; filename="capacity-planner.csv"'},
+            )
+        # xlsx
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Capacity Planner"
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill(fgColor="4338CA", fill_type="solid")
+        for r in body_rows:
+            ws.append(r)
+        out_bytes = io.BytesIO()
+        wb.save(out_bytes)
+        return _Resp(
+            content=out_bytes.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="capacity-planner.xlsx"'},
+        )
 
     @router.post("/planner/batch")
     async def planner_batch(req: BatchPlannerRequest, user=Depends(get_infra_user)):

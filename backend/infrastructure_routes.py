@@ -314,7 +314,11 @@ def build_infrastructure_router(db, get_infra_user):
         status: Optional[str] = Query(None, description="Comma-separated allowed statuses"),
         warmup_status: Optional[str] = Query(None),
         min_remaining: Optional[int] = Query(None, description=">= N remaining capacity today"),
-        search: Optional[str] = Query(None, description="Substring match on email"),
+        search: Optional[str] = Query(None, description="Substring match on email, domain, ownership"),
+        sort_by: str = Query("email", description="email | remaining_capacity | daily_limit | domain | status | ownership"),
+        sort_dir: str = Query("asc"),
+        limit: Optional[int] = Query(None, ge=1, le=500),
+        skip: int = Query(0, ge=0),
         user=Depends(get_infra_user),
     ):
         rows = await _load_inboxes(db, user)
@@ -345,7 +349,19 @@ def build_infrastructure_router(db, get_infra_user):
             rows = [r for r in rows if r["remaining_capacity"] >= min_remaining]
         if search:
             s = search.strip().lower()
-            rows = [r for r in rows if s in (r["email"] or "").lower()]
+            rows = [
+                r for r in rows
+                if s in (r["email"] or "").lower()
+                or s in (r.get("domain") or "").lower()
+                or s in (r.get("ownership") or "").lower()
+            ]
+
+        # Sort (whitelist)
+        sort_field = sort_by if sort_by in (
+            "email", "remaining_capacity", "daily_limit", "domain", "status", "ownership"
+        ) else "email"
+        reverse = sort_dir.lower() == "desc"
+        rows.sort(key=lambda r: (r.get(sort_field) is None, r.get(sort_field) or ""), reverse=reverse)
 
         # Collect ownership + domain dropdowns from the unfiltered base set so
         # the UI can render filter selectors even when the current filter
@@ -354,13 +370,19 @@ def build_infrastructure_router(db, get_infra_user):
         ownership_options = sorted({r["ownership"] for r in all_rows if r["ownership"]})
         domain_options = sorted({r["domain"] for r in all_rows if r["domain"]})
 
+        total = len(rows)
+        if limit is not None:
+            rows = rows[skip:skip + limit]
+
         return {
             "inboxes": rows,
             "filter_options": {
                 "ownership": ownership_options,
                 "domain": domain_options,
             },
-            "total": len(rows),
+            "total": total,
+            "skip": skip,
+            "limit": limit,
         }
 
     @router.get("/summary")

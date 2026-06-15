@@ -1,0 +1,43 @@
+{
+  "summary": "Iter63 — Phase 3 Batch 2 (Inbox Availability dedicated page + summary cards + Capacity Planner v2 + planner export). Backend 17/17 pytest PASS. Frontend Playwright PASS — verified summary cards on /infrastructure, CTA navigates to /infrastructure/inboxes, planner produces all new outputs after Calculate. Inline inbox table successfully removed from /infrastructure (verified). Regression: all other infra sections (replacement/issues/reputation/forecast/allocator/planner) still render. 117/120 pre-existing regression tests still pass — 3 failures pre-date this iteration (2 turnstile, 1 asyncio event-loop).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter63_phase3_batch_2.py",
+    "/app/test_reports/pytest/iter63_phase3_batch_2_results.xml"
+  ],
+  "action_items": [
+    "Pre-existing (NOT introduced by Phase 3 Batch 2): iter62 turnstile tests fail because TURNSTILE_SECRET_KEY is set in this env — TestLoginLegacyGoogleUser::test_login_legacy_google_blocked + TestRegisterExistingGoogleUser::test_register_existing_google_returns_400 now hit the turnstile gate first (400 'Security verification failed'). Tests should either pass a valid turnstile token or run against a turnstile-disabled env.",
+    "Pre-existing: iter59 test_register_sent_email_persists_new_fields fails with 'There is no current event loop' (test infra issue using asyncio.get_event_loop() under pytest)."
+  ],
+  "critical_code_review_comments": [
+    "/api/infrastructure/inboxes (list_inboxes in infrastructure_routes.py) calls _load_inboxes(db, user) TWICE on every request (once for filtered/sorted rows, once for filter_options dropdowns). On large tenants this doubles Mongo round-trips. Recommend computing ownership_options/domain_options from the first load BEFORE filtering, then applying filters on a copy.",
+    "infra_phase3.py _plan: required_domains uses ceil(required_inboxes / preferred) AFTER the inbox count is computed, BUT current_avg_inboxes_per_domain uses `round(... , 1)` whereas current_daily_per_domain uses `round(...)` (no decimals) — UI displays integers, just flagging the rounding inconsistency.",
+    "/api/infrastructure/planner/export uses Response (not StreamingResponse) — fine for small payloads, but worth noting if planner output ever grows.",
+    "Spec validation: leads=10000, steps=3, duration=30, sdpw=5, daily_limit=46, preferred=5 → math verified: total=30000, sending_days=21, required_daily=ceil(30000/21)=1429, required_inboxes=ceil(1429/46)=32, required_domains=ceil(32/5)=7, daily_capacity_per_domain=46*5=230, daily_capacity_total=46*32=1472. Backend returns exactly these. ✓",
+    "Frontend Infrastructure.jsx /infrastructure: BucketCard is already in scope (defined at bottom of same file — verified). The 6 cards + CTA render correctly. Confirmed the inline inbox table is GONE from /infrastructure (querySelector for [data-testid='infra-inbox-section'] [data-testid='inbox-table'] returns null on /infrastructure).",
+    "InfrastructureInboxes.jsx exposes ALL required testids: inbox-back-link, inbox-search-input/btn/reset-btn, inbox-export-xlsx/csv, filter-ownership/domain/status/warmup/min-remaining, inbox-sort-by/dir/page-size, inbox-total-count, inbox-table, inbox-pagination, inbox-prev-page/next-page, inbox-row-<account_id> (all 19 rows rendered).",
+    "Capacity Planner correctly renders the 2 new inputs (planner-daily-limit, planner-preferred-per-domain) and the 5 new output testids (planner-required-domains, planner-daily-capacity, planner-per-domain, planner-per-inbox, planner-additional-domains) plus the existing planner-additional-needed. XLSX/CSV export buttons (planner-export-xlsx, planner-export-csv) present."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter63_phase3_batch_2.py (new — 17 cases)",
+    "/app/test_reports/pytest/iter63_phase3_batch_2_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 iter63 PASS). Regression: 117/120 (3 pre-existing failures unrelated to Phase 3 Batch 2 — 2 turnstile env, 1 asyncio event-loop).",
+    "frontend": "100% — summary cards, CTA navigation, dedicated /infrastructure/inboxes page (all 16 testids + 19 rows), Capacity Planner v2 (2 new inputs + 5 new outputs + warning copy + export buttons) all verified via Playwright. Inline /infrastructure inbox-table confirmed REMOVED."
+  },
+  "test_credentials": "Super admin user_b3e333b0f467 via Mongo-injected session_token TEST_iter63_*. Cleanup is automatic.",
+  "seed_data_creation": "1 user_sessions row per test run, cleaned automatically.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 Batch 2 endpoints: GET /api/infrastructure/inboxes now supports ownership, domain, status (comma-list), warmup_status, min_remaining, search, sort_by (whitelist email|remaining_capacity|daily_limit|domain|status|ownership with safe fallback), sort_dir, limit (1-500), skip. Response shape: {inboxes:[{...,projected_window_total,projected_window_days:120}], filter_options:{ownership:[],domain:[]}, total, skip, limit}. filter_options always reflects the UNFILTERED universe. POST /api/infrastructure/planner gained daily_limit_per_inbox + preferred_inboxes_per_domain (both Optional — fall back to empirical median and 5). New outputs: required_domains, daily_capacity_total, daily_capacity_per_domain, daily_sends_per_inbox, additional_domains_required, current_inboxes, current_domains, current_avg_inboxes_per_domain, current_daily_per_domain, median_daily_limit, domain_diversity. Warnings: (a) ≤4 distinct domains (low diversity), (b) current_daily_per_domain > 1.5 * daily_capacity_per_domain (need more domains), (c) additional_domains_needed > 0. POST /api/infrastructure/planner/export?format=xlsx|csv returns binary blob with Content-Disposition 'capacity-planner.{xlsx|csv}'. /infrastructure UI: BucketCard summary (6 cards) replaces the inline inbox table; CTA testid=view-inbox-availability-btn → /infrastructure/inboxes (new dedicated page in /app/frontend/src/pages/InfrastructureInboxes.jsx). Planner Calculate button testid is planner-run-btn (not planner-calculate-btn).",
+  "rca of the issue": "No new bugs found. The 3 pre-existing regression failures are environmental (turnstile env var causes iter62 google-removal tests to hit the security gate first; the iter59 asyncio.get_event_loop call has been deprecated/removed in newer Python — pytest no longer creates a default loop on the main thread). None block Phase 3 Batch 2."
+}
