@@ -27,6 +27,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import RichTextEditor from "../components/RichTextEditor";
 import AccountMultiSelect from "../components/AccountMultiSelect";
+import SentEmailViewer from "../components/SentEmailViewer";
 import {
   Select,
   SelectContent,
@@ -133,6 +134,7 @@ export default function DripCampaignView({ user, setUser }) {
   // Contacts/logs
   const [contacts, setContacts] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [viewerLookup, setViewerLookup] = useState(null);
   const [addContactsOpen, setAddContactsOpen] = useState(false);
   const [selectedList, setSelectedList] = useState("");
   const [addingContacts, setAddingContacts] = useState(false);
@@ -1043,6 +1045,7 @@ export default function DripCampaignView({ user, setUser }) {
                         <th className="py-2 px-3">From</th>
                         <th className="py-2 px-3">Status</th>
                         <th className="py-2 px-3">Sent at</th>
+                        <th className="py-2 px-3 text-right">View</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1069,6 +1072,25 @@ export default function DripCampaignView({ user, setUser }) {
                           </td>
                           <td className="py-2 px-3 text-slate-500 text-xs">
                             {l.sent_at ? new Date(l.sent_at).toLocaleString() : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            {l.status === "sent" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7"
+                                onClick={() =>
+                                  setViewerLookup({
+                                    recipient_email: l.contact_email,
+                                    drip_id: dripId,
+                                  })
+                                }
+                                data-testid={`view-email-btn-${l.log_id}`}
+                                title="View delivered email"
+                              >
+                                <Mail size={12} className="mr-1" /> View
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1457,6 +1479,12 @@ export default function DripCampaignView({ user, setUser }) {
           </DialogContent>
         </Dialog>
       </main>
+
+      <SentEmailViewer
+        open={!!viewerLookup}
+        lookup={viewerLookup}
+        onClose={() => setViewerLookup(null)}
+      />
     </div>
   );
 }

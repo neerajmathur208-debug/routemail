@@ -4441,12 +4441,30 @@ async def delete_email_list(list_id: str, user: User = Depends(get_current_user)
 
 @api_router.get("/campaigns")
 async def get_campaigns(user: User = Depends(get_current_user)):
-    """Get all campaigns"""
+    """Get all campaigns with Phase-2 reporting enrichment (folder name, reply/lead counts)."""
     campaigns = await db.campaigns.find(
         {"user_id": user.user_id},
         {"_id": 0}
     ).sort("created_at", -1).to_list(100)
-    
+
+    if campaigns:
+        folder_ids = {c.get("folder_id") for c in campaigns if c.get("folder_id")}
+        folder_name_by_id: Dict[str, str] = {}
+        if folder_ids:
+            async for f in db.lead_folders.find(
+                {"user_id": user.user_id, "folder_id": {"$in": list(folder_ids)}},
+                {"_id": 0, "folder_id": 1, "name": 1},
+            ):
+                folder_name_by_id[f["folder_id"]] = f["name"]
+        for c in campaigns:
+            cid = c.get("campaign_id")
+            c["folder_name"] = folder_name_by_id.get(c.get("folder_id") or "")
+            c["reply_count"] = await db.replies.count_documents(
+                {"user_id": user.user_id, "campaign_id": cid}
+            )
+            c["lead_count"] = await db.leads.count_documents(
+                {"user_id": user.user_id, "source_campaign_id": cid}
+            )
     return campaigns
 
 @api_router.get("/campaigns/{campaign_id}")
@@ -5615,6 +5633,25 @@ async def list_drip_campaigns(user: User = Depends(get_current_user)):
         {"user_id": user.user_id},
         {"_id": 0}
     ).sort("created_at", -1).to_list(200)
+
+    if campaigns:
+        folder_ids = {c.get("folder_id") for c in campaigns if c.get("folder_id")}
+        folder_name_by_id: Dict[str, str] = {}
+        if folder_ids:
+            async for f in db.lead_folders.find(
+                {"user_id": user.user_id, "folder_id": {"$in": list(folder_ids)}},
+                {"_id": 0, "folder_id": 1, "name": 1},
+            ):
+                folder_name_by_id[f["folder_id"]] = f["name"]
+        for c in campaigns:
+            did = c.get("drip_id")
+            c["folder_name"] = folder_name_by_id.get(c.get("folder_id") or "")
+            c["reply_count"] = await db.replies.count_documents(
+                {"user_id": user.user_id, "drip_campaign_id": did}
+            )
+            c["lead_count"] = await db.leads.count_documents(
+                {"user_id": user.user_id, "source_drip_id": did}
+            )
     return campaigns
 
 @api_router.post("/drip-campaigns")
@@ -8359,6 +8396,7 @@ async def health():
 # Include the router
 from backup_routes import build_backup_router
 from unibox_routes import build_unibox_router, run_imap_worker, register_sent_email
+from sent_email_routes import build_sent_email_router
 from admin_backup_routes import build_admin_backup_router
 from reports_routes import build_reports_router
 from infrastructure_routes import build_infrastructure_router
@@ -8367,6 +8405,7 @@ api_router.include_router(build_unibox_router(db, get_current_user, fernet))
 api_router.include_router(build_admin_backup_router(db, get_super_admin_user))
 api_router.include_router(build_reports_router(db, get_current_user))
 api_router.include_router(build_infrastructure_router(db, get_infrastructure_user))
+api_router.include_router(build_sent_email_router(db, get_current_user))
 app.include_router(api_router)
 
 app.add_middleware(

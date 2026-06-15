@@ -1753,10 +1753,34 @@ Best regards"
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500" data-testid={`campaign-meta-${campaign.campaign_id}`}>
                           <span>{campaign.total_emails} recipients</span>
                           {campaign.status !== "draft" && campaign.status !== "scheduled" && (
                             <span>{campaign.sent_count} sent</span>
+                          )}
+                          {campaign.folder_name && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-xs"
+                              data-testid={`campaign-folder-pill-${campaign.campaign_id}`}
+                            >
+                              📁 {campaign.folder_name}
+                            </span>
+                          )}
+                          {typeof campaign.reply_count === "number" && campaign.reply_count > 0 && (
+                            <span
+                              className="text-emerald-700"
+                              data-testid={`campaign-reply-count-${campaign.campaign_id}`}
+                            >
+                              {campaign.reply_count} replies
+                            </span>
+                          )}
+                          {typeof campaign.lead_count === "number" && campaign.lead_count > 0 && (
+                            <span
+                              className="text-violet-700"
+                              data-testid={`campaign-lead-count-${campaign.campaign_id}`}
+                            >
+                              {campaign.lead_count} leads
+                            </span>
                           )}
                           <span>
                             {new Date(campaign.created_at).toLocaleDateString()}

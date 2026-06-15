@@ -1,0 +1,63 @@
+{
+  "summary": "Iteration 60 — RouteMail Phase 2 Batch C (Sent Email Viewer + Reporting) end-to-end PASSED. Backend pytest: created /app/backend/tests/test_iter60_phase2_batch_c.py with 26 cases across 7 classes (TestSentEmailList, TestSentEmailSearch, TestSentEmailFilters, TestSentEmailById, TestSentEmailByRecipient, TestCampaignEnrichment, TestDripEnrichment). All 26 PASS in 1.74s (100%). Coverage: (1) GET /api/sent-emails returns {items,total,limit,skip}; body_html/body_text omitted on list endpoint; pagination via limit/skip respected and pages disjoint; cross-tenant docs invisible in search results. (2) Case-insensitive substring search across recipient_email / subject / from_name / campaign_name / drip_campaign_name (5 separate seeded rows assertion per field). (3) Filters by campaign_id, drip_id, account_id, folder_id narrow correctly; date_from clamps by sent_at ISO string; sort_by whitelist falls back to sent_at when given 'drop_table'; sort_by=recipient_email asc produces alphabetic order; limit=600 → 422 (Pydantic Query ge=1, le=500 enforces clamp). (4) GET /api/sent-emails/{sent_id} returns full doc including body_html/body_text without _id; 404 on unknown id; 404 when doc belongs to a different user (cross-tenant isolation works — query filters by user_id). (5) GET /api/sent-emails/by-recipient returns most-recent matching row; recipient lookup is case-insensitive (stored lowercased + endpoint also `.lower()`s the param); drip lookup honors drip_id; 404 when nothing matches. (6) GET /api/campaigns enrichment — verified seeded campaign has folder_name='TEST_iter60_BrandFolder', reply_count=2, lead_count=3 from joins on lead_folders/replies/leads. (7) GET /api/drip-campaigns enrichment — seeded drip has folder_name, reply_count=1, lead_count=2 (by source_drip_id). Frontend (browser_automation via Mongo session-token TEST_iter60ui_*): /sent-emails page renders sidebar + sent-back-link + entire search form (sent-search-form, sent-search-input, sent-date-from, sent-date-to, sent-search-btn, sent-reset-btn) + sort selects (sent-sort-by, sent-sort-dir) + sent-page-size + sent-total-count + sent-table — all 12 expected testids present and functional. Search by 'TEST_iter60ui' returned the seeded row (sent-row-<sent_id>, sent-view-btn-<sent_id>) and total counter showed '1 email'. Sidebar 'Sent Emails' nav item (nav-sent-emails) visible between Drip Campaigns and Unibox. Clicking sent-view-btn opens SentEmailViewer dialog (sent-email-viewer) with all expected children: sent-email-meta (To/From/Subject/Sent/Campaign all populated), sent-email-tab-preview, sent-email-tab-html, sent-email-preview, sent-email-iframe, sent-email-close. Switching to HTML tab renders sent-email-html-source + sent-email-copy-html. Close button correctly dismisses the dialog. Campaign list page (/campaign) shows the new pills for the seeded campaign: campaign-meta-<id>, campaign-folder-pill-<id> ('📁 TEST_iter60ui_Brand'), campaign-reply-count-<id> ('2 replies'), campaign-lead-count-<id> ('3 leads'). DripCampaigns list page (/drip-campaigns) shows drip-meta-<id>, drip-folder-pill-<id>, drip-reply-count-<id> ('1 replies'), drip-lead-count-<id> ('2 leads'). Campaign Logs page (/campaign/:id/logs): seeded queue rows for status='sent' and status='pending' — only the sent row exposes view-email-btn-<queue_id> (pending row does NOT, confirmed via query_selector). Clicking the View button opens the SentEmailViewer via /api/sent-emails/by-recipient and shows the full doc inside the dialog. Regression: re-ran iter59 Phase 2 Batch A suite (24 cases) + iter58 Phase C suite (12 cases) — both 36/36 PASS. All seeded data (TEST_iter60_* + TEST_iter60ui_* across user_sessions, campaigns, drip_campaigns, lead_folders, leads, sent_emails, replies, email_queue) deleted post-run. Mongo verified clean.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "SentEmailViewer (FROM field)",
+        "issue": "When sender_email is missing/undefined on a sent_email doc, the From row renders 'from_name <undefined>' literally. Guard: `${from_name}${sender_email ? ' <' + sender_email + '>' : ''}`. Repro: any pre-iter-59 sent_email doc lacking sender_email. Cosmetic only, no functional impact.",
+        "selector": "[data-testid=\"sent-email-meta\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "SentEmails table + SentEmailViewer dialog",
+        "issue": "React hydration warnings logged in console: `<span> cannot be a child of <tr>` and `<span> cannot be a child of <tbody>`. Page renders correctly but warning is noisy. Likely shadcn Button rendering inside a <td> that yields a span as direct child via asChild — review Button usage in table cells. Also: DialogContent missing `Description` or aria-describedby for accessibility.",
+        "selector": "[data-testid=\"sent-table\"], [data-testid=\"sent-email-viewer\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/sent-emails search form",
+        "issues": ["FROM DATE / TO DATE use browser-default mm/dd/yyyy date picker (input type='date') instead of the shadcn Calendar/Popover component used elsewhere in the app — inconsistent UX, especially noticeable in non-Chromium browsers / locales that don't honor the locale format."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter60_phase2_batch_c.py",
+    "/app/test_reports/pytest/iter60_phase2_batch_c_results.xml"
+  ],
+  "action_items": [
+    "(LOW) SentEmailViewer.jsx L107: guard the 'From' value so undefined sender_email doesn't render '<undefined>'. Pattern: `doc.from_name && doc.sender_email ? `${doc.from_name} <${doc.sender_email}>` : (doc.from_name || doc.sender_email || '—')`. Same fix applies to SentEmails.jsx L217 (table row).",
+    "(LOW) Fix React hydration warnings on /sent-emails and SentEmail dialog — `<span>` ending up as direct child of `<tr>` / `<tbody>`. Audit Button + Tooltip wrapping inside table cells. Add `aria-describedby` or a DialogDescription to SentEmailViewer's DialogContent.",
+    "(LOW) Replace `<input type='date'>` on /sent-emails search form with shadcn Calendar popovers for visual consistency with the rest of the app."
+  ],
+  "critical_code_review_comments": [
+    "sent_email_routes.py is a clean 112-line module — three endpoints with consistent {user_id: user.user_id} scoping ensures cross-tenant isolation. Verified by pytest cross-tenant 404 case.",
+    "Projection on the list endpoint correctly drops body_html/body_text/_id — keeps payload small and avoids ObjectId serialisation. Good.",
+    "Sort whitelist is implemented as a positive list ('sent_at','recipient_email','subject','campaign_name') with safe fallback. SQL-injection-safe by virtue of being a Mongo field name and not a query expression.",
+    "by-recipient endpoint lowercases the param before querying — matches register_sent_email's stored-lowercased recipient. Symmetric. Verified case-insensitive.",
+    "limit clamping is enforced at the Pydantic Query level (ge=1, le=500) — invalid values fast-fail with 422 rather than silently truncate. The system-prompt-style description says 'limit clamped to 500' but the actual behaviour is 422 — both are acceptable; documenting for next testing agent.",
+    "GET /api/campaigns and /api/drip-campaigns enrichment loops issue N+2 round-trips per campaign (1 reply count + 1 lead count). For a tenant with 50 campaigns, that's 100 count_documents calls per page load. Consider Mongo $facet/$group aggregation. Not blocking for typical workloads but flag for scale.",
+    "Folder lookup is a single $in query — already batched. Good.",
+    "SentEmailViewer.jsx uses `sandbox=''` on the iframe (no allow flags) — safest possible HTML preview. Excellent choice for showing untrusted sent-content.",
+    "CampaignLogs.jsx + DripCampaignView.jsx correctly gate the View button on status === 'sent' — verified empirically that pending/failed rows omit it.",
+    "Sidebar.jsx places 'Sent Emails' between 'Drip Campaigns' (idx 35) and 'Unibox' (idx 37) — exactly as spec'd."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter60_phase2_batch_c.py (new)",
+    "/app/test_reports/iteration_60.json (new)",
+    "/app/test_reports/pytest/iter60_phase2_batch_c_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (26/26 pytest pass; regression 36/36 iter58+iter59)",
+    "frontend": "100% — all 30+ required data-testids verified on /sent-emails, SentEmailViewer dialog (Preview + HTML tabs, iframe, copy, close), Campaign list pills (folder/reply/lead), DripCampaigns list pills, CampaignLogs view-email-btn (sent rows only)"
+  },
+  "test_credentials": "Super admin user_b3e333b0f467 via Mongo-injected session_token TEST_iter60_* (pytest) and TEST_iter60ui_* (Playwright). All deleted post-run.",
+  "seed_data_creation": "Pytest module-scope fixture used TAG=TEST_iter60_<8hex> on every seeded row across {user_sessions, campaigns, drip_campaigns, lead_folders, leads, sent_emails, replies}. Autouse cleanup fixture deletes all _tag-matching docs post-run. Playwright seeded TAG=TEST_iter60ui across the same collections + email_queue (1 sent + 1 pending row to verify View button gating); cleaned 15 docs post-run via manual Mongo delete_many. Zero residue verified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 Batch C testids: SentEmailViewer (sent-email-viewer, sent-email-meta, sent-email-tab-preview, sent-email-tab-html, sent-email-tab-text [conditional on body_text], sent-email-preview, sent-email-iframe, sent-email-html-source, sent-email-copy-html, sent-email-plain-text, sent-email-loading, sent-email-error, sent-email-close); SentEmails page (sent-back-link, sent-search-form, sent-search-input, sent-date-from, sent-date-to, sent-search-btn, sent-reset-btn, sent-sort-by, sent-sort-dir, sent-page-size, sent-total-count, sent-table, sent-row-<sent_id>, sent-view-btn-<sent_id>, sent-loading, sent-empty, sent-pagination, sent-prev-page, sent-next-page); Campaign list (campaign-meta-<id>, campaign-folder-pill-<id>, campaign-reply-count-<id>, campaign-lead-count-<id>); Drip list (drip-meta-<id>, drip-folder-pill-<id>, drip-reply-count-<id>, drip-lead-count-<id>); Logs (view-email-btn-<queue_id> in CampaignLogs, view-email-btn-<log_id> in DripCampaignView). Sidebar: nav-sent-emails. Endpoints: GET /api/sent-emails (q, campaign_id, drip_id, account_id, folder_id, date_from, date_to, sort_by, sort_dir, limit ≤500, skip), GET /api/sent-emails/by-recipient (recipient_email, campaign_id|drip_id), GET /api/sent-emails/{sent_id}. Reply collection uses field 'drip_campaign_id' (not 'drip_id'); leads collection uses 'source_campaign_id' and 'source_drip_id'. limit=600 returns 422 (Pydantic Query le=500), not silent clamp — both are acceptable per spec. Mongo session-token cookie injection remains the canonical Turnstile bypass; cookie domain = routemail-demo.preview.emergentagent.com.",
+  "rca of the issue": "Not applicable — no functional bugs found. All 26 backend pytest cases passed; all required UI testids confirmed on the four affected pages (/sent-emails, /campaign, /drip-campaigns, /campaign/:id/logs); SentEmailViewer renders Preview + HTML tabs, opens via both routes (direct sent_id click on /sent-emails and lookup by recipient+campaign_id click on CampaignLogs). iter58 + iter59 regression intact. Three LOW-priority cosmetic refinements logged (undefined sender_email rendering, hydration warning, browser-default date picker) — none block release."
+}

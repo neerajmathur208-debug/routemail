@@ -33,6 +33,7 @@ const navItems = [
   { path: "/email-lists", label: "Email Lists", icon: FileText },
   { path: "/campaign", label: "Campaign", icon: Send },
   { path: "/drip-campaigns", label: "Drip Campaigns", icon: Workflow },
+  { path: "/sent-emails", label: "Sent Emails", icon: Mail },
   { path: "/unibox", label: "Unibox", icon: Inbox },
   { path: "/leads", label: "Responses / Leads", icon: Star },
   { path: "/do-not-email", label: "Do Not Email", icon: ShieldOff },

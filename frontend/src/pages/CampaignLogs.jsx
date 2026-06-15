@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import SentEmailViewer from "../components/SentEmailViewer";
 import {
   Select,
   SelectContent,
@@ -45,6 +46,7 @@ export default function CampaignLogs({ user, setUser }) {
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewerLookup, setViewerLookup] = useState(null);
   const limit = 50;
 
   const fetchCampaign = useCallback(async () => {
@@ -258,6 +260,7 @@ export default function CampaignLogs({ user, setUser }) {
                   <TableHead>Status</TableHead>
                   <TableHead>Sent At</TableHead>
                   <TableHead>Error Message</TableHead>
+                  <TableHead className="text-right">View</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -282,11 +285,29 @@ export default function CampaignLogs({ user, setUser }) {
                           "-"
                         )}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {log.status === "sent" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setViewerLookup({
+                                recipient_email: log.recipient_email,
+                                campaign_id: campaignId,
+                              })
+                            }
+                            data-testid={`view-email-btn-${log.queue_id}`}
+                            title="View delivered email"
+                          >
+                            <Mail size={14} className="mr-1" /> View
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
                       No logs found
                     </TableCell>
                   </TableRow>
@@ -323,6 +344,12 @@ export default function CampaignLogs({ user, setUser }) {
           </div>
         </div>
       </main>
+
+      <SentEmailViewer
+        open={!!viewerLookup}
+        lookup={viewerLookup}
+        onClose={() => setViewerLookup(null)}
+      />
     </div>
   );
 }

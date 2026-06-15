@@ -604,6 +604,32 @@ function DripRow({
         >
           {camp.name || "Untitled"}
         </button>
+        <div className="mt-0.5 flex items-center gap-2 flex-wrap" data-testid={`drip-meta-${camp.drip_id}`}>
+          {camp.folder_name && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px]"
+              data-testid={`drip-folder-pill-${camp.drip_id}`}
+            >
+              📁 {camp.folder_name}
+            </span>
+          )}
+          {typeof camp.reply_count === "number" && camp.reply_count > 0 && (
+            <span
+              className="text-[10px] text-emerald-700"
+              data-testid={`drip-reply-count-${camp.drip_id}`}
+            >
+              {camp.reply_count} replies
+            </span>
+          )}
+          {typeof camp.lead_count === "number" && camp.lead_count > 0 && (
+            <span
+              className="text-[10px] text-violet-700"
+              data-testid={`drip-lead-count-${camp.drip_id}`}
+            >
+              {camp.lead_count} leads
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-3 py-3">
         <span

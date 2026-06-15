@@ -34,6 +34,7 @@ import SystemBackupRestore from "./pages/SystemBackupRestore";
 import Infrastructure from "./pages/Infrastructure";
 import InfrastructureReplacements from "./pages/InfrastructureReplacements";
 import InfrastructureIssues from "./pages/InfrastructureIssues";
+import SentEmails from "./pages/SentEmails";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
@@ -262,6 +263,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <InfrastructureIssues user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sent-emails"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <SentEmails user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />
