@@ -48,7 +48,37 @@
   restore-skip works; `X-Backup-Summary` header is delivered with item counts.
 
 ### Skipped this iteration (per user direction)
-- Infrastructure page desktop whitespace + mobile responsive polish.
+- (none — followed up in iteration 64.1, see below)
+
+---
+
+## Changelog — Iteration 64.1 (June 2026)
+
+### Phase 3 Batch 3 follow-up — Infrastructure page whitespace + responsiveness
+
+**Frontend** — `pages/Infrastructure.jsx`
+- Removed the redundant `lg:ml-64` on `<main>` — the Sidebar is already
+  `lg:static` and consumes flex space, so the extra 256 px margin was leaving
+  a giant gap between the sidebar and the content. The page now sits tight
+  against the sidebar on desktop.
+- Trimmed padding from `p-6 lg:p-10 max-w-[1500px]` → `p-4 sm:p-6 lg:p-8`,
+  consistent with `Dashboard.jsx` / `BackupRestore.jsx`, no upper-bound
+  width cap.
+- Added `min-w-0` so long tables/heatmaps no longer push the flex child
+  wider than the viewport on tablet/mobile.
+- Added `pt-24 lg:pt-8` so content clears the 80 px mobile fixed top bar
+  rendered by `Sidebar`.
+- Header heading scales `text-2xl sm:text-3xl`; icons + Internal Only badge
+  wrap properly.
+- Top-right export button group now `flex-wrap gap-2 w-full sm:w-auto` with
+  `size="sm"` buttons; long labels collapse on mobile via
+  `<span className="hidden sm:inline">…</span>` / `sm:hidden` shorthand.
+- Section header `mb-8` → `mb-6` for tighter rhythm.
+
+Verification: desktop screenshot at 1440 × 900 shows the previous
+"sea of whitespace" eliminated, header buttons inline, all sections
+visible above the fold. (The screenshot tool's viewport pins to
+1920×1080 so mobile verification is CSS-rule-based.)
 
 
 

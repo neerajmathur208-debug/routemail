@@ -216,13 +216,13 @@ export default function Infrastructure({ user, setUser }) {
   return (
     <div className="flex bg-slate-50 min-h-screen">
       <Sidebar user={user} setUser={setUser} />
-      <main className="flex-1 lg:ml-64 p-6 lg:p-10 max-w-[1500px]">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 pt-24 lg:pt-8">
         {/* Header */}
-        <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Network className="text-sky-600" size={28} strokeWidth={1.5} />
-              <h1 className="text-3xl font-bold text-slate-900">Infrastructure</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Infrastructure</h1>
               <span
                 className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-sky-100 text-sky-700 uppercase tracking-wide"
                 data-testid="infra-internal-badge"
@@ -235,16 +235,20 @@ export default function Infrastructure({ user, setUser }) {
               auto-allocation and a capacity planner — all from real send data.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => downloadExport("inboxes", "xlsx")}
               data-testid="infra-export-inboxes-xlsx"
             >
-              <FileSpreadsheet size={16} className="mr-1.5" /> Inbox Inventory (xlsx)
+              <FileSpreadsheet size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Inbox Inventory (xlsx)</span>
+              <span className="sm:hidden">Inboxes XLSX</span>
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={async () => {
                 try {
                   const res = await axios.get(`${API}/infrastructure/accounts/export?format=xlsx`, { withCredentials: true, responseType: "blob" });
@@ -256,10 +260,13 @@ export default function Infrastructure({ user, setUser }) {
               }}
               data-testid="infra-export-accounts-xlsx"
             >
-              <FileSpreadsheet size={16} className="mr-1.5" /> Email Accounts
+              <FileSpreadsheet size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Email Accounts</span>
+              <span className="sm:hidden">Accounts</span>
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => downloadExport("inboxes", "csv")}
               data-testid="infra-export-inboxes-csv"
             >
@@ -267,10 +274,13 @@ export default function Infrastructure({ user, setUser }) {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => downloadExport("domains", "xlsx")}
               data-testid="infra-export-domains-xlsx"
             >
-              <FileSpreadsheet size={16} className="mr-1.5" /> Domain Inventory
+              <FileSpreadsheet size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Domain Inventory</span>
+              <span className="sm:hidden">Domains</span>
             </Button>
           </div>
         </div>
