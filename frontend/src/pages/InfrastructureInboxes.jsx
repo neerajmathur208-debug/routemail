@@ -134,7 +134,7 @@ export default function InfrastructureInboxes({ user, setUser }) {
   return (
     <div className="flex bg-slate-50 min-h-screen">
       <Sidebar user={user} setUser={setUser} />
-      <main className="flex-1 lg:ml-64 p-4 sm:p-6 lg:p-8 max-w-[1500px]">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 pt-24 lg:pt-8">
         <div className="mb-4">
           <Link
             to="/infrastructure"
