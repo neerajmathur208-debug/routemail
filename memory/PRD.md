@@ -1,6 +1,52 @@
 # RouteMail - Email Rotation SaaS Platform
 
 
+## Changelog — Iteration 60 (June 2026)
+
+### Phase 2 Batch C — Sent Email Viewer + Campaign Reporting
+
+**Backend** (`/app/backend/sent_email_routes.py`, 112 lines, independent
+module mounted on `api_router`):
+- `GET /api/sent-emails` — search across recipient / subject / from_name /
+  campaign_name / drip_campaign_name; filters by `campaign_id`, `drip_id`,
+  `account_id`, `folder_id`, `date_from`, `date_to`; sort whitelist
+  (`sent_at | recipient_email | subject | campaign_name`) with safe fallback;
+  pagination via `limit` (1-500) + `skip`. List endpoint omits `body_html` /
+  `body_text` to keep payload light.
+- `GET /api/sent-emails/by-recipient?recipient_email=&campaign_id=&drip_id=`
+  — most-recent lookup used by Campaign Logs / Drip Logs "View" buttons.
+  Recipient case-insensitive.
+- `GET /api/sent-emails/{sent_id}` — full doc including `body_html` and
+  `body_text`. Cross-tenant 404 isolation.
+
+**Reporting enrichment** — `GET /api/campaigns` and `GET /api/drip-campaigns`
+now include `folder_name` (joined from `lead_folders`), `reply_count` (from
+`replies` collection scoped by `campaign_id` / `drip_campaign_id`), and
+`lead_count` (from `leads` collection scoped by `source_campaign_id` /
+`source_drip_id`).
+
+**Frontend**:
+- `SentEmailViewer.jsx` — reusable Dialog with **Preview** (sandboxed
+  `<iframe srcDoc>`), **HTML Source** (raw, with Copy button), and
+  **Plain Text** tab (conditional on `body_text`). Drives every "View" entry
+  point.
+- "View" buttons added to `CampaignLogs.jsx` and `DripCampaignView.jsx`
+  rows where `status === "sent"`.
+- New page `/sent-emails` (`SentEmails.jsx`) — full search + filter +
+  pagination (25/50/100/250) + sort UI. Sidebar entry between Drip Campaigns
+  and Unibox.
+- Campaign list + Drip list now show **folder pill / reply count / lead count**
+  inline per campaign.
+
+### Verification — iteration_60
+- **26/26 backend pytest pass** (`/app/backend/tests/test_iter60_phase2_batch_c.py`).
+- Frontend UI verified — all 30+ Batch C testids present and functional;
+  sandboxed iframe renders correctly; View buttons gated on `status='sent'`.
+- Regression: iter-58 Phase C (12/12) + iter-59 Phase 2 Batch A (24/24) re-run
+  intact. `retest_needed: false`.
+- Fixed: minor `undefined` rendering in From row when `sender_email` missing.
+
+
 ## Changelog — Iteration 59 (June 2026)
 
 ### Phase 2 Batch A — Critical fixes + Multi-brand foundation

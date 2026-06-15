@@ -104,7 +104,9 @@ export default function SentEmailViewer({ open, onClose, sentId, lookup }) {
               <MetaRow
                 label="From"
                 value={
-                  doc.from_name ? `${doc.from_name} <${doc.sender_email}>` : doc.sender_email
+                  doc.from_name && doc.sender_email
+                    ? `${doc.from_name} <${doc.sender_email}>`
+                    : doc.from_name || doc.sender_email || "—"
                 }
               />
               <MetaRow label="Subject" value={doc.subject} bold />

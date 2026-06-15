@@ -214,7 +214,9 @@ export default function SentEmails({ user, setUser }) {
                     <td className="px-3 py-2 font-medium text-slate-900">{it.recipient_email}</td>
                     <td className="px-3 py-2 text-slate-700 truncate max-w-[280px]">{it.subject}</td>
                     <td className="px-3 py-2 text-slate-500 text-xs">
-                      {it.from_name ? `${it.from_name} <${it.sender_email}>` : it.sender_email}
+                      {it.from_name && it.sender_email
+                        ? `${it.from_name} <${it.sender_email}>`
+                        : it.from_name || it.sender_email || "—"}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       {it.campaign_name && <div>{it.campaign_name}</div>}
