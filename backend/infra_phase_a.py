@@ -18,6 +18,53 @@ from pydantic import BaseModel, Field
 from infra_projection import build_projection, aggregate_capacity
 
 
+async def ensure_domain_record(db, user_id: str, email: str) -> Optional[str]:
+    """Phase Batch-1 auto-detection — when an email account is added, ensure
+    a `tracked_domains` row exists for the recipient domain.
+
+    Rules (confirmed with user):
+      * Silent — no notification.
+      * Idempotent — only one row per (user_id, domain). Existing rows are
+        NEVER overwritten; only the linked_inbox_count is incremented.
+      * Default purchase_date / date_added = today (date the inbox arrived
+        in RouteMail).
+      * Default expiry_date = today + 361 days (per spec).
+      * Default renewal_date = expiry_date.
+    """
+    if not email or "@" not in email:
+        return None
+    domain = email.rsplit("@", 1)[1].strip().lower()
+    if not domain or "." not in domain:
+        return None
+    existing = await db.tracked_domains.find_one(
+        {"user_id": user_id, "domain": domain}, {"_id": 0}
+    )
+    today = _date_cls.today()
+    if existing:
+        await db.tracked_domains.update_one(
+            {"user_id": user_id, "domain": domain},
+            {"$inc": {"linked_inbox_count": 1}},
+        )
+        return existing.get("domain_id")
+    domain_id = f"dom_{uuid.uuid4().hex[:10]}"
+    await db.tracked_domains.insert_one({
+        "domain_id": domain_id,
+        "user_id": user_id,
+        "domain": domain,
+        "registrar": None,
+        "purchase_date": today.isoformat(),
+        "date_added": today.isoformat(),
+        "expiry_date": (today + timedelta(days=361)).isoformat(),
+        "renewal_date": (today + timedelta(days=361)).isoformat(),
+        "notes": None,
+        "linked_inbox_count": 1,
+        "auto_created": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return domain_id
+
+
+
 def _xlsx(headers: List[str], rows: List[List[Any]], sheet: str, fill: str = "4338CA") -> bytes:
     wb = Workbook(); ws = wb.active; ws.title = sheet
     font = Font(bold=True, color="FFFFFF"); pf = PatternFill("solid", fgColor=fill)

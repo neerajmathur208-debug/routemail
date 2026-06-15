@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Search,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -71,6 +72,9 @@ export default function ListDetails({ user, setUser }) {
 
   // Delete record state
   const [deleteRow, setDeleteRow] = useState(null);
+
+  // Phase Batch-1 — partial-match search across all columns
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fetchList = useCallback(async () => {
     try {
@@ -199,7 +203,25 @@ export default function ListDetails({ user, setUser }) {
 
   if (!list) return null;
 
-  const emails = list.emails || [];
+  const allEmails = list.emails || [];
+  const searchTokens = (searchQuery || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  // Phase Batch-1 — partial substring search across email + every other
+  // column header value (first_name, last_name, company, phone, linkedin etc.).
+  const emails = searchTokens.length === 0
+    ? allEmails
+    : allEmails.filter((row) => {
+        const haystack = Object.values(row || {})
+          .filter((v) => v !== null && v !== undefined)
+          .map((v) => String(v).toLowerCase())
+          .join(" ");
+        // ALL tokens must match somewhere — supports "john acme" → row that has both
+        return searchTokens.every((t) => haystack.includes(t));
+      });
   let columnHeaders = list.column_headers || ["email"];
   if (!columnHeaders.includes("email")) columnHeaders = ["email", ...columnHeaders];
 
@@ -324,10 +346,39 @@ export default function ListDetails({ user, setUser }) {
 
           {/* Contacts Table — all rows, editable */}
           <div className="bg-white border border-slate-200 rounded-md overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="font-semibold text-slate-900">
-                Contacts <span className="text-sm font-normal text-slate-500 ml-2">({emails.length})</span>
+            <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-semibold text-slate-900 whitespace-nowrap">
+                Contacts{" "}
+                <span className="text-sm font-normal text-slate-500 ml-2" data-testid="list-result-count">
+                  ({allEmails.length.toLocaleString()} records
+                  {searchTokens.length > 0 && (
+                    <>, <span className="text-blue-700">{emails.length.toLocaleString()} matched</span></>
+                  )})
+                </span>
               </h2>
+              <div className="flex items-center gap-2 flex-1 min-w-[260px] max-w-md ml-auto">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    placeholder="Search email, name, company, phone, LinkedIn…"
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    data-testid="list-search-input"
+                  />
+                </div>
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSearchQuery("")}
+                    data-testid="list-search-clear"
+                    className="h-8"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
               <Button
                 size="sm"
                 onClick={handleOpenAdd}

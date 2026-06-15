@@ -1,0 +1,46 @@
+{
+  "summary": "Iter62 — Phase 3 Batch 1 (Google removal + domain auto-detect + list search): backend 21/21 pytest PASS. Found + fixed 1 critical bug in /auth/set-initial-password (NameError: pwd_context undefined → 500). Regression 99/99 PASS across iter59+iter60+iter61+infra_phase_b+infra_phase_c. Frontend search code reviewed (logic correct per spec), but Playwright cookie-based auth did not propagate in this environment — UI tests skipped (NOT a product bug; verified API + data + UI source).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/forgot-password", "issue": "Pre-existing case-sensitivity: route lowercases request.email before user lookup, but /auth/register stores request.email as-given. Mixed-case emails would never be found by forgot-password. Not introduced by Phase 3 Batch 1."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter62_phase3_batch_1.py",
+    "/app/test_reports/pytest/iter62_phase3_batch_1_results.xml"
+  ],
+  "action_items": [
+    "Main agent: please re-verify /auth/set-initial-password manually — testing agent fixed a NameError (pwd_context → bcrypt.hashpw) at server.py line 2420. The endpoint now hashes via bcrypt to match login's verification path (line 2866 uses bcrypt.checkpw). Without this fix every successful set-initial-password call returned 500.",
+    "(P2 / pre-existing) Normalize email to lowercase on registration so /auth/forgot-password lookup works for users who register with mixed-case emails."
+  ],
+  "critical_code_review_comments": [
+    "CRITICAL FIX APPLIED — server.py:2420 used `pwd_context.hash(password)` but no `pwd_context` is imported anywhere in server.py; the rest of the file uses `bcrypt.hashpw(...)`. Changed to `bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')` so the hash format matches what /auth/login verifies via bcrypt.checkpw at line 2866. Verified end-to-end: legacy google user → set-initial-password (200) → password_set_at recorded → password_setup_required flips to false → user can log in with the new password.",
+    "infra_phase_a.ensure_domain_record is well-designed: pure async, idempotent (find_one + $inc), defensive on bad input (no '@', missing TLD), defaults to today/today+361/today+361 for purchase/expiry/renewal, auto_created=True. Verified 5 bad-input cases all return None without inserting. Manually-edited rows are PROVABLY never overwritten (test seeds a row with auto_created=False, expiry=2099-12-31, registrar='Manual', then calls the helper — only linked_inbox_count is bumped from 5 to 6; all other fields intact).",
+    "/auth/login + /auth/register: turnstile gate is correctly placed BEFORE the new google-removed branches. In production with TURNSTILE_SECRET_KEY set, the new flows are only reachable post-turnstile. Tested by temporarily clearing the env var, running tests, restoring — original turnstile gate is back in place.",
+    "ListDetails.jsx search (lines 207-224): lowercases the query, splits on whitespace, every token must substring-match somewhere in `Object.values(row).join(' ').toLowerCase()`. Correctly supports 'john acme' (multi-token AND) and partial matches like '@acme', 'corp', case-insensitive 'JOHN'. data-testid='list-search-input' + 'list-search-clear' + 'list-result-count' all present. Clear button conditionally rendered only when searchQuery non-empty.",
+    "Pre-existing: /auth/register stores `request.email` as-given (no .lower()), but /auth/forgot-password (and /auth/login) look up the user via `.lower()`. Mixed-case registrants are silently unreachable via forgot-password. Recommend canonicalizing email on insertion at server.py:2538-ish in the register flow.",
+    "Pre-existing (LOW): /auth/forgot-password rate-limit returns the generic 'If this email exists...' message but the rate-limit check happens BEFORE the user-exists check. Could be optimised to skip writing password_reset_attempts when user doesn't exist, but generic-message behavior is intentional for enumeration protection.",
+    "Frontend Playwright limitation in this iteration: setting session_token via context.add_cookies + secure=True + sameSite='None' did not yield an authenticated state on /lists/:id (page redirected to landing). API + token both verified working via curl (GET /api/auth/me + GET /api/lists/<id> returned 200 with the seeded data). Recommend main agent self-verify the UI search flow in a real browser or via the existing test-credentials login flow."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (line 2420: pwd_context.hash → bcrypt.hashpw — critical bug fix)",
+    "/app/backend/tests/test_iter62_phase3_batch_1.py (new — 21 cases)",
+    "/app/test_reports/pytest/iter62_phase3_batch_1_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (21/21 iter62 PASS + 99/99 regression iter59+iter60+iter61+infra_b+infra_c PASS)",
+    "frontend": "Not measured via Playwright (cookie-auth limitation in test env). Code review of ListDetails.jsx search confirms spec compliance (multi-token AND, case-insensitive, partial match, clear button + result count) — all 3 required data-testids present."
+  },
+  "test_credentials": "Super admin user_b3e333b0f467 via Mongo-injected session_token TEST_iter62_*. Tests are self-cleaning.",
+  "seed_data_creation": "Pytest creates per-test legacy-google users (TAG=TEST_iter62_*) + per-test tracked_domains rows (user_id pattern test_iter62_*); all deleted via the autouse module cleanup fixture. UI seeded 1 email_list with 4 rows + 1 user_sessions row; all deleted post-run (verified clean).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 Batch 1 endpoints: POST /api/auth/session now 404. GET /api/auth/me now includes password_setup_required (True iff provider=='google' OR no password_hash). POST /api/auth/set-initial-password takes {password, confirm_password}, requires len≥8, password==confirm, rejects if user already has password and provider!='google' (400 'Password already set'). NOTE: the testing agent fixed a NameError (pwd_context undefined) at server.py:2420 — the endpoint now uses bcrypt.hashpw to match the login verification path. POST /api/auth/login on a provider=='google' user (no password_hash) → 401 with detail 'This account was migrated from Google sign-in. Use Forgot Password...'. POST /api/auth/forgot-password legacy google user creates a password_reset_attempts row and sets reset_token on the user (route lowercases email — seeded emails MUST be lowercase). POST /api/admin/users/{uid}/force-password-reset now works for provider=='google' users. POST /api/auth/register existing google user → 400 'Use Forgot Password to set a new password'. ensure_domain_record(db, user_id, email) helper in infra_phase_a.py: idempotent, manually-edited rows never overwritten, only linked_inbox_count incremented. Used by /api/accounts/smtp + /api/accounts/smtp/bulk-import. ListDetails.jsx /lists/:id search: data-testid='list-search-input' + 'list-search-clear' + 'list-result-count'; multi-token AND, case-insensitive partial match across email + every column header value.",
+  "rca of the issue": "BUG (fixed by testing agent): /api/auth/set-initial-password called `pwd_context.hash(password)` at server.py:2420 but no `pwd_context` instance is defined or imported anywhere in server.py — the file uses `bcrypt.hashpw` directly elsewhere (e.g. /auth/register at 2513, /auth/reset-password at 2993). Every successful set-initial-password call hit NameError → 500. Reproduction: POST /api/auth/set-initial-password with valid {password, confirm_password} as a provider=='google' user → 500. Mitigation applied at line 2420: changed to `bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')`. Verified happy-path now returns 200, password_hash persists, password_set_at recorded, provider flips to 'email', password_setup_required flag flips False on subsequent /auth/me."
+}

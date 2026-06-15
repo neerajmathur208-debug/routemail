@@ -2360,117 +2360,10 @@ async def get_current_user(request: Request) -> User:
 
 # ==================== AUTH ENDPOINTS ====================
 
-@api_router.post("/auth/session")
-async def exchange_session(request: SessionRequest, response: Response):
-    """Exchange Emergent session_id for user data and set cookie"""
-    try:
-        async with httpx.AsyncClient() as client_http:
-            resp = await client_http.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": request.session_id}
-            )
-            
-            if resp.status_code != 200:
-                raise HTTPException(status_code=401, detail="Invalid session")
-            
-            data = resp.json()
-    except Exception as e:
-        logger.error(f"Auth error: {e}")
-        raise HTTPException(status_code=401, detail="Authentication failed")
-    
-    user_id = f"user_{uuid.uuid4().hex[:12]}"
-    session_token = data.get("session_token")
-    email = data.get("email")
-    name = data.get("name")
-    picture = data.get("picture")
-    
-    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
-    
-    if existing_user:
-        user_id = existing_user["user_id"]
-        # Determine role - assign super_admin if email matches
-        role = "super_admin" if email == SUPER_ADMIN_EMAIL else existing_user.get("role", "user")
-        # Update user data - preserve provider if already set, otherwise set to 'google'
-        update_data = {
-            "name": name, 
-            "picture": picture,
-            "role": role
-        }
-        # Only set provider to google if not already an email user
-        if existing_user.get("provider") != "email":
-            update_data["provider"] = "google"
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": update_data}
-        )
-    else:
-        # Determine role for new user
-        role = "super_admin" if email == SUPER_ADMIN_EMAIL else "user"
-
-        user_dict = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "picture": picture,
-            "provider": "google",
-            "role": role,
-            # Subscription fields — Free Plan, no expiry
-            "plan_type": "free",
-            "subscription_status": "active",
-            "stripe_customer_id": None,
-            "stripe_subscription_id": None,
-            "trial_ends_at": None,
-            "billing_cycle_start": None,
-            "billing_cycle_end": None,
-            "grace_period_end": None,
-            "monthly_unique_recipient_count": 0,
-            "last_recipient_reset_date": datetime.now(timezone.utc).isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(user_dict)
-        
-        # Send admin notification for new Google signup (non-blocking)
-        try:
-            admin_html = get_admin_signup_notification_html(email, "Google OAuth")
-            asyncio.create_task(send_admin_notification("New User Signup on RouteMail", admin_html))
-        except Exception as e:
-            logger.error(f"Failed to send admin signup notification: {e}")
-    
-    # Apply permanent plan assignment if applicable (after user exists)
-    await apply_permanent_plan_if_applicable(email, user_id)
-    
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    session = UserSession(
-        user_id=user_id,
-        session_token=session_token,
-        expires_at=expires_at
-    )
-    session_dict = session.model_dump()
-    session_dict["expires_at"] = session_dict["expires_at"].isoformat()
-    session_dict["created_at"] = session_dict["created_at"].isoformat()
-    
-    await db.user_sessions.insert_one(session_dict)
-    
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=7 * 24 * 60 * 60
-    )
-    
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    # Return consistent user data including role
-    return {
-        "user_id": user_doc["user_id"],
-        "email": user_doc["email"],
-        "name": user_doc.get("name", ""),
-        "picture": user_doc.get("picture"),
-        "subscription_status": user_doc.get("subscription_status", "active"),
-        "role": user_doc.get("role", "user")
-    }
+# Phase: Google OAuth removed (Batch 1). Historical `/auth/session` endpoint
+# deleted; users on `provider=='google'` are flagged in /auth/me with
+# `password_setup_required=True` and must POST to /auth/set-initial-password
+# to convert to email/password before they can authenticate further.
 
 @api_router.get("/auth/me")
 async def get_me(user: User = Depends(get_current_user)):
@@ -2495,9 +2388,48 @@ async def get_me(user: User = Depends(get_current_user)):
             "downgraded_to_free_at": user_doc.get("downgraded_to_free_at"),
             "downgrade_reason": user_doc.get("downgrade_reason"),
             "subscription_active": sub_status.get("active", False),
-            "onboarding_completed": user_doc.get("onboarding_completed", False)
+            "onboarding_completed": user_doc.get("onboarding_completed", False),
+            # Phase Batch-1 — flag legacy Google users so the frontend can
+            # surface the forced "set password" screen on their next login.
+            "password_setup_required": (
+                user_doc.get("provider") == "google" or not user_doc.get("password_hash")
+            ),
         }
     return user.model_dump()
+
+@api_router.post("/auth/set-initial-password")
+async def set_initial_password(payload: Dict[str, Any] = Body(...), user: User = Depends(get_current_user)):
+    """Forced password setup for legacy Google-OAuth users (Batch 1).
+
+    Body: {password: str, confirm_password: str}
+    On success the user becomes a standard email/password user and the
+    `password_setup_required` flag flips off.
+    """
+    password = (payload.get("password") or "").strip()
+    confirm = (payload.get("confirm_password") or "").strip()
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if password != confirm:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Only allow on accounts that don't already have a usable password
+    if user_doc.get("password_hash") and user_doc.get("provider") != "google":
+        raise HTTPException(status_code=400, detail="Password already set")
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {
+            "$set": {
+                "password_hash": hashed,
+                "provider": "email",
+                "password_set_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+    )
+    return {"ok": True, "message": "Password set — you can now log in with email + password."}
+
 
 @api_router.post("/auth/logout")
 async def logout(request: Request, response: Response):
@@ -2539,7 +2471,12 @@ async def register_email(request: EmailRegisterRequest, http_request: Request, b
     existing_user = await db.users.find_one({"email": request.email}, {"_id": 0})
     if existing_user:
         if existing_user.get("provider") == "google":
-            raise HTTPException(status_code=400, detail="This email is registered with Google. Please sign in with Google.")
+            # Legacy Google-OAuth user — allow them to set a password during
+            # registration (effectively "claim" the account).
+            raise HTTPException(
+                status_code=400,
+                detail="This email exists from a previous Google login. Use 'Forgot Password' to set a new password.",
+            )
         # Check if unverified account that expired (>2 hours old)
         if not existing_user.get("email_verified", False):
             created_at = existing_user.get("created_at")
@@ -2865,11 +2802,9 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
     if user.get("email_verified", False):
         logger.info(f"[RESEND] User already verified: {email}")
         raise HTTPException(status_code=400, detail="Email is already verified")
-    
-    if user.get("provider") == "google":
-        logger.info(f"[RESEND] User uses Google sign-in: {email}")
-        raise HTTPException(status_code=400, detail="This account uses Google sign-in")
-    
+
+    # (Google OAuth removed — Batch 1)
+
     # Generate new UUID verification token
     verification_token = str(uuid.uuid4())
     verification_expires = datetime.now(timezone.utc) + timedelta(hours=2)
@@ -2915,9 +2850,13 @@ async def login_email(request: EmailLoginRequest, http_request: Request, respons
     if not user_doc:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Check if user registered with Google
+    # Check if user is a legacy Google user without a password yet — block
+    # login until they convert via /auth/set-initial-password.
     if user_doc.get("provider") == "google" or not user_doc.get("password_hash"):
-        raise HTTPException(status_code=401, detail="This account uses Google sign-in. Please sign in with Google.")
+        raise HTTPException(
+            status_code=401,
+            detail="This account was migrated from Google sign-in. Use 'Forgot Password' to set a new password and continue.",
+        )
     
     # Check if email is verified
     if not user_doc.get("email_verified", False):
@@ -2990,11 +2929,12 @@ async def forgot_password(request: ForgotPasswordRequest, background_tasks: Back
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    # Find user (don't reveal if email exists)
+    # Find user (don't reveal if email exists). Legacy Google users CAN use
+    # forgot-password — that's exactly how they're expected to convert.
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    
-    if not user or user.get("provider") == "google":
-        # Don't reveal if email doesn't exist or uses Google
+
+    if not user:
+        # Don't reveal if email doesn't exist
         return {"message": "If this email exists, you will receive a password reset link."}
     
     # Generate reset token
@@ -3171,7 +3111,14 @@ async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(
     acc_dict["created_at"] = acc_dict["created_at"].isoformat()
     acc_dict["last_reset_at"] = acc_dict["last_reset_at"].isoformat()
     await db.email_accounts.insert_one(acc_dict)
-    
+
+    # Batch-1 auto-detection — silently create / update the tracked domain.
+    try:
+        from infra_phase_a import ensure_domain_record
+        await ensure_domain_record(db, user.user_id, account.email)
+    except Exception as e:
+        logger.warning(f"[DOMAIN_AUTO_DETECT] failed for {account.email}: {e}")
+
     return {
         "account_id": account.account_id, 
         "email": account.email, 
@@ -4021,6 +3968,12 @@ async def bulk_import_smtp_accounts(
         acc_dict["created_at"] = acc_dict["created_at"].isoformat()
         acc_dict["last_reset_at"] = acc_dict["last_reset_at"].isoformat()
         await db.email_accounts.insert_one(acc_dict)
+        # Batch-1 auto-detection — silently track the domain.
+        try:
+            from infra_phase_a import ensure_domain_record
+            await ensure_domain_record(db, user.user_id, email)
+        except Exception as e:
+            logger.warning(f"[DOMAIN_AUTO_DETECT] bulk-import failed for {email}: {e}")
         existing_emails.add(email.lower())
         
         imported += 1
@@ -7501,11 +7454,8 @@ async def force_password_reset(
         user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        # Check if user registered with Google (cannot reset password)
-        if user.get("provider") == "google":
-            raise HTTPException(status_code=400, detail="This user registered with Google. Cannot reset password for OAuth accounts.")
-        
+
+        # (Google OAuth removed — legacy Google users CAN now reset password.)
         # Generate secure reset token
         reset_token = secrets.token_urlsafe(32)
         reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
