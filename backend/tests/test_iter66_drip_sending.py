@@ -29,8 +29,8 @@ import server  # noqa: E402  (server has heavy import side-effects)
 # All tests in this module share Motor's connection pool which is bound to
 # the first event loop it touches. Force one module-scoped loop so subsequent
 # tests don't crash with "Event loop is closed".
-@pytest.fixture(scope="module")
-def event_loop():  # noqa: D401 — pytest-asyncio fixture override
+@pytest.fixture(scope="session")
+def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -124,7 +124,7 @@ async def _cleanup(drip_id, user_id, account_ids):
     await db.email_accounts.delete_many({"account_id": {"$in": account_ids}})
 
 
-def _fake_smtp_send(account, recipient, subject, body, from_name_override=None):
+def _fake_smtp_send(account, recipient, subject, body, from_name_override=None, in_reply_to=None, references=None):
     """Stub that emulates a successful SMTP send."""
     async def _inner():
         return {"success": True, "message_id": f"<{uuid.uuid4().hex}@stub>"}

@@ -829,7 +829,7 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
         return {"outcome": "skipped_no_capacity"}
     
     # Prepare email content
-    subject = step.get("subject", "")
+    raw_subject = step.get("subject", "")
     body = step.get("body", "")
 
     # Use the unified renderer so {{var}}, {var}, missing variables and stray
@@ -840,8 +840,49 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     # the data dict so they're addressable inside the template.
     merged_data = {**contact_data, **{k: v for k, v in contact.items() if k not in ("data", "_id")}}
     fallbacks = campaign.get("variable_fallbacks") or {}
-    subject = _render_tmpl(subject, merged_data, fallbacks=fallbacks)
+    subject = _render_tmpl(raw_subject, merged_data, fallbacks=fallbacks)
     body = _render_tmpl(body, merged_data, fallbacks=fallbacks)
+
+    # ── EMPTY-SUBJECT THREADING ───────────────────────────────────────────
+    # When a follow-up step has an empty subject, RouteMail continues the
+    # original conversation: actual subject becomes "Re: <first step subject>"
+    # and proper In-Reply-To / References headers are set so the recipient's
+    # mail client groups the messages into one thread.
+    in_reply_to_id: Optional[str] = None
+    references_ids: List[str] = []
+    if not subject.strip() and current_step > 0:
+        # Find the first non-empty step subject (rendered against this
+        # contact). The first step is required to have a subject, so this
+        # is virtually guaranteed to find one.
+        anchor_subject = ""
+        for prior in steps[:current_step]:
+            cand = _render_tmpl(prior.get("subject", ""), merged_data, fallbacks=fallbacks).strip()
+            if cand:
+                anchor_subject = cand
+                break
+        # Avoid double "Re: " — match case-insensitively at the start.
+        if anchor_subject:
+            subject = anchor_subject if anchor_subject.lower().startswith("re:") else f"Re: {anchor_subject}"
+
+        # Build the threading chain from the sent_emails collection. We grab
+        # every prior message_id sent to this recipient under this drip and
+        # use the newest as In-Reply-To plus the full ordered list as
+        # References.
+        prior_sends = await db.sent_emails.find(
+            {
+                "user_id": campaign.get("user_id", ""),
+                "drip_campaign_id": campaign.get("drip_id"),
+                "recipient_email": contact.get("email"),
+                "message_id": {"$exists": True, "$nin": [None, ""]},
+            },
+            {"_id": 0, "message_id": 1, "sent_at": 1, "drip_step_number": 1},
+        ).sort([("sent_at", 1)]).to_list(50)
+        if prior_sends:
+            references_ids = [
+                (p["message_id"] if p["message_id"].startswith("<") else f"<{p['message_id']}>")
+                for p in prior_sends
+            ]
+            in_reply_to_id = references_ids[-1]
 
     recipient_email = contact.get("email")
     
@@ -855,7 +896,15 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     
     # Send email
     try:
-        send_result = await send_drip_email(account, recipient_email, subject, body, from_name_override=campaign.get("from_name"))
+        send_result = await send_drip_email(
+            account,
+            recipient_email,
+            subject,
+            body,
+            from_name_override=campaign.get("from_name"),
+            in_reply_to=in_reply_to_id,
+            references=references_ids,
+        )
         success = bool(send_result.get("success"))
 
         if success:
@@ -961,8 +1010,21 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
     # send_drip_email returned success=False without raising
     return {"outcome": "send_failed", "account_id": account.get("account_id")}
 
-async def send_drip_email(account: dict, recipient: str, subject: str, body: str, from_name_override: Optional[str] = None) -> bool:
-    """Send a drip campaign email using SMTP"""
+async def send_drip_email(
+    account: dict,
+    recipient: str,
+    subject: str,
+    body: str,
+    from_name_override: Optional[str] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[List[str]] = None,
+) -> bool:
+    """Send a drip campaign email using SMTP.
+
+    Optional ``in_reply_to`` / ``references`` apply RFC 5322 threading
+    headers so follow-up drip steps with an empty subject continue the
+    original conversation in the recipient's mailbox.
+    """
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -990,6 +1052,15 @@ async def send_drip_email(account: dict, recipient: str, subject: str, body: str
         from email.utils import make_msgid as _make_msgid
         msg_id = _make_msgid(domain="routemail.app")
         msg['Message-ID'] = msg_id
+
+        # Threading headers — applied only when this is a follow-up step in
+        # an existing conversation (empty-subject auto-thread). Both
+        # In-Reply-To and References are required for reliable threading in
+        # Gmail / Outlook / Apple Mail.
+        if in_reply_to:
+            msg['In-Reply-To'] = in_reply_to
+        if references:
+            msg['References'] = " ".join(references)
         
         # Add both plain text and HTML versions
         text_part = MIMEText(body.replace("<br>", "\n").replace("</p>", "\n"), 'plain')
@@ -2184,6 +2255,21 @@ class SendTestEmailRequest(BaseModel):
     from_name: Optional[str] = None
     account_id: Optional[str] = None  # Optional: specific account to use
     recipient_data: Optional[Dict[str, Any]] = None  # Optional: contact row to merge into {{vars}}
+    # When a drip step-2+ has an empty subject, the UI passes the rendered
+    # first-step subject here so the test send shows the same "Re: …"
+    # threading subject the real send will produce.
+    prior_subject: Optional[str] = None
+
+
+class TestEmailPreviewRequest(BaseModel):
+    """Read-only preview of a test email: returns rendered subject + body
+    without actually sending anything. Used by the Drip Test Email modal so
+    the user can verify variable substitution before clicking Send."""
+    subject: str
+    body: str
+    recipient_data: Optional[Dict[str, Any]] = None
+    prior_subject: Optional[str] = None
+    variable_fallbacks: Optional[Dict[str, str]] = None
 
 class AddSMTPAccountRequest(BaseModel):
     email: str
@@ -5214,13 +5300,59 @@ async def import_drip_campaign(payload: Dict[str, Any] = Body(...), user: User =
     }
 
 
+@api_router.post("/campaigns/test-email/preview")
+async def preview_test_email(request: TestEmailPreviewRequest, user: User = Depends(get_current_user)):  # noqa: ARG001
+    """Render subject + body against the supplied recipient data so the UI
+    can show exactly what the recipient will see — never sends an email.
+    Honours the same empty-subject => "Re: <prior_subject>" rule as the
+    actual drip worker, so previews stay truthful for follow-up steps."""
+    raw_subject = (request.subject or "").strip()
+    prior_subject = (request.prior_subject or "").strip()
+    data = request.recipient_data or {}
+    fallbacks = request.variable_fallbacks or {}
+    from template_render import render_template as _render
+
+    if raw_subject:
+        rendered_subject = _render(raw_subject, data, fallbacks=fallbacks)
+    elif prior_subject:
+        rendered_prior = _render(prior_subject, data, fallbacks=fallbacks).strip()
+        rendered_subject = rendered_prior if rendered_prior.lower().startswith("re:") else f"Re: {rendered_prior}"
+    else:
+        rendered_subject = ""
+
+    rendered_body = _render(request.body or "", data, fallbacks=fallbacks)
+    # Surface any variables that couldn't be resolved so the UI can warn.
+    from template_render import extract_template_variables, _lookup as _tpl_lookup  # type: ignore
+    referenced = extract_template_variables(request.subject or "") | extract_template_variables(request.body or "")
+    unresolved = sorted(v for v in referenced if _tpl_lookup(data, v) is None and v not in {"unsubscribe_url"})
+    return {
+        "rendered_subject": rendered_subject,
+        "rendered_body": rendered_body,
+        "is_threaded_reply": not raw_subject and bool(prior_subject),
+        "unresolved_variables": unresolved,
+    }
+
+
 @api_router.post("/campaigns/send-test")
 async def send_test_email(request: SendTestEmailRequest, user: User = Depends(get_current_user)):
-    """Send a test email preview without affecting campaign stats"""
+    """Send a test email preview without affecting campaign stats.
+
+    For drip step-2-and-beyond, callers may pass an empty subject — we
+    auto-substitute "Re: <prior_subject>" so the rendered preview matches
+    what the actual drip send will produce. Callers pass the prior subject
+    via ``request.prior_subject`` (rendered against the same contact).
+    """
     
-    # Validate inputs
-    if not request.subject or not request.subject.strip():
-        raise HTTPException(status_code=400, detail="Subject line is required")
+    # Resolve the effective subject. Empty subject is allowed when the
+    # caller supplied a `prior_subject` — that's the "continue the same
+    # thread" use case.
+    raw_subject = (request.subject or "").strip()
+    prior_subject = (getattr(request, "prior_subject", None) or "").strip()
+    if not raw_subject:
+        if prior_subject:
+            raw_subject = prior_subject if prior_subject.lower().startswith("re:") else f"Re: {prior_subject}"
+        else:
+            raise HTTPException(status_code=400, detail="Subject line is required")
     
     if not request.body or not request.body.strip():
         raise HTTPException(status_code=400, detail="Email body is required")
@@ -5260,13 +5392,13 @@ async def send_test_email(request: SendTestEmailRequest, user: User = Depends(ge
         raise HTTPException(status_code=500, detail="Failed to decrypt account credentials. Please re-add your email account.")
     
     # Prepare email content with test indicator
-    test_subject = f"[TEST] {request.subject}"
+    test_subject = f"[TEST] {raw_subject}"
     body_html = request.body
     
     # Merge {{variables}} from a selected contact row, if provided.
     if request.recipient_data:
         try:
-            test_subject = f"[TEST] {replace_variables(request.subject, request.recipient_data)}"
+            test_subject = f"[TEST] {replace_variables(raw_subject, request.recipient_data)}"
             body_html = replace_variables(request.body, request.recipient_data)
         except Exception as e:
             logger.warning(f"send-test variable merge failed: {e}")

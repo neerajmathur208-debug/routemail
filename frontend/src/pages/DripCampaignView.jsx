@@ -309,8 +309,15 @@ export default function DripCampaignView({ user, setUser }) {
       toast.error("Select an account to send from");
       return;
     }
-    if (!step.subject || !step.body) {
-      toast.error("Step subject and body are required");
+    // Step 1 (index 0) requires a subject; later steps can leave it empty to
+    // continue the same thread (the backend will substitute "Re: <step-1>").
+    const isFollowUp = stepTestIdx > 0;
+    if (!step.body) {
+      toast.error("Step body is required");
+      return;
+    }
+    if (!isFollowUp && !step.subject) {
+      toast.error("Step subject is required");
       return;
     }
     let recipientData = null;
@@ -324,11 +331,15 @@ export default function DripCampaignView({ user, setUser }) {
     try {
       await api.post("/campaigns/send-test", {
         test_email: stepTestEmail,
-        subject: step.subject,
+        subject: step.subject || "",
         body: step.body,
         from_name: form.from_name || null,
         account_id: stepTestAccountId,
         recipient_data: recipientData,
+        // For empty-subject follow-ups, the backend reuses the first step's
+        // subject prefixed with "Re: " so the test email reflects the same
+        // threading behaviour as the live drip.
+        prior_subject: isFollowUp && !step.subject ? (form.steps[0]?.subject || null) : null,
       });
       toast.success(`Test email sent to ${stepTestEmail}`);
       setStepTestOpen(false);
@@ -336,6 +347,37 @@ export default function DripCampaignView({ user, setUser }) {
       toast.error(err.response?.data?.detail || "Failed to send test email");
     } finally {
       setSendingStepTest(false);
+    }
+  };
+
+  // Read-only preview of the rendered subject + body for the active step
+  // and selected recipient. Lets the user see exactly what the recipient
+  // will receive before clicking Send.
+  const [stepTestPreview, setStepTestPreview] = useState(null);
+  const [previewingStep, setPreviewingStep] = useState(false);
+  const handlePreviewStepTest = async () => {
+    const step = form.steps[stepTestIdx];
+    if (!step) return;
+    let recipientData = null;
+    if (stepTestRecipientIdx !== "" && stepTestListData?.emails) {
+      const i = parseInt(stepTestRecipientIdx, 10);
+      if (!Number.isNaN(i) && stepTestListData.emails[i]) {
+        recipientData = stepTestListData.emails[i];
+      }
+    }
+    setPreviewingStep(true);
+    try {
+      const res = await api.post("/campaigns/test-email/preview", {
+        subject: step.subject || "",
+        body: step.body || "",
+        recipient_data: recipientData,
+        prior_subject: stepTestIdx > 0 ? (form.steps[0]?.subject || null) : null,
+      });
+      setStepTestPreview(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Preview failed");
+    } finally {
+      setPreviewingStep(false);
     }
   };
 
@@ -809,11 +851,15 @@ export default function DripCampaignView({ user, setUser }) {
 
                 <div className="space-y-3">
                   <div>
-                    <Label className="text-xs">Subject</Label>
+                    <Label className="text-xs">Subject {idx > 0 && <span className="text-slate-400 font-normal">(optional)</span>}</Label>
                     <Input
                       value={step.subject || ""}
                       onChange={(e) => updateStep(idx, "subject", e.target.value)}
-                      placeholder="Quick question, {first_name}?"
+                      placeholder={
+                        idx === 0
+                          ? "Quick question, {{first_name}}?"
+                          : "Leave empty to send in the same thread"
+                      }
                       disabled={!canEdit}
                       data-testid={`drip-step-${idx}-subject`}
                     />
@@ -1479,7 +1525,7 @@ export default function DripCampaignView({ user, setUser }) {
                 <Label>Personalize with contact (optional)</Label>
                 <Select
                   value={stepTestRecipientIdx}
-                  onValueChange={setStepTestRecipientIdx}
+                  onValueChange={(v) => { setStepTestRecipientIdx(v); setStepTestPreview(null); }}
                   disabled={!stepTestListData?.emails?.length}
                 >
                   <SelectTrigger className="mt-1.5" data-testid="drip-step-test-recipient">
@@ -1503,10 +1549,62 @@ export default function DripCampaignView({ user, setUser }) {
                   </p>
                 )}
               </div>
+
+              {/* Preview pane — shows the exact subject + body that the
+                  recipient will see, with all {{variables}} resolved and
+                  the empty-subject "Re: …" threading rule applied. */}
+              {stepTestPreview && (
+                <div
+                  className="border border-slate-200 rounded-lg overflow-hidden"
+                  data-testid="drip-step-test-preview"
+                >
+                  <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                      Rendered preview
+                    </span>
+                    {stepTestPreview.is_threaded_reply && (
+                      <span className="text-[10px] uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-semibold">
+                        Same thread
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-3 py-2 text-sm">
+                    <div className="text-slate-500 text-xs mb-0.5">Subject</div>
+                    <div
+                      className="font-medium text-slate-900 mb-2"
+                      data-testid="drip-step-test-preview-subject"
+                    >
+                      {stepTestPreview.rendered_subject || (
+                        <span className="text-slate-400 italic">(empty)</span>
+                      )}
+                    </div>
+                    <div className="text-slate-500 text-xs mb-0.5">Body</div>
+                    <div
+                      className="text-slate-800 max-h-48 overflow-y-auto prose prose-sm max-w-none"
+                      data-testid="drip-step-test-preview-body"
+                      dangerouslySetInnerHTML={{ __html: stepTestPreview.rendered_body }}
+                    />
+                  </div>
+                  {(stepTestPreview.unresolved_variables || []).length > 0 && (
+                    <div className="px-3 py-1.5 bg-amber-50 border-t border-amber-200 text-xs text-amber-800">
+                      <span className="font-semibold">Unresolved:</span>{" "}
+                      {stepTestPreview.unresolved_variables.join(", ")}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setStepTestOpen(false)} disabled={sendingStepTest}>
+              <Button variant="outline" onClick={() => { setStepTestPreview(null); setStepTestOpen(false); }} disabled={sendingStepTest}>
                 Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handlePreviewStepTest}
+                disabled={previewingStep || !form.steps[stepTestIdx]?.body}
+                data-testid="drip-step-test-preview-btn"
+              >
+                {previewingStep ? "Loading…" : "Preview"}
               </Button>
               <Button
                 onClick={handleSendStepTest}
