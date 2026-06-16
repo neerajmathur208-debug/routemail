@@ -628,33 +628,123 @@ async def process_drip_campaign(campaign: dict):
     steps = campaign.get("steps", [])
     if not steps:
         return
-    
+
     # Get account IDs for rotation
     account_ids = campaign.get("account_ids", [])
     if not account_ids:
         return
-    
-    # Find contacts that need processing
+
+    # Load accounts for sending (fresh from DB so daily_send_count is current)
+    accounts = await db.email_accounts.find({
+        "account_id": {"$in": account_ids},
+        "status": "connected"
+    }, {"_id": 0}).to_list(10000)
+
+    if not accounts:
+        return
+
+    # ── PRE-RESET daily counters across ALL selected accounts ─────────────
+    # Without this, accounts whose `last_reset_date` rolled over yesterday
+    # carry stale `daily_send_count` values, and the per-contact rotation
+    # check sees them as "at limit". We do a single bulk update + refresh
+    # the in-memory copies so the rotation loop reasons over accurate state.
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    stale_ids = [a["account_id"] for a in accounts if a.get("last_reset_date") != today_str]
+    if stale_ids:
+        await db.email_accounts.update_many(
+            {"account_id": {"$in": stale_ids}},
+            {"$set": {"daily_send_count": 0, "last_reset_date": today_str}},
+        )
+        for a in accounts:
+            if a["account_id"] in stale_ids:
+                a["daily_send_count"] = 0
+                a["last_reset_date"] = today_str
+
+    # ── FETCH ALL ELIGIBLE CONTACTS (no hidden batch cap) ─────────────────
+    # Previously this used `.to_list(100)` which silently capped each worker
+    # tick to 100 contacts, making large campaigns crawl. The new cap is a
+    # safety ceiling, not a throughput limit.
     contacts = await db.drip_contacts.find({
         "drip_id": drip_id,
         "status": "active",
         "next_send_at": {"$lte": now_utc.isoformat()}
-    }, {"_id": 0}).to_list(100)
-    
-    # Load accounts for sending
-    accounts = await db.email_accounts.find({
-        "account_id": {"$in": account_ids},
-        "status": "connected"
-    }, {"_id": 0}).to_list(100)
-    
-    if not accounts:
-        return
-    
-    for contact in contacts:
-        try:
-            await process_drip_contact(campaign, contact, steps, accounts, randomize_time, tz, start_minutes, end_minutes)
-        except Exception as e:
-            logger.error(f"[DRIP] Error processing contact {contact.get('email')}: {e}")
+    }, {"_id": 0}).to_list(10000)
+
+    # ── PROCESS WITH DIAGNOSTICS ──────────────────────────────────────────
+    # We track per-run stats and the reason sending stopped so the UI /
+    # admin diagnostics can show e.g. "Daily capacity reached".
+    stats = {
+        "campaign_id": drip_id,
+        "campaign_name": campaign.get("name"),
+        "total_contacts": await db.drip_contacts.count_documents({"drip_id": drip_id}),
+        "eligible_contacts": len(contacts),
+        "queued_contacts": len(contacts),
+        "sent_contacts": 0,
+        "skipped_contacts": 0,
+        "suppressed_contacts": 0,
+        "accounts_selected": len(account_ids),
+        "accounts_connected": len(accounts),
+        "accounts_used": {},  # account_id -> emails sent this run
+        "stop_reason": None,
+        "started_at": now_utc.isoformat(),
+    }
+
+    if not contacts:
+        stats["stop_reason"] = "no_eligible_contacts"
+    else:
+        for contact in contacts:
+            # Schedule-window close check (re-evaluated each contact so a
+            # campaign that crosses its end_time stops cleanly mid-run).
+            now_local_check = datetime.now(timezone.utc).astimezone(tz)
+            cur_min = now_local_check.hour * 60 + now_local_check.minute
+            if cur_min < start_minutes or cur_min > end_minutes:
+                stats["stop_reason"] = "schedule_window_closed"
+                break
+
+            # All accounts at limit? Stop early — next tick (or tomorrow's
+            # reset) will pick up the remaining contacts.
+            if all(a.get("daily_send_count", 0) >= a.get("daily_limit", 50) for a in accounts):
+                stats["stop_reason"] = "daily_capacity_reached"
+                break
+
+            try:
+                result = await process_drip_contact(
+                    campaign, contact, steps, accounts,
+                    randomize_time, tz, start_minutes, end_minutes,
+                )
+                # `process_drip_contact` now returns a small dict describing
+                # what it did so the parent can update counters.
+                outcome = (result or {}).get("outcome")
+                if outcome == "sent":
+                    stats["sent_contacts"] += 1
+                    used_id = result.get("account_id")
+                    if used_id:
+                        stats["accounts_used"][used_id] = stats["accounts_used"].get(used_id, 0) + 1
+                elif outcome == "suppressed":
+                    stats["suppressed_contacts"] += 1
+                else:
+                    stats["skipped_contacts"] += 1
+            except Exception as e:
+                logger.error(f"[DRIP] Error processing contact {contact.get('email')}: {e}")
+                stats["skipped_contacts"] += 1
+        else:
+            # for-loop completed without `break` → we sent (or attempted) all
+            # eligible contacts.
+            stats["stop_reason"] = "all_eligible_sent"
+
+    # Persist diagnostics on the campaign + emit a single structured log line.
+    stats["finished_at"] = datetime.now(timezone.utc).isoformat()
+    await db.drip_campaigns.update_one(
+        {"drip_id": drip_id},
+        {"$set": {"last_run_stats": stats, "last_run_stop_reason": stats["stop_reason"]}},
+    )
+    logger.info(
+        f"[DRIP] run drip_id={drip_id} eligible={stats['eligible_contacts']} "
+        f"sent={stats['sent_contacts']} skipped={stats['skipped_contacts']} "
+        f"suppressed={stats['suppressed_contacts']} "
+        f"accounts_used={len(stats['accounts_used'])}/{stats['accounts_connected']} "
+        f"stop_reason={stats['stop_reason']}"
+    )
 
 async def process_drip_contact(campaign: dict, contact: dict, steps: list, accounts: list, randomize_time: bool, tz, start_minutes: int, end_minutes: int):
     """Process a single contact in a drip campaign"""
@@ -670,7 +760,7 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             {"contact_id": contact_id},
             {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}}
         )
-        return
+        return {"outcome": "completed"}
     
     step = steps[current_step]
     
@@ -683,14 +773,14 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             {"contact_id": contact_id},
             {"$set": {"status": "replied"}}
         )
-        return
+        return {"outcome": "replied"}
     
     if stop_on_bounce and contact.get("bounced"):
         await db.drip_contacts.update_one(
             {"contact_id": contact_id},
             {"$set": {"status": "bounced"}}
         )
-        return
+        return {"outcome": "bounced"}
     
     # Real-time DNE / suppression check — runs before every step
     recipient_email_pre = contact.get("email", "")
@@ -715,32 +805,28 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"[DRIP] Skipped suppressed contact {recipient_email_pre} for campaign {drip_id}")
-        return
+        return {"outcome": "suppressed"}
     
-    # Select account (rotate)
-    account_index = hash(contact_id) % len(accounts)
-    account = accounts[account_index]
-    
-    # Check account daily limit
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if account.get("last_reset_date") != today:
-        await db.email_accounts.update_one(
-            {"account_id": account.get("account_id")},
-            {"$set": {"daily_send_count": 0, "last_reset_date": today}}
-        )
-        account["daily_send_count"] = 0
-    
-    daily_limit = account.get("daily_limit", 50)
-    if account.get("daily_send_count", 0) >= daily_limit:
-        # Try next account
-        for i in range(len(accounts)):
-            alt_account = accounts[(account_index + i + 1) % len(accounts)]
-            if alt_account.get("daily_send_count", 0) < alt_account.get("daily_limit", 50):
-                account = alt_account
-                break
-        else:
-            # All accounts at limit
-            return
+    # ── ACCOUNT SELECTION — fair least-loaded ────────────────────────────
+    # Previously this pinned each contact to one account via
+    # `hash(contact_id) % len(accounts)` — meaning contacts pinned to a
+    # saturated account would be skipped even if other accounts had spare
+    # capacity. We now pick the account with the MOST remaining daily
+    # capacity, falling back to the next non-saturated one. This guarantees
+    # the full 1080 emails/day (27 inboxes × 40) is actually used.
+    account = None
+    best_remaining = -1
+    for cand in accounts:
+        cand_limit = cand.get("daily_limit", 50)
+        cand_sent = cand.get("daily_send_count", 0)
+        remaining = cand_limit - cand_sent
+        if remaining > best_remaining:
+            best_remaining = remaining
+            account = cand
+    if account is None or best_remaining <= 0:
+        # All selected accounts at limit — parent loop also checks this and
+        # will record `stop_reason = daily_capacity_reached`.
+        return {"outcome": "skipped_no_capacity"}
     
     # Prepare email content
     subject = step.get("subject", "")
@@ -789,11 +875,14 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
                 body_html=body,
                 from_name=campaign.get("from_name"),
             )
-            # Update account send count
+            # Update account send count (DB + in-memory mirror so the parent
+            # loop's "all accounts at limit?" check stays accurate within the
+            # same tick).
             await db.email_accounts.update_one(
                 {"account_id": account.get("account_id")},
                 {"$inc": {"daily_send_count": 1}}
             )
+            account["daily_send_count"] = account.get("daily_send_count", 0) + 1
             
             # Calculate next send time
             next_step = current_step + 1
@@ -850,6 +939,7 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             # Apply per-email delay
             send_delay = account.get("send_delay", 5)
             await asyncio.sleep(send_delay)
+            return {"outcome": "sent", "account_id": account.get("account_id")}
             
     except Exception as e:
         logger.error(f"[DRIP] Failed to send email to {recipient_email}: {e}")
@@ -867,6 +957,9 @@ async def process_drip_contact(campaign: dict, contact: dict, steps: list, accou
             "error": str(e),
             "sent_at": datetime.now(timezone.utc).isoformat()
         })
+        return {"outcome": "failed", "account_id": account.get("account_id")}
+    # send_drip_email returned success=False without raising
+    return {"outcome": "send_failed", "account_id": account.get("account_id")}
 
 async def send_drip_email(account: dict, recipient: str, subject: str, body: str, from_name_override: Optional[str] = None) -> bool:
     """Send a drip campaign email using SMTP"""
@@ -3014,7 +3107,7 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
     accounts = await db.email_accounts.find(
         {"user_id": user.user_id},
         {"_id": 0, "smtp_password_encrypted": 0, "imap_password_encrypted": 0}
-    ).to_list(100)
+    ).to_list(10000)
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     # Bulk-fetch today's warmup stats so the UI can show combined totals

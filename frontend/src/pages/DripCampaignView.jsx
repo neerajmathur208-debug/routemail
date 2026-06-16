@@ -606,7 +606,7 @@ export default function DripCampaignView({ user, setUser }) {
         </motion.div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-3">
           <StatBlock label="Contacts" value={stats.total_contacts || 0} />
           <StatBlock label="Active" value={stats.active || 0} color="text-emerald-600" />
           <StatBlock label="Completed" value={stats.completed || 0} color="text-blue-600" />
@@ -614,6 +614,47 @@ export default function DripCampaignView({ user, setUser }) {
           <StatBlock label="Suppressed" value={stats.suppressed || 0} color="text-rose-600" />
           <StatBlock label="Sent" value={stats.emails_sent || 0} color="text-slate-900" />
         </div>
+
+        {/* Last-run diagnostics — surfaces WHY sending stopped + which
+            accounts participated. Sourced from `last_run_stats` written by
+            the drip worker every tick. */}
+        {campaign.last_run_stats && (
+          <div
+            className="mb-6 bg-slate-50 border border-slate-200 rounded-md px-4 py-3 text-sm"
+            data-testid="drip-last-run"
+          >
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-semibold text-slate-800">Last sending run:</span>
+              <span className="text-slate-700">
+                Sent <span className="font-semibold tabular-nums">{campaign.last_run_stats.sent_contacts ?? 0}</span> · Eligible{" "}
+                <span className="font-semibold tabular-nums">{campaign.last_run_stats.eligible_contacts ?? 0}</span> ·
+                Accounts used{" "}
+                <span className="font-semibold tabular-nums">
+                  {Object.keys(campaign.last_run_stats.accounts_used || {}).length}
+                </span>
+                /{campaign.last_run_stats.accounts_connected ?? 0}
+              </span>
+              {campaign.last_run_stop_reason && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 uppercase tracking-wide"
+                  data-testid="drip-stop-reason"
+                >
+                  {{
+                    all_eligible_sent: "All eligible sent",
+                    daily_capacity_reached: "Daily capacity reached",
+                    schedule_window_closed: "Schedule window closed",
+                    no_eligible_contacts: "Queue waiting for next run",
+                  }[campaign.last_run_stop_reason] || campaign.last_run_stop_reason.replace(/_/g, " ")}
+                </span>
+              )}
+              {campaign.last_run_stats.finished_at && (
+                <span className="text-slate-500 text-xs ml-auto">
+                  {new Date(campaign.last_run_stats.finished_at).toLocaleString()}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList

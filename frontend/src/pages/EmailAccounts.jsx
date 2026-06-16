@@ -27,6 +27,7 @@ import {
   FileText,
   CheckSquare,
   Square,
+  Search,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -622,6 +623,80 @@ export default function EmailAccounts({ user, setUser }) {
     0
   );
 
+  // ── SEARCH ─────────────────────────────────────────────────────────────
+  // Instant client-side filter across the most useful identifier fields.
+  // No reload, scales to thousands of rows (simple Array.filter on a
+  // pre-normalised lowercase string).
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredAccounts = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter((a) => {
+      const hay = [
+        a.email,
+        a.from_name,
+        a.smtp_host,
+        a.imap_host,
+        a.status,
+        a.warmup_status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  })();
+
+  // ── EXPORT ─────────────────────────────────────────────────────────────
+  // Client-side CSV export. The `/api/accounts` response already strips
+  // `smtp_password_encrypted` / `imap_password_encrypted`, so plain-text
+  // credentials NEVER leave the server — we cannot accidentally export them.
+  const handleExportAccountsCSV = () => {
+    const rows = filteredAccounts;
+    if (rows.length === 0) {
+      toast.error("No accounts to export");
+      return;
+    }
+    const headers = [
+      "email",
+      "from_name",
+      "smtp_host",
+      "smtp_port",
+      "smtp_username",
+      "smtp_use_ssl",
+      "imap_host",
+      "imap_port",
+      "imap_username",
+      "imap_use_ssl",
+      "daily_limit",
+      "send_delay",
+      "warmup_enabled",
+      "warmup_status",
+      "status",
+      "last_send_date",
+    ];
+    const esc = (v) => {
+      if (v == null) return "";
+      const s = String(v);
+      // CSV-safe quote/escape
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const csv = [
+      headers.join(","),
+      ...rows.map((a) => headers.map((h) => esc(a[h])).join(",")),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+    link.href = url;
+    link.download = `email-accounts-${stamp}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} account${rows.length === 1 ? "" : "s"}`);
+  };
+
   const resetForm = () => {
     setFormData({
       preset: "custom",
@@ -684,6 +759,14 @@ export default function EmailAccounts({ user, setUser }) {
               </Button>
               <Button
                 variant="outline"
+                onClick={handleExportAccountsCSV}
+                data-testid="export-accounts-btn"
+              >
+                <Download size={16} className="mr-2" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => { setImportDialogOpen(true); setImportFile(null); setImportResult(null); }}
                 data-testid="import-accounts-btn"
               >
@@ -711,6 +794,42 @@ export default function EmailAccounts({ user, setUser }) {
               </p>
             </div>
           </div>
+
+          {/* Search bar — instant client-side filter */}
+          {accounts.length > 0 && (
+            <div className="mb-4 relative" data-testid="accounts-search-wrap">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <Input
+                type="text"
+                placeholder="Search by email, sender name, SMTP/IMAP host, status, warmup status…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+                data-testid="accounts-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-700"
+                  data-testid="accounts-search-clear"
+                >
+                  Clear
+                </button>
+              )}
+              {searchQuery && (
+                <div
+                  className="absolute -bottom-5 left-0 text-xs text-slate-500"
+                  data-testid="accounts-search-count"
+                >
+                  {filteredAccounts.length} of {accounts.length} matching
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Accounts List — independent scroll */}
           {/* Bulk Actions Toolbar */}
@@ -822,13 +941,13 @@ export default function EmailAccounts({ user, setUser }) {
           )}
 
           {/* Accounts List — independent scroll */}
-          {accounts.length > 0 ? (
+          {filteredAccounts.length > 0 ? (
             <div
               className="email-accounts-list-container space-y-4 pr-2"
               style={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}
               data-testid="email-accounts-list"
             >
-              {accounts.map((account, index) => (
+              {filteredAccounts.map((account, index) => (
                 <motion.div
                   key={account.account_id}
                   initial={{ opacity: 0, y: 20 }}
@@ -1128,20 +1247,40 @@ export default function EmailAccounts({ user, setUser }) {
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Mail size={32} className="text-slate-400" />
               </div>
-              <h3 className="font-heading font-semibold text-lg text-slate-900 mb-2">
-                No email accounts yet
-              </h3>
-              <p className="text-slate-500 mb-6">
-                Add your first SMTP email account to start sending campaigns
-              </p>
-              <Button
-                onClick={() => { resetForm(); setAddDialogOpen(true); }}
-                className="bg-electric-blue hover:bg-blue-700"
-                data-testid="add-first-account-btn"
-              >
-                <Plus size={18} className="mr-2" />
-                Add Email Account
-              </Button>
+              {accounts.length === 0 ? (
+                <>
+                  <h3 className="font-heading font-semibold text-lg text-slate-900 mb-2">
+                    No email accounts yet
+                  </h3>
+                  <p className="text-slate-500 mb-6">
+                    Add your first SMTP email account to start sending campaigns
+                  </p>
+                  <Button
+                    onClick={() => { resetForm(); setAddDialogOpen(true); }}
+                    className="bg-electric-blue hover:bg-blue-700"
+                    data-testid="add-first-account-btn"
+                  >
+                    <Plus size={18} className="mr-2" />
+                    Add Email Account
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-heading font-semibold text-lg text-slate-900 mb-2">
+                    No matches
+                  </h3>
+                  <p className="text-slate-500 mb-6">
+                    No email accounts match &ldquo;{searchQuery}&rdquo;. Try a different term or clear the search.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSearchQuery("")}
+                    data-testid="accounts-search-clear-empty"
+                  >
+                    Clear search
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
