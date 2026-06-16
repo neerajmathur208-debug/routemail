@@ -1,8 +1,11 @@
 """Infrastructure Phase C — Domain Reputation Monitoring + Issues Dashboard.
 
-Reputation score (0-100) — user-confirmed weights:
-    Positive: reply_rate 50%, inbox_age 10%, warmup_status 10%
-    Negative: bounce_rate 20%, unsubscribe_rate 5%, error_rate 5%
+Domain Score (0-100) — composite of 5 deliverability-weighted components:
+    1. Deliverability (Inbox Placement proxy)  50%   — inverse of bounce + error rate
+    2. Reply Rate                              25%
+    3. Engagement                              10%   — inverse of unsubscribe rate
+    4. Domain Reputation & Technical Health    10%   — derived from inbox age
+    5. Sending Behaviour                        5%   — warmup posture
 
 Lookback windows: 7 days (recent) + 30 days (trailing) — both surfaced.
 
@@ -27,13 +30,26 @@ from pydantic import BaseModel, Field
 from infra_phase_b import attach_phase_b_routes  # noqa: F401 (sibling module)
 
 
+# New deliverability-weighted scoring model. The keys here are the
+# user-facing component names — `components` blob in the API response is
+# keyed identically.
 WEIGHTS = {
-    "reply": 0.50,
-    "age": 0.10,
-    "warmup": 0.10,
-    "bounce": 0.20,
-    "unsubscribe": 0.05,
-    "error": 0.05,
+    "deliverability": 0.50,   # Inbox Placement proxy (low bounce + error)
+    "reply": 0.25,            # Reply Rate
+    "engagement": 0.10,       # Inverse of unsubscribe rate
+    "technical_health": 0.10, # Domain reputation proxy (inbox age)
+    "sending_behaviour": 0.05,# Warmup posture
+}
+# Sanity: weights sum to 1.0 — if you change the model, re-check.
+assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-6, "Domain score weights must sum to 1.0"
+
+# Display labels (used by the frontend's score-breakdown UI)
+COMPONENT_LABELS = {
+    "deliverability": "Inbox Placement / Deliverability",
+    "reply": "Reply Rate",
+    "engagement": "Engagement",
+    "technical_health": "Domain Reputation & Technical Health",
+    "sending_behaviour": "Sending Behaviour",
 }
 
 CACHE_TTL_HOURS = 24
@@ -65,10 +81,13 @@ def _age_days(account: Dict[str, Any]) -> float:
     return max(0.0, (_now() - dt).total_seconds() / 86400.0)
 
 
-def _warmup_component(account: Dict[str, Any]) -> float:
+def _sending_behaviour_component(account: Dict[str, Any]) -> float:
+    """Warmup posture — proxy for "is this inbox sending responsibly".
+    Returns 0-100.
+    """
     if not account.get("warmup_enabled"):
         # If warmup is OFF but the account is otherwise stable + aged, treat
-        # as neutral (50) — penalising every non-warmup inbox would be unfair
+        # as neutral (60) — penalising every non-warmup inbox would be unfair
         # to mature long-running mailboxes.
         return 60.0
     status = (account.get("warmup_status") or "").lower()
@@ -147,20 +166,37 @@ def _score_from_counts(counts: Dict[str, int], account: Dict[str, Any]) -> Dict[
     # account attribution in the current schema).
     unsub_rate = (counts["unsubscribes"] / sends) if real_sends else 0.0
 
-    reply_score = _clamp(reply_rate * 2000)            # 5% → 100
-    age_score = _clamp(_age_days(account) / 90.0 * 100.0)
-    warmup_score = _warmup_component(account)
-    bounce_score = _clamp(100.0 - bounce_rate * 1000)  # 10% → 0
-    unsub_score = _clamp(100.0 - unsub_rate * 2000)    # 5% → 0
-    error_score = _clamp(100.0 - error_rate * 1000)    # 10% → 0
+    # ── 1. DELIVERABILITY (50%) ───────────────────────────────────────────
+    # Inbox-placement proxy. Bounces and SMTP errors are the strongest
+    # signals that mail isn't reaching inboxes. Penalise bounces 2x errors.
+    # 5 % bounces alone (very high) → score ≈ 0. 0 % bounce + 0 % error → 100.
+    deliverability_penalty = bounce_rate * 2000 + error_rate * 1000
+    deliverability_score = _clamp(100.0 - deliverability_penalty)
+
+    # ── 2. REPLY RATE (25%) ──────────────────────────────────────────────
+    # Industry-grade cold reply rates land in the 1-5 % band; 5 % → 100.
+    reply_score = _clamp(reply_rate * 2000)
+
+    # ── 3. ENGAGEMENT (10%) ──────────────────────────────────────────────
+    # Without open/click tracking the next-best engagement signal is the
+    # inverse of unsubscribe rate. 5 % unsubs (catastrophic) → 0.
+    engagement_score = _clamp(100.0 - unsub_rate * 2000)
+
+    # ── 4. DOMAIN REPUTATION & TECHNICAL HEALTH (10%) ────────────────────
+    # Inbox age is the best proxy we have for domain reputation absent
+    # SPF/DKIM/DMARC reporting. 90 d aged → 100. Linear ramp.
+    technical_health_score = _clamp(_age_days(account) / 90.0 * 100.0)
+
+    # ── 5. SENDING BEHAVIOUR (5%) ────────────────────────────────────────
+    # Warmup posture (sane sending behaviour).
+    sending_behaviour_score = _sending_behaviour_component(account)
 
     score = (
-        WEIGHTS["reply"] * reply_score
-        + WEIGHTS["age"] * age_score
-        + WEIGHTS["warmup"] * warmup_score
-        + WEIGHTS["bounce"] * bounce_score
-        + WEIGHTS["unsubscribe"] * unsub_score
-        + WEIGHTS["error"] * error_score
+        WEIGHTS["deliverability"] * deliverability_score
+        + WEIGHTS["reply"] * reply_score
+        + WEIGHTS["engagement"] * engagement_score
+        + WEIGHTS["technical_health"] * technical_health_score
+        + WEIGHTS["sending_behaviour"] * sending_behaviour_score
     )
 
     return {
@@ -175,12 +211,11 @@ def _score_from_counts(counts: Dict[str, int], account: Dict[str, Any]) -> Dict[
         "error_rate": round(error_rate * 100, 2),
         "unsubscribe_rate": round(unsub_rate * 100, 2),
         "components": {
+            "deliverability": round(deliverability_score, 1),
             "reply": round(reply_score, 1),
-            "age": round(age_score, 1),
-            "warmup": round(warmup_score, 1),
-            "bounce": round(bounce_score, 1),
-            "unsubscribe": round(unsub_score, 1),
-            "error": round(error_score, 1),
+            "engagement": round(engagement_score, 1),
+            "technical_health": round(technical_health_score, 1),
+            "sending_behaviour": round(sending_behaviour_score, 1),
         },
     }
 
@@ -226,11 +261,25 @@ async def _compute_reputation_for_user(db, user_doc: Dict[str, Any]) -> List[Dic
         for uid, ibs in per_user.items():
             avg30 = round(sum(i["window_30d"]["score"] for i in ibs) / len(ibs), 1)
             avg7 = round(sum(i["window_7d"]["score"] for i in ibs) / len(ibs), 1)
+            # Average each component across the inboxes in this (user, domain)
+            # so the frontend can render a breakdown bar chart without
+            # re-aggregating.
+            components_30d: Dict[str, float] = {}
+            components_7d: Dict[str, float] = {}
+            for key in WEIGHTS.keys():
+                components_30d[key] = round(
+                    sum(i["window_30d"]["components"].get(key, 0) for i in ibs) / len(ibs), 1
+                )
+                components_7d[key] = round(
+                    sum(i["window_7d"]["components"].get(key, 0) for i in ibs) / len(ibs), 1
+                )
             doc = {
                 "user_id": uid,
                 "domain": domain,
                 "score_30d": avg30,
                 "score_7d": avg7,
+                "components_30d": components_30d,
+                "components_7d": components_7d,
                 "inbox_count": len(ibs),
                 "inboxes": ibs,
                 "computed_at": now.isoformat(),
@@ -300,8 +349,15 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
 
         # Sort worst-3 / best-3 by 30-day score
         ranked = sorted(cache, key=lambda d: d.get("score_30d", 0))
-        worst = [{"domain": d["domain"], "score_30d": d["score_30d"], "score_7d": d["score_7d"]} for d in ranked[:3]]
-        best = [{"domain": d["domain"], "score_30d": d["score_30d"], "score_7d": d["score_7d"]} for d in reversed(ranked[-3:])]
+        worst = [{"domain": d.get("domain"), "score_30d": d.get("score_30d", 0), "score_7d": d.get("score_7d", 0), "components_30d": d.get("components_30d", {})} for d in ranked[:3]]
+        best = [{"domain": d.get("domain"), "score_30d": d.get("score_30d", 0), "score_7d": d.get("score_7d", 0), "components_30d": d.get("components_30d", {})} for d in reversed(ranked[-3:])]
+
+        # Workspace-level component averages (used by the score-breakdown card)
+        component_avg_30d: Dict[str, float] = {}
+        if cache:
+            for key in WEIGHTS.keys():
+                vals = [d.get("components_30d", {}).get(key, 0) for d in cache]
+                component_avg_30d[key] = round(sum(vals) / len(vals), 1)
 
         return {
             "domains": [
@@ -311,6 +367,8 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
                     "score_7d": d.get("score_7d", 0),
                     "bucket_30d": _bucket_score(d.get("score_30d", 0)),
                     "bucket_7d": _bucket_score(d.get("score_7d", 0)),
+                    "components_30d": d.get("components_30d", {}),
+                    "components_7d": d.get("components_7d", {}),
                     "inbox_count": d.get("inbox_count", 0),
                     "computed_at": d.get("computed_at"),
                     "inboxes": d.get("inboxes", []),
@@ -320,11 +378,14 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
             "summary": {
                 "avg_score_30d": avg30,
                 "avg_score_7d": avg7,
+                "component_avg_30d": component_avg_30d,
                 "total_domains": len(cache),
                 "buckets": dict(buckets),
                 "worst": worst,
                 "best": best,
             },
+            "weights": WEIGHTS,
+            "component_labels": COMPONENT_LABELS,
             "stale": stale,
             "cache_ttl_hours": CACHE_TTL_HOURS,
         }

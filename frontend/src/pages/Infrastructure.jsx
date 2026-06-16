@@ -31,6 +31,7 @@ import {
   RefreshCcw,
   ShieldCheck,
   AlertCircle,
+  BarChart2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -2693,6 +2694,22 @@ function ReputationSummaryCard() {
                 />
               </div>
 
+              {s.component_avg_30d && Object.keys(s.component_avg_30d).length > 0 && (
+                <div
+                  className="border border-slate-200 rounded-lg p-3"
+                  data-testid="rep-score-breakdown"
+                >
+                  <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1">
+                    <BarChart2 size={12} /> Workspace score breakdown — 30 days
+                  </div>
+                  <ComponentBreakdown
+                    components={s.component_avg_30d}
+                    weights={data.weights || {}}
+                    labels={data.component_labels || {}}
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="border border-rose-200 bg-rose-50/40 rounded-lg p-3" data-testid="rep-worst">
                   <div className="text-[11px] uppercase tracking-wider text-rose-700 mb-2 flex items-center gap-1">
@@ -2701,14 +2718,15 @@ function ReputationSummaryCard() {
                   {(s.worst || []).length === 0 ? (
                     <div className="text-xs text-slate-500">—</div>
                   ) : (
-                    <ul className="text-sm space-y-1">
+                    <ul className="text-sm space-y-2">
                       {s.worst.map((w) => (
-                        <li key={`worst-${w.domain}`} className="flex justify-between items-center">
-                          <span className="font-medium text-slate-900">{w.domain}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${scoreColor(w.score_30d)}`}>
-                            {Number(w.score_30d).toFixed(0)}
-                          </span>
-                        </li>
+                        <DomainBreakdownRow
+                          key={`worst-${w.domain}`}
+                          domain={w}
+                          weights={data.weights || {}}
+                          labels={data.component_labels || {}}
+                          testidPrefix="rep-worst"
+                        />
                       ))}
                     </ul>
                   )}
@@ -2720,14 +2738,15 @@ function ReputationSummaryCard() {
                   {(s.best || []).length === 0 ? (
                     <div className="text-xs text-slate-500">—</div>
                   ) : (
-                    <ul className="text-sm space-y-1">
+                    <ul className="text-sm space-y-2">
                       {s.best.map((b) => (
-                        <li key={`best-${b.domain}`} className="flex justify-between items-center">
-                          <span className="font-medium text-slate-900">{b.domain}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${scoreColor(b.score_30d)}`}>
-                            {Number(b.score_30d).toFixed(0)}
-                          </span>
-                        </li>
+                        <DomainBreakdownRow
+                          key={`best-${b.domain}`}
+                          domain={b}
+                          weights={data.weights || {}}
+                          labels={data.component_labels || {}}
+                          testidPrefix="rep-best"
+                        />
                       ))}
                     </ul>
                   )}
@@ -2736,9 +2755,9 @@ function ReputationSummaryCard() {
             </>
           )}
 
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <span>
-              Score formula: Reply 50% · Bounce 20% · Age 10% · Warmup 10% · Unsub 5% · Errors 5%
+              Score formula: Deliverability 50% · Reply 25% · Engagement 10% · Technical Health 10% · Sending Behaviour 5%
             </span>
             <Button
               variant="outline"
@@ -2768,6 +2787,102 @@ function ScoreCard({ label, value, testid }) {
       <div className="text-3xl font-bold tabular-nums">{s.toFixed(1)}</div>
       <div className="text-[10px] opacity-70">/ 100</div>
     </div>
+  );
+}
+
+// Order in which the 5 score components render in the breakdown UI.
+// Matches the user-facing priority: Deliverability first, then Reply, etc.
+const COMPONENT_ORDER = [
+  "deliverability",
+  "reply",
+  "engagement",
+  "technical_health",
+  "sending_behaviour",
+];
+
+const COMPONENT_FALLBACK_LABEL = {
+  deliverability: "Inbox Placement / Deliverability",
+  reply: "Reply Rate",
+  engagement: "Engagement",
+  technical_health: "Domain Reputation & Technical Health",
+  sending_behaviour: "Sending Behaviour",
+};
+
+function _barTone(score) {
+  if (score >= 80) return "bg-emerald-500";
+  if (score >= 60) return "bg-lime-500";
+  if (score >= 40) return "bg-amber-500";
+  if (score >= 20) return "bg-orange-500";
+  return "bg-rose-500";
+}
+
+function ComponentBreakdown({ components, weights, labels }) {
+  return (
+    <div className="space-y-2">
+      {COMPONENT_ORDER.filter((k) => k in components).map((key) => {
+        const score = Number(components[key] || 0);
+        const weight = Number(weights[key] || 0);
+        const label = labels[key] || COMPONENT_FALLBACK_LABEL[key] || key;
+        return (
+          <div key={key} data-testid={`rep-component-${key}`}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-700">
+                {label}
+                {weight > 0 && (
+                  <span className="text-slate-400 ml-1.5">
+                    · {Math.round(weight * 100)}%
+                  </span>
+                )}
+              </span>
+              <span className="font-semibold text-slate-900 tabular-nums">
+                {score.toFixed(0)}
+              </span>
+            </div>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${_barTone(score)} transition-all`}
+                style={{ width: `${Math.min(Math.max(score, 0), 100)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DomainBreakdownRow({ domain, weights, labels, testidPrefix }) {
+  const [open, setOpen] = useState(false);
+  const hasBreakdown =
+    domain.components_30d && Object.keys(domain.components_30d).length > 0;
+  return (
+    <li className="border-b last:border-b-0 border-slate-200/70 pb-2 last:pb-0">
+      <button
+        type="button"
+        onClick={() => hasBreakdown && setOpen((o) => !o)}
+        className="w-full flex justify-between items-center text-left"
+        data-testid={`${testidPrefix}-${domain.domain}-toggle`}
+      >
+        <span className="font-medium text-slate-900 truncate">{domain.domain}</span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${scoreColor(domain.score_30d)}`}
+          >
+            {Number(domain.score_30d).toFixed(0)}
+          </span>
+          {hasBreakdown && (open ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+        </div>
+      </button>
+      {open && hasBreakdown && (
+        <div className="mt-2 pl-1" data-testid={`${testidPrefix}-${domain.domain}-breakdown`}>
+          <ComponentBreakdown
+            components={domain.components_30d}
+            weights={weights}
+            labels={labels}
+          />
+        </div>
+      )}
+    </li>
   );
 }
 
