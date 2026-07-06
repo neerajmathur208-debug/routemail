@@ -115,14 +115,24 @@ def _allocate(
     Schedule-aware mode:
       When ``execution_dates`` is provided (as YYYY-MM-DD strings drawn from
       the campaign's start_date + delay_days_between_steps + sending_days),
-      every candidate inbox must also satisfy
-      ``projection[account_id][date] >= per_day_send_estimate`` on **every**
-      one of those specific future days. This prevents allocating an inbox
-      that looks OK today but is already saturated on the day the campaign
-      will actually try to send.
+      ``per_day_send_estimate`` represents the **group total** the campaign
+      must be able to send **on each execution day** — NOT the required
+      capacity per inbox. We divide it evenly across the requested inbox
+      count to derive a per-inbox floor
+      (``ceil(per_day_send_estimate / required)``); then we simulate the
+      pooled distribution across the chosen inboxes to confirm the group's
+      combined projected capacity meets the target on every execution date.
+      Inboxes contributing only partial capacity are still eligible.
     """
     SKIP_STATUSES = {"Paused", "Risky", "Fully Reserved"}
-    per_day_floor = int(per_day_send_estimate or min_remaining_per_inbox)
+    # Group-target semantics: per_day_send_estimate is TOTAL required per
+    # execution day across the whole allocated group. Split it evenly across
+    # the requested inbox count to get the per-inbox floor.
+    from math import ceil as _ceil
+    est_total = int(per_day_send_estimate or 0)
+    per_day_floor = (
+        max(1, _ceil(est_total / max(required, 1))) if est_total else min_remaining_per_inbox
+    )
 
     def _has_future_capacity(r: Dict[str, Any]) -> bool:
         if not execution_dates:
@@ -133,18 +143,44 @@ def _allocate(
                 return False
         return True
 
-    # Group inboxes by domain
+    # Group inboxes by domain — and track exclusions with reasons for the
+    # UI debug pane.
     by_domain: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     schedule_filtered_out = 0
+    excluded: List[Dict[str, Any]] = []
     for r in inboxes:
         if r["status"] in SKIP_STATUSES:
+            excluded.append({
+                "account_id": r["account_id"],
+                "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": r["status"].lower(),   # paused / risky / fully reserved
+            })
             continue
         if r["remaining_capacity"] < min_remaining_per_inbox:
+            excluded.append({
+                "account_id": r["account_id"],
+                "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": "no remaining campaign capacity",
+            })
             continue
         if not r.get("domain"):
+            excluded.append({
+                "account_id": r["account_id"],
+                "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": "missing domain",
+            })
             continue
         if not _has_future_capacity(r):
             schedule_filtered_out += 1
+            excluded.append({
+                "account_id": r["account_id"],
+                "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": f"projected capacity < {per_day_floor}/day on one or more execution dates",
+            })
             continue
         by_domain[r["domain"]].append(r)
 
@@ -213,8 +249,93 @@ def _allocate(
     if schedule_filtered_out:
         warnings.append(
             f"Schedule-aware filter removed {schedule_filtered_out} inbox(es) "
-            f"with insufficient projected capacity on the campaign's execution days."
+            f"with insufficient projected capacity on the campaign's execution days "
+            f"(target ≥ {per_day_floor}/day per inbox = ⌈{est_total}/{required}⌉)."
         )
+
+    # ── Per-execution-date group-capacity breakdown ───────────────────────
+    # For every future date, simulate proportional distribution of the
+    # ``est_total`` (group target) across the picked inboxes based on each
+    # inbox's projected availability. This is the "debug output" the user
+    # asked for — surfaces exactly which inboxes contribute how much on
+    # which day, plus per-domain reservation totals.
+    date_breakdown: List[Dict[str, Any]] = []
+    if execution_dates and picked:
+        for step_idx, d in enumerate(execution_dates):
+            per_inbox_avail: List[Dict[str, Any]] = []
+            for p in picked:
+                proj_map = projection.get(p["account_id"]) or {}
+                avail = int(proj_map.get(d, 0))
+                per_inbox_avail.append({
+                    "account_id": p["account_id"],
+                    "email": p.get("email"),
+                    "domain": p.get("domain"),
+                    "available": avail,
+                })
+            total_avail = sum(x["available"] for x in per_inbox_avail)
+            target = est_total or total_avail  # if no explicit estimate, fill fully
+            remaining = min(target, total_avail)
+            # Proportional allocation — largest-available first, cap each at
+            # min(inbox_avail, ceil(target/N)); loop to soak up any leftover.
+            per_inbox_avail.sort(key=lambda x: -x["available"])
+            cap_ceiling = _ceil(target / max(len(per_inbox_avail), 1))
+            contributions: Dict[str, int] = {x["account_id"]: 0 for x in per_inbox_avail}
+            # First pass — fair share
+            for x in per_inbox_avail:
+                take = min(x["available"], cap_ceiling, remaining)
+                contributions[x["account_id"]] = take
+                remaining -= take
+                if remaining <= 0:
+                    break
+            # Second pass — greedy fill of leftover across inboxes with
+            # unused headroom.
+            i = 0
+            while remaining > 0 and i < len(per_inbox_avail) * 3:
+                slot = per_inbox_avail[i % len(per_inbox_avail)]
+                headroom = slot["available"] - contributions[slot["account_id"]]
+                if headroom > 0:
+                    take = min(headroom, remaining)
+                    contributions[slot["account_id"]] += take
+                    remaining -= take
+                i += 1
+
+            per_domain_reserved: Dict[str, int] = defaultdict(int)
+            selected_lines: List[Dict[str, Any]] = []
+            for x in per_inbox_avail:
+                c = contributions[x["account_id"]]
+                per_domain_reserved[x["domain"]] += c
+                selected_lines.append({
+                    "account_id": x["account_id"],
+                    "email": x["email"],
+                    "domain": x["domain"],
+                    "available": x["available"],
+                    "contributes": c,
+                })
+            selected_total = sum(contributions.values())
+            date_breakdown.append({
+                "step_number": step_idx + 1,
+                "date": d,
+                "required": est_total or 0,
+                "available": total_avail,
+                "selected": selected_total,
+                "shortfall": max(0, (est_total or 0) - selected_total),
+                "inboxes": selected_lines,
+                "domains_reserved": [
+                    {"domain": k, "reserved": v}
+                    for k, v in sorted(per_domain_reserved.items(), key=lambda kv: -kv[1])
+                ],
+            })
+        # Surface a workspace-level warning if ANY execution day couldn't be
+        # fully covered by the picked group.
+        shortfall_days = [b for b in date_breakdown if b["shortfall"] > 0]
+        if shortfall_days and est_total > 0:
+            worst = max(shortfall_days, key=lambda b: b["shortfall"])
+            warnings.append(
+                f"Group capacity insufficient on {len(shortfall_days)} of "
+                f"{len(execution_dates)} execution date(s). Worst: "
+                f"{worst['date']} — need {worst['required']}, "
+                f"selected group can cover {worst['selected']}."
+            )
 
     return {
         "requested": required,
@@ -236,6 +357,11 @@ def _allocate(
         "avg_inboxes_per_domain": avg,
         "warnings": warnings,
         "skipped_domains_near_exhaustion": skipped_for_capacity,
+        # Schedule-aware breakdowns (empty lists when not in schedule mode).
+        "date_breakdown": date_breakdown,
+        "excluded": excluded,
+        "per_inbox_floor": per_day_floor if execution_dates else None,
+        "group_target_per_day": est_total or None,
     }
 
 

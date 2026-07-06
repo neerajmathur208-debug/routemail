@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   AlertCircle,
   BarChart2,
+  Info,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -1054,10 +1055,9 @@ function AllocatorSection() {
       {open && (
         <div className="mt-4 px-2 space-y-4">
           <p className="text-sm text-slate-500 max-w-3xl">
-            Pick inboxes diversification-first — one per domain before reusing any, prefer
-            highest remaining capacity, skip paused/risky inboxes and domains near
-            today&apos;s exhaustion floor. Warmup runs in parallel and does{" "}
-            <span className="font-semibold">not</span> block campaign allocation.
+            Pick inboxes diversification-first, prefer available capacity, and skip only
+            paused, disconnected, blocked, or capacity-exhausted inboxes. Warmup accounts and
+            low domain-score accounts can still be allocated.
           </p>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -1088,8 +1088,12 @@ function AllocatorSection() {
               />
             </div>
             <div>
-              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
-                Domain capacity floor
+              <Label
+                className="text-[11px] uppercase tracking-wider text-slate-500 mb-1 inline-flex items-center gap-1"
+                title="This keeps a minimum amount of campaign sending capacity unused on each domain. Domains that would fall below this reserve will not be selected."
+              >
+                Reserve Capacity / Domain
+                <Info size={11} className="text-slate-400" />
               </Label>
               <Input
                 type="number"
@@ -1293,6 +1297,86 @@ function AllocatorSection() {
                     Inboxes below satisfy projected capacity on <span className="font-semibold">every</span> one of these days.
                   </p>
                 </div>
+              )}
+
+              {/* ── Per-execution-date group-capacity breakdown ────────── */}
+              {Array.isArray(result.date_breakdown) && result.date_breakdown.length > 0 && (
+                <div className="mb-3 space-y-2" data-testid="allocator-date-breakdown">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                    Per-day allocation breakdown
+                  </div>
+                  {result.date_breakdown.map((b) => (
+                    <div
+                      key={b.date}
+                      className={`border rounded-lg overflow-hidden ${
+                        b.shortfall > 0
+                          ? "border-amber-200 bg-amber-50/40"
+                          : "border-slate-200 bg-white"
+                      }`}
+                      data-testid={`allocator-date-row-${b.step_number}`}
+                    >
+                      <div className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 text-sm">
+                        <span className="font-semibold text-slate-800">
+                          Step {b.step_number} · {new Date(b.date).toLocaleDateString(undefined, {
+                            weekday: "short", month: "short", day: "numeric",
+                          })}
+                        </span>
+                        <span className="text-xs text-slate-600 tabular-nums flex flex-wrap gap-x-3">
+                          <span>Required: <span className="font-semibold">{b.required || "—"}</span></span>
+                          <span>Available: <span className="font-semibold">{b.available}</span></span>
+                          <span>Selected: <span className="font-semibold">{b.selected}</span></span>
+                          {b.shortfall > 0 && (
+                            <span className="text-amber-700 font-semibold">Short: {b.shortfall}</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0.5 px-3 py-2 text-xs">
+                        {b.inboxes.map((row) => (
+                          <div key={row.account_id} className="flex justify-between tabular-nums">
+                            <span className="text-slate-700 truncate mr-2">{row.email || row.account_id}</span>
+                            <span className={row.contributes > 0 ? "font-semibold text-slate-900" : "text-slate-400"}>
+                              {row.contributes} <span className="text-slate-400">/ {row.available}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {b.domains_reserved && b.domains_reserved.length > 0 && (
+                        <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200/70 text-[11px] text-slate-600 flex flex-wrap gap-x-3">
+                          <span className="uppercase tracking-wider font-semibold">Per-domain reserved:</span>
+                          {b.domains_reserved.map((dr) => (
+                            <span key={dr.domain} className="tabular-nums">
+                              {dr.domain}: <span className="font-semibold">{dr.reserved}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Excluded inboxes list (why they didn't make the cut) ── */}
+              {Array.isArray(result.excluded) && result.excluded.length > 0 && (
+                <details
+                  className="mb-3 border border-slate-200 rounded-lg overflow-hidden"
+                  data-testid="allocator-excluded"
+                >
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between">
+                    <span>Excluded inboxes ({result.excluded.length})</span>
+                    <ChevronDown size={14} />
+                  </summary>
+                  <div className="border-t border-slate-200 divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                    {result.excluded.map((x) => (
+                      <div
+                        key={x.account_id}
+                        className="px-3 py-1.5 flex justify-between items-center text-xs"
+                      >
+                        <span className="text-slate-700 truncate mr-2">{x.email || x.account_id}</span>
+                        <span className="text-slate-500">{x.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
 
               {result.inboxes.length === 0 ? (
