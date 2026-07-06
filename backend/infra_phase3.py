@@ -102,8 +102,15 @@ def _allocate(
       3. Skip domains whose aggregate remaining capacity today is below
          `domain_capacity_floor` (protects domains close to exhaustion).
       4. Skip inboxes whose individual `remaining_capacity` is below
-         `min_remaining_per_inbox` or whose status is Warming Up / Paused /
-         Risky / Fully Reserved.
+         `min_remaining_per_inbox` or whose status is Paused / Risky /
+         Fully Reserved.
+
+    Warmup is NOT a blocker. An inbox that is currently warming up can still
+    be allocated to a campaign — warmup and campaign sending run as two
+    independent background processes and share the same ``daily_limit``
+    budget. The only signals that block allocation are hard blockers:
+    disconnected/errored (Risky), user-paused (Paused), or exhausted
+    (Fully Reserved).
 
     Schedule-aware mode:
       When ``execution_dates`` is provided (as YYYY-MM-DD strings drawn from
@@ -114,7 +121,7 @@ def _allocate(
       that looks OK today but is already saturated on the day the campaign
       will actually try to send.
     """
-    SKIP_STATUSES = {"Warming Up", "Paused", "Risky", "Fully Reserved"}
+    SKIP_STATUSES = {"Paused", "Risky", "Fully Reserved"}
     per_day_floor = int(per_day_send_estimate or min_remaining_per_inbox)
 
     def _has_future_capacity(r: Dict[str, Any]) -> bool:
@@ -469,11 +476,13 @@ def _plan(
     sending_days_in_window = max(sending_days_in_window, 1)
     required_daily_volume = ceil(total_emails / sending_days_in_window)
 
-    # Use the **median** daily_limit across eligible (non-warming, non-paused)
+    # Use the **median** daily_limit across eligible (non-paused, non-risky)
     # inboxes — robust to a couple of outlier inboxes with very high limits.
+    # Warmup is deliberately NOT a blocker here: a warming inbox still
+    # contributes real send capacity for campaign planning.
     eligible = [
         r for r in inboxes
-        if r["status"] not in {"Warming Up", "Paused", "Risky"}
+        if r["status"] not in {"Paused", "Risky"}
     ]
     if eligible:
         median_limit = max(int(median(r["daily_limit"] for r in eligible)), 1)

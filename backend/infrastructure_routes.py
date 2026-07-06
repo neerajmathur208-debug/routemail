@@ -81,10 +81,12 @@ def _compute_status(
     if account_status == "disconnected" or account.get("last_error"):
         return "Risky"
 
-    if account.get("warmup_enabled") and (account.get("warmup_status") or "").lower() in ("warming", "active"):
-        # Warming inboxes are reported as Warming Up regardless of capacity
-        # — they're not allocatable to cold campaigns.
-        return "Warming Up"
+    # NOTE: warmup is now a **parallel background process** — it never gates
+    # campaign eligibility. An inbox that is warming up can still be selected
+    # for campaigns and drips; the two share the same daily_limit budget
+    # (which is what actually prevents overloading the mailbox). Callers that
+    # want to know "is this inbox currently warming" should look at the
+    # separate ``warming_up`` boolean facet, not at ``status``.
 
     if account.get("paused") or account_status in ("paused", "paused_daily_limit"):
         return "Paused"
@@ -171,8 +173,14 @@ async def _load_inboxes(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
         status = _compute_status(acc, sent_today, daily_limit, active_cnt)
 
         warmup_status = "—"
+        warming_up = False
         if acc.get("warmup_enabled"):
             warmup_status = (acc.get("warmup_status") or "active").title()
+            # `warming_up` is a facet the UI uses to show a warmup badge.
+            # It is intentionally *decoupled* from the campaign-eligibility
+            # `status` — an inbox can be simultaneously warming up AND
+            # available for campaigns.
+            warming_up = (acc.get("warmup_status") or "").lower() in ("warming", "active")
 
         rows.append({
             "account_id": acc["account_id"],
@@ -190,6 +198,7 @@ async def _load_inboxes(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
                 for x in assignments
             ],
             "warmup_status": warmup_status,
+            "warming_up": warming_up,
             "last_activity_at": acc.get("last_sent_at") or acc.get("imap_last_sync_at") or "",
             "user_id": acc.get("user_id"),
             "account_status": (acc.get("status") or "").lower(),
@@ -216,7 +225,7 @@ def _summarise(rows: List[Dict[str, Any]], projection: Optional[Dict[str, Dict[s
         if r["domain"]:
             domains[r["domain"]].append(r)
 
-    PRIORITY = ["Fully Reserved", "Risky", "Paused", "Warming Up", "Partially Available", "Available"]
+    PRIORITY = ["Fully Reserved", "Risky", "Paused", "Partially Available", "Available"]
 
     def _domain_status(items: List[Dict[str, Any]]) -> str:
         seen = {x["status"] for x in items}
@@ -284,7 +293,9 @@ def _summarise(rows: List[Dict[str, Any]], projection: Optional[Dict[str, Dict[s
             "available": inbox_counts.get("Available", 0),
             "partially_available": inbox_counts.get("Partially Available", 0),
             "fully_reserved": inbox_counts.get("Fully Reserved", 0),
-            "warming_up": inbox_counts.get("Warming Up", 0),
+            # `warming_up` is a facet, not a status — count boxes where the
+            # warming_up flag is true (regardless of their campaign status).
+            "warming_up": sum(1 for r in rows if r.get("warming_up")),
             "paused": inbox_counts.get("Paused", 0),
             "risky": inbox_counts.get("Risky", 0),
             "total": len(rows),

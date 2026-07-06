@@ -60,7 +60,6 @@ const STATUS_COLOR = {
   Available: "bg-emerald-100 text-emerald-700",
   "Partially Available": "bg-amber-100 text-amber-700",
   "Fully Reserved": "bg-rose-100 text-rose-700",
-  "Warming Up": "bg-sky-100 text-sky-700",
   Paused: "bg-slate-100 text-slate-600",
   Risky: "bg-red-100 text-red-700",
 };
@@ -1056,8 +1055,9 @@ function AllocatorSection() {
         <div className="mt-4 px-2 space-y-4">
           <p className="text-sm text-slate-500 max-w-3xl">
             Pick inboxes diversification-first — one per domain before reusing any, prefer
-            highest remaining capacity, skip warming/paused/risky inboxes and domains near
-            today&apos;s exhaustion floor.
+            highest remaining capacity, skip paused/risky inboxes and domains near
+            today&apos;s exhaustion floor. Warmup runs in parallel and does{" "}
+            <span className="font-semibold">not</span> block campaign allocation.
           </p>
 
           <div className="flex flex-wrap items-end gap-3">

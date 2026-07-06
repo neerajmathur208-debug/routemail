@@ -499,11 +499,13 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
                 if not replaced_row:
                     results["failed"].append({"account_id": t["account_id"], "error": "Not visible"})
                     continue
+                # Warmup is intentionally NOT in the exclusion set — a
+                # warming inbox is still a valid replacement candidate.
                 pool = [
                     r for r in rows
                     if r["account_id"] != replaced_row["account_id"]
                     and r["account_id"] not in busy
-                    and r["status"] not in ("Paused", "Risky", "Warming Up")
+                    and r["status"] not in ("Paused", "Risky")
                     and r["remaining_capacity"] > 0
                 ]
                 if not pool:

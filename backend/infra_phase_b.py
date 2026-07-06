@@ -85,13 +85,13 @@ def attach_phase_b_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
             return cand
 
         replaced_domain = replaced_row.get("domain") or ""
-        # Healthy + free + has capacity + not warming up
+        # Healthy + free + has capacity. Warmup is a parallel process —
+        # a warming inbox still qualifies as a replacement candidate.
         pool = [
             r for r in rows
             if r["account_id"] != replaced_row["account_id"]
             and r["account_id"] not in busy
             and r["status"] not in REPLACEABLE_STATUSES
-            and r["status"] != "Warming Up"
             and r["remaining_capacity"] > 0
         ]
         if not pool:

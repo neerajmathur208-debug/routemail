@@ -35,7 +35,6 @@ const STATUS_PILL = {
   "Partially Available": "bg-sky-50 text-sky-700 border border-sky-200",
   "In Use": "bg-amber-50 text-amber-700 border border-amber-200",
   "Fully Reserved": "bg-amber-50 text-amber-700 border border-amber-200",
-  "Warming Up": "bg-violet-50 text-violet-700 border border-violet-200",
   "Paused": "bg-slate-100 text-slate-700 border border-slate-200",
   "Risky": "bg-rose-50 text-rose-700 border border-rose-200",
 };
@@ -45,7 +44,6 @@ const STATUS_ICONS = {
   "Partially Available": CheckCircle2,
   "In Use": CalendarDays,
   "Fully Reserved": CalendarDays,
-  "Warming Up": CalendarDays,
   "Paused": Pause,
   "Risky": AlertTriangle,
 };

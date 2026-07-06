@@ -157,7 +157,10 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         cap90 = aggregate_capacity(rows, projection, 90)
 
         active = [r for r in rows if r["status"] not in ("Paused", "Risky")]
-        warming = [r for r in rows if r["status"] == "Warming Up"]
+        # Warming inboxes are those with the new `warming_up` facet flag set —
+        # NOT those whose status equals "Warming Up" (that status no longer
+        # exists after the warmup ↔ campaign independence refactor).
+        warming = [r for r in rows if r.get("warming_up")]
         domains = sorted({r["domain"] for r in rows if r["domain"]})
         active_domains = sorted({r["domain"] for r in active if r["domain"]})
         total_daily = sum(int(r["daily_limit"]) for r in active)
