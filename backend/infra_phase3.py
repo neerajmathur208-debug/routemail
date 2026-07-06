@@ -30,6 +30,24 @@ class AllocateRequest(BaseModel):
     domain_capacity_floor: int = Field(10, ge=0, le=10000,
         description="Skip a whole domain when its remaining capacity today drops below this")
 
+    # ── Schedule-aware inputs (Item 5) ────────────────────────────────────
+    # When set, the allocator picks inboxes with sufficient *projected*
+    # capacity on the specific future days the campaign will actually send.
+    # start_date + steps + delay_days_between_steps + sending_days generate
+    # the exact list of execution dates.
+    start_date: Optional[str] = Field(
+        None, description="Local ISO date (YYYY-MM-DD) when the campaign starts."
+    )
+    steps: Optional[int] = Field(None, ge=1, le=20,
+        description="Number of drip steps.")
+    delay_days_between_steps: Optional[int] = Field(None, ge=0, le=365,
+        description="Delay between consecutive steps in calendar days.")
+    sending_days: Optional[List[int]] = Field(
+        None, description="Weekday integers (0=Mon..6=Sun) that campaigns may run on.",
+    )
+    per_day_send_estimate: Optional[int] = Field(None, ge=1, le=1_000_000,
+        description="Expected sends per execution day (used to test each future day's inbox has enough headroom).")
+
 
 class PlannerRequest(BaseModel):
     leads: int = Field(..., ge=1, le=10_000_000)
@@ -72,6 +90,8 @@ def _allocate(
     required: int,
     min_remaining_per_inbox: int,
     domain_capacity_floor: int,
+    execution_dates: Optional[List[str]] = None,
+    per_day_send_estimate: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Diversification-aware allocator.
 
@@ -84,17 +104,40 @@ def _allocate(
       4. Skip inboxes whose individual `remaining_capacity` is below
          `min_remaining_per_inbox` or whose status is Warming Up / Paused /
          Risky / Fully Reserved.
+
+    Schedule-aware mode:
+      When ``execution_dates`` is provided (as YYYY-MM-DD strings drawn from
+      the campaign's start_date + delay_days_between_steps + sending_days),
+      every candidate inbox must also satisfy
+      ``projection[account_id][date] >= per_day_send_estimate`` on **every**
+      one of those specific future days. This prevents allocating an inbox
+      that looks OK today but is already saturated on the day the campaign
+      will actually try to send.
     """
     SKIP_STATUSES = {"Warming Up", "Paused", "Risky", "Fully Reserved"}
+    per_day_floor = int(per_day_send_estimate or min_remaining_per_inbox)
+
+    def _has_future_capacity(r: Dict[str, Any]) -> bool:
+        if not execution_dates:
+            return True
+        proj = projection.get(r["account_id"]) or {}
+        for d in execution_dates:
+            if int(proj.get(d, 0)) < per_day_floor:
+                return False
+        return True
 
     # Group inboxes by domain
     by_domain: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    schedule_filtered_out = 0
     for r in inboxes:
         if r["status"] in SKIP_STATUSES:
             continue
         if r["remaining_capacity"] < min_remaining_per_inbox:
             continue
         if not r.get("domain"):
+            continue
+        if not _has_future_capacity(r):
+            schedule_filtered_out += 1
             continue
         by_domain[r["domain"]].append(r)
 
@@ -159,6 +202,11 @@ def _allocate(
             f"Skipped {len(skipped_for_capacity)} domain(s) near exhaustion today: "
             + ", ".join(sorted(skipped_for_capacity)[:5])
             + ("…" if len(skipped_for_capacity) > 5 else "")
+        )
+    if schedule_filtered_out:
+        warnings.append(
+            f"Schedule-aware filter removed {schedule_filtered_out} inbox(es) "
+            f"with insufficient projected capacity on the campaign's execution days."
         )
 
     return {
@@ -557,7 +605,47 @@ def attach_phase3_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn,
         # enrich rows with projection rollup (matches /inboxes output shape)
         for r in rows:
             r["projected_window_total"] = sum((projection.get(r["account_id"]) or {}).values())
-        return _allocate(rows, projection, req.required, req.min_remaining_per_inbox, req.domain_capacity_floor)
+
+        # ── Compute execution dates from the campaign schedule ────────────
+        # When the caller supplies start_date + steps + delay_days_between_steps
+        # (+ optional sending_days weekday filter), we generate the exact
+        # future dates the campaign will send on and pass them to the
+        # allocator. If any of those dates fall on a non-sending weekday,
+        # we roll forward to the next allowed weekday (matching how the
+        # drip worker actually behaves).
+        execution_dates: Optional[List[str]] = None
+        if req.start_date and req.steps and req.delay_days_between_steps is not None:
+            try:
+                from datetime import date, timedelta as _td
+                start = date.fromisoformat(req.start_date)
+                allowed_weekdays = set(req.sending_days or list(range(7)))
+                if not allowed_weekdays:
+                    allowed_weekdays = set(range(7))
+                dates: List[str] = []
+                cursor = start
+                for step_idx in range(req.steps):
+                    if step_idx > 0:
+                        cursor = cursor + _td(days=req.delay_days_between_steps)
+                    # Roll forward to the next allowed sending day.
+                    safety = 0
+                    while cursor.weekday() not in allowed_weekdays and safety < 14:
+                        cursor = cursor + _td(days=1)
+                        safety += 1
+                    dates.append(cursor.isoformat())
+                execution_dates = dates
+            except Exception:
+                # Malformed date input — degrade gracefully to same-day only.
+                execution_dates = None
+
+        result = _allocate(
+            rows, projection, req.required,
+            req.min_remaining_per_inbox, req.domain_capacity_floor,
+            execution_dates=execution_dates,
+            per_day_send_estimate=req.per_day_send_estimate,
+        )
+        if execution_dates:
+            result["execution_dates"] = execution_dates
+        return result
 
     @router.post("/planner")
     async def planner(req: PlannerRequest, user=Depends(get_infra_user)):

@@ -106,6 +106,8 @@ export default function Dashboard({ user, setUser }) {
     }
   };
 
+  const [capacity, setCapacity] = useState(null);
+
   const fetchStats = async () => {
     try {
       const response = await api.get("/dashboard/stats");
@@ -115,6 +117,16 @@ export default function Dashboard({ user, setUser }) {
       toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCapacity = async () => {
+    try {
+      const res = await api.get("/dashboard/capacity");
+      setCapacity(res.data);
+    } catch (error) {
+      // Capacity is best-effort — don't toast on failure to avoid noise.
+      console.error("Failed to fetch capacity:", error);
     }
   };
 
@@ -130,9 +142,11 @@ export default function Dashboard({ user, setUser }) {
   useEffect(() => {
     fetchStats();
     fetchSubscription();
+    fetchCapacity();
     const interval = setInterval(() => {
       if (stats?.current_campaign?.status === "running") {
         fetchStats();
+        fetchCapacity();
       }
     }, 10000);
     return () => clearInterval(interval);
@@ -514,6 +528,60 @@ export default function Dashboard({ user, setUser }) {
                     })}
                   </div>
                 </motion.div>
+              )}
+
+              {/* Daily Sending Capacity — total / reserved / available with
+                  a progress bar. Auto-refreshes with the existing polling
+                  cycle when a campaign is running. */}
+              {capacity && (
+                <div
+                  className="bg-white border border-slate-200 rounded-[20px] p-5 shadow-sm"
+                  data-testid="dashboard-capacity-widget"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                      <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold">
+                        Daily Sending Capacity
+                      </p>
+                      <p className="text-slate-400 text-xs mt-0.5">
+                        Across {capacity.total_accounts} inboxes · {capacity.running_campaigns + capacity.running_drips} running · {capacity.scheduled_campaigns + capacity.scheduled_drips} scheduled
+                      </p>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold text-slate-900 tabular-nums" data-testid="capacity-total">
+                        {capacity.total_daily_capacity.toLocaleString()}
+                      </span>
+                      <span className="text-sm text-slate-500">/day</span>
+                    </div>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden mb-2">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all"
+                      style={{ width: `${Math.min(100, capacity.percent_reserved)}%` }}
+                      data-testid="capacity-progress-bar"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Reserved</div>
+                      <div className="font-semibold text-slate-900 tabular-nums" data-testid="capacity-reserved">
+                        {capacity.reserved_capacity.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">Available</div>
+                      <div className="font-semibold text-emerald-600 tabular-nums" data-testid="capacity-available">
+                        {capacity.available_capacity.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500">% Reserved</div>
+                      <div className="font-semibold text-slate-900 tabular-nums" data-testid="capacity-percent">
+                        {capacity.percent_reserved}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Top Metric Cards */}

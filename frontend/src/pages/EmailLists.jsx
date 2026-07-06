@@ -15,6 +15,8 @@ import {
   X,
   AlertCircle,
   Download,
+  Search,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -56,6 +58,44 @@ export default function EmailLists({ user, setUser }) {
   const [selectedList, setSelectedList] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [editName, setEditName] = useState("");
+
+  // ── Global search state ────────────────────────────────────────────────
+  // Debounced fetch against /api/lists/search-global. Users can find any
+  // contact by email / name / company / any custom field across EVERY list.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(null); // null = idle, [] = no matches
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchTruncated, setSearchTruncated] = useState(false);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearchTotal(0);
+      return;
+    }
+    let cancelled = false;
+    setSearchLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(`/lists/search-global?q=${encodeURIComponent(q)}`);
+        if (!cancelled) {
+          setSearchResults(res.data.results || []);
+          setSearchTotal(res.data.total_matches || 0);
+          setSearchTruncated(!!res.data.truncated);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSearchResults([]);
+          setSearchTotal(0);
+        }
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [searchQuery]);
 
   const fetchData = async () => {
     try {
@@ -181,6 +221,98 @@ export default function EmailLists({ user, setUser }) {
               <Plus size={18} className="mr-2" />
               Upload New List
             </Button>
+          </div>
+
+          {/* Global cross-list contact search */}
+          <div className="mb-6 space-y-3" data-testid="global-list-search-wrap">
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search every list — by email, name, company, website, or any imported field…"
+                className="pl-9"
+                data-testid="global-list-search-input"
+              />
+              {searchLoading && (
+                <Loader2
+                  size={14}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin"
+                />
+              )}
+              {!searchLoading && searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-700"
+                  data-testid="global-list-search-clear"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {searchResults !== null && (
+              <div
+                className="bg-white border border-slate-200 rounded-md overflow-hidden"
+                data-testid="global-list-search-results"
+              >
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700">
+                    {searchTotal === 0
+                      ? "No matches"
+                      : `${searchResults.length} of ${searchTotal} matching contact${searchTotal === 1 ? "" : "s"}`}
+                  </span>
+                  {searchTruncated && (
+                    <span className="text-xs text-amber-700">
+                      Only the first {searchResults.length} shown — refine your search.
+                    </span>
+                  )}
+                </div>
+                {searchResults.length > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Company</TableHead>
+                        <TableHead>List</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {searchResults.map((row, i) => (
+                        <TableRow key={`${row.list_id}-${row.email}-${i}`} data-testid={`global-search-row-${i}`}>
+                          <TableCell className="font-medium">{row.email}</TableCell>
+                          <TableCell>
+                            {[row.first_name, row.last_name].filter(Boolean).join(" ") || (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {row.company || <span className="text-slate-400">—</span>}
+                          </TableCell>
+                          <TableCell className="text-slate-600">{row.list_name}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/lists/${row.list_id}`)}
+                              data-testid={`global-search-open-${i}`}
+                            >
+                              Open list
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Lists Table/Cards */}

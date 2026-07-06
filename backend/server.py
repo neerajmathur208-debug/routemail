@@ -548,15 +548,36 @@ async def run_drip_worker():
             await asyncio.sleep(30)
 
 async def process_drip_campaigns():
-    """Process all active drip campaigns"""
-    import random
-    import pytz
-    
-    # Find all running drip campaigns
-    drip_campaigns = await db.drip_campaigns.find({
-        "status": "running"
-    }, {"_id": 0}).to_list(1000)
-    
+    """Process all active drip campaigns.
+
+    Two behaviours the user has explicitly asked for:
+
+    1. **Every running campaign is processed in every tick** — no more
+       "only the first one runs" queueing. Because the hidden 100-contact
+       cap and rotation bugs are gone (see iter 66), each campaign now
+       completes its share of a tick quickly, so all N campaigns are
+       serviced inside a single 60s cycle.
+
+    2. **Shared-inbox priority = oldest campaign first** — when an inbox is
+       used by multiple campaigns, the older one gets first dibs on
+       today's remaining capacity. We enforce this deterministically by
+       sorting campaigns by ``created_at`` ASC and processing them
+       sequentially inside the same tick. Because each ``$inc`` on the
+       account's ``daily_send_count`` is atomic AND the in-memory account
+       list is refreshed at the start of every campaign's tick, the newer
+       campaign starts with an accurate view of what the older one already
+       consumed — and cleanly rotates to alternate inboxes or gets a
+       ``daily_capacity_reached`` stop reason.
+
+    Sequential processing here also guarantees no race on the shared
+    ``daily_send_count`` counter: gather + $inc would let two concurrent
+    campaigns both read count=0 and each send 30 to a 40-cap mailbox
+    (they'd blow past the limit). Sequential + sort avoids that entirely.
+    """
+    drip_campaigns = await db.drip_campaigns.find(
+        {"status": "running"}, {"_id": 0}
+    ).sort([("created_at", 1)]).to_list(1000)
+
     for campaign in drip_campaigns:
         try:
             await process_drip_campaign(campaign)
@@ -4190,6 +4211,62 @@ async def get_email_lists(user: User = Depends(get_current_user)):
     
     return lists
 
+
+@api_router.get("/lists/search-global")
+async def global_email_list_search(
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(50, ge=1, le=500),
+    user: User = Depends(get_current_user),
+):
+    """Global search — walk every list belonging to the user and return
+    matching contact rows plus the list they came from.
+
+    Matches against the record's ``email`` (primary) plus every other stored
+    field (first_name, last_name, company, website, and any custom imported
+    column). Case-insensitive substring match. Limited to ``limit`` results
+    for responsiveness even on large workspaces.
+    """
+    needle = q.strip().lower()
+    if not needle:
+        return {"query": q, "results": [], "total_matches": 0}
+
+    # Pull every list (metadata + emails). We keep this streaming-style so
+    # very large workspaces don't blow up memory.
+    lists = db.email_lists.find(
+        {"user_id": user.user_id},
+        {"_id": 0, "list_id": 1, "name": 1, "emails": 1},
+    )
+    results: List[Dict[str, Any]] = []
+    total_matches = 0
+    async for lst in lists:
+        for row in (lst.get("emails") or []):
+            hay_parts: List[str] = []
+            for v in row.values():
+                if v is None:
+                    continue
+                try:
+                    hay_parts.append(str(v).lower())
+                except Exception:
+                    continue
+            if needle in " ".join(hay_parts):
+                total_matches += 1
+                if len(results) < limit:
+                    results.append({
+                        "list_id": lst["list_id"],
+                        "list_name": lst.get("name"),
+                        "email": row.get("email"),
+                        "first_name": row.get("first_name"),
+                        "last_name": row.get("last_name"),
+                        "company": row.get("company"),
+                        "website": row.get("website"),
+                        "record": row,
+                    })
+    return {
+        "query": q,
+        "results": results,
+        "total_matches": total_matches,
+        "truncated": total_matches > len(results),
+    }
 @api_router.get("/lists/{list_id}")
 async def get_email_list(list_id: str, user: User = Depends(get_current_user)):
     """Get a specific email list with emails"""
@@ -6920,6 +6997,80 @@ async def unsubscribe(user_id: str, email: str):
     return _unsubscribe_html_response("You will no longer receive emails from this sender.")
 
 # ==================== DASHBOARD STATS ====================
+
+@api_router.get("/dashboard/capacity")
+async def get_dashboard_capacity(user: User = Depends(get_current_user)):
+    """Whole-workspace daily sending capacity — total / reserved / available.
+
+    Reserved capacity = sum of remaining daily allocation of every account
+    that is currently **used** by at least one running or scheduled campaign
+    (standard) OR drip campaign. When an inbox is shared between multiple
+    campaigns we only count its remaining daily budget once (it's a physical
+    resource — you can't double-book it).
+    """
+    accounts = await db.email_accounts.find(
+        {"user_id": user.user_id, "status": "connected"},
+        {"_id": 0, "smtp_password_encrypted": 0, "imap_password_encrypted": 0},
+    ).to_list(10000)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _remaining(acc: Dict[str, Any]) -> int:
+        limit = int(acc.get("daily_limit", 50))
+        # If the account's stored `last_reset_date` isn't today, its counter
+        # will be reset by the send-worker on the next tick — from a
+        # capacity-planning standpoint we treat it as full.
+        if acc.get("last_reset_date") != today and acc.get("last_send_date") != today:
+            return limit
+        return max(0, limit - int(acc.get("daily_send_count", 0)))
+
+    total_capacity = sum(int(a.get("daily_limit", 50)) for a in accounts)
+    total_remaining_today = sum(_remaining(a) for a in accounts)
+
+    # Collect account_ids that are actively engaged (running / scheduled).
+    engaged_states_campaign = ["running", "scheduled", "paused", "paused_daily_limit"]
+    engaged_states_drip = ["running", "scheduled", "paused"]
+
+    campaigns = await db.campaigns.find(
+        {"user_id": user.user_id, "status": {"$in": engaged_states_campaign}},
+        {"_id": 0, "account_ids": 1, "status": 1, "name": 1, "campaign_id": 1},
+    ).to_list(1000)
+    drips = await db.drip_campaigns.find(
+        {"user_id": user.user_id, "status": {"$in": engaged_states_drip}},
+        {"_id": 0, "account_ids": 1, "status": 1, "name": 1, "drip_id": 1},
+    ).to_list(1000)
+
+    engaged_account_ids: set = set()
+    for c in campaigns:
+        engaged_account_ids.update(c.get("account_ids") or [])
+    for d in drips:
+        engaged_account_ids.update(d.get("account_ids") or [])
+
+    engaged_capacity = sum(
+        _remaining(a) for a in accounts if a["account_id"] in engaged_account_ids
+    )
+    available_capacity = max(0, total_remaining_today - engaged_capacity)
+
+    pct_reserved = (
+        round(engaged_capacity / total_remaining_today * 100, 1)
+        if total_remaining_today > 0
+        else 0.0
+    )
+
+    return {
+        "total_daily_capacity": total_capacity,
+        "total_remaining_today": total_remaining_today,
+        "reserved_capacity": engaged_capacity,
+        "available_capacity": available_capacity,
+        "percent_reserved": pct_reserved,
+        "engaged_accounts": len(engaged_account_ids),
+        "total_accounts": len(accounts),
+        "running_campaigns": sum(1 for c in campaigns if c.get("status") == "running"),
+        "running_drips": sum(1 for d in drips if d.get("status") == "running"),
+        "scheduled_campaigns": sum(1 for c in campaigns if c.get("status") == "scheduled"),
+        "scheduled_drips": sum(1 for d in drips if d.get("status") == "scheduled"),
+    }
+
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(user: User = Depends(get_current_user)):
