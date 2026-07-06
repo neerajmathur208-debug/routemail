@@ -976,15 +976,42 @@ function AllocatorSection() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // ── Schedule-aware inputs (opt-in; empty → old behaviour preserved) ────
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [steps, setSteps] = useState(3);
+  const [delayDays, setDelayDays] = useState(7);
+  const [perDayEstimate, setPerDayEstimate] = useState(50);
+  // Mon-Sun bitmap: 1 = allowed sending day. Default matches "no weekends".
+  const [sendingDays, setSendingDays] = useState([true, true, true, true, true, false, false]);
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const toggleDay = (idx) =>
+    setSendingDays((prev) => prev.map((v, i) => (i === idx ? !v : v)));
+
   const run = async () => {
     setLoading(true);
     setResult(null);
     try {
-      const res = await api.post("/infrastructure/allocate", {
+      const payload = {
         required: Number(required) || 1,
         min_remaining_per_inbox: Number(minRemaining) || 0,
         domain_capacity_floor: Number(domainFloor) || 0,
-      });
+      };
+      // Only attach schedule fields when the user has actively opted in AND
+      // provided a start_date. Backend degrades gracefully to today-only
+      // allocation when any of these are missing, but keeping the payload
+      // clean makes it clear on the network tab what mode we're in.
+      if (showSchedule && startDate) {
+        payload.start_date = startDate;
+        payload.steps = Number(steps) || 1;
+        payload.delay_days_between_steps = Number(delayDays) || 0;
+        payload.per_day_send_estimate = Number(perDayEstimate) || undefined;
+        const dayIntegers = sendingDays
+          .map((allowed, idx) => (allowed ? idx : null))
+          .filter((v) => v !== null);
+        if (dayIntegers.length > 0) payload.sending_days = dayIntegers;
+      }
+      const res = await api.post("/infrastructure/allocate", payload);
       setResult(res.data);
     } catch (e) {
       toast.error(e?.response?.data?.detail?.[0]?.msg || e?.response?.data?.detail || "Allocation failed");
@@ -1088,6 +1115,113 @@ function AllocatorSection() {
             </Button>
           </div>
 
+          {/* ─── Schedule-aware inputs (opt-in) ─────────────────────────── */}
+          <div className="border border-slate-200 rounded-lg" data-testid="allocator-schedule-wrap">
+            <button
+              type="button"
+              onClick={() => setShowSchedule((s) => !s)}
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              data-testid="allocator-schedule-toggle"
+            >
+              <span className="flex items-center gap-2">
+                <CalendarDays size={14} className="text-slate-500" />
+                Schedule-aware mode
+                {showSchedule && startDate && (
+                  <span className="text-[10px] uppercase tracking-wider bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold">
+                    Active
+                  </span>
+                )}
+              </span>
+              {showSchedule ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {showSchedule && (
+              <div className="px-3 pb-3 space-y-3">
+                <p className="text-xs text-slate-500">
+                  Schedule-aware allocation checks future sending dates and avoids inboxes
+                  that may not have enough capacity on those days. Leave any field blank to
+                  fall back to standard today-only allocation.
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                      Start date
+                    </Label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-40"
+                      data-testid="allocator-start-date-input"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                      Steps
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={steps}
+                      onChange={(e) => setSteps(e.target.value)}
+                      className="w-24"
+                      data-testid="allocator-steps-input"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                      Delay (days)
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={delayDays}
+                      onChange={(e) => setDelayDays(e.target.value)}
+                      className="w-24"
+                      data-testid="allocator-delay-input"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                      Per-day send estimate
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={perDayEstimate}
+                      onChange={(e) => setPerDayEstimate(e.target.value)}
+                      className="w-32"
+                      data-testid="allocator-per-day-input"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">
+                    Sending days
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5" data-testid="allocator-sending-days">
+                    {dayLabels.map((d, idx) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleDay(idx)}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md border transition ${
+                          sendingDays[idx]
+                            ? "bg-violet-600 text-white border-violet-600"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                        }`}
+                        data-testid={`allocator-day-${idx}`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {result && (
             <div data-testid="allocator-result" className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1134,6 +1268,31 @@ function AllocatorSection() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {Array.isArray(result.execution_dates) && result.execution_dates.length > 0 && (
+                <div
+                  className="mb-3 bg-violet-50 border border-violet-200 rounded p-3 text-sm"
+                  data-testid="allocator-execution-dates"
+                >
+                  <div className="text-[11px] uppercase tracking-wider text-violet-700 font-semibold mb-1.5 flex items-center gap-1.5">
+                    <CalendarDays size={12} /> Execution dates checked
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {result.execution_dates.map((d, i) => (
+                      <span
+                        key={d}
+                        className="text-xs font-medium bg-white border border-violet-200 text-violet-800 px-2 py-0.5 rounded-md tabular-nums"
+                        data-testid={`allocator-exec-date-${i}`}
+                      >
+                        Step {i + 1} · {new Date(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Inboxes below satisfy projected capacity on <span className="font-semibold">every</span> one of these days.
+                  </p>
+                </div>
               )}
 
               {result.inboxes.length === 0 ? (
