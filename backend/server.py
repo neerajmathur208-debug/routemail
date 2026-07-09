@@ -3241,6 +3241,162 @@ async def get_email_accounts(user: User = Depends(get_current_user)):
         "limit_info": account_limit
     }
 
+@api_router.get("/accounts/export")
+async def export_own_email_accounts(
+    format: str = Query("csv"),
+    include_credentials: bool = Query(True),
+    user: User = Depends(get_current_user),
+):
+    """Export the current user's OWN email accounts as CSV (default) or XLSX.
+
+    Any authenticated user can call this to back up their own workspace's
+    SMTP/IMAP accounts (including passwords when include_credentials=true).
+    Strict user isolation — the endpoint queries `email_accounts` with
+    `user_id=user.user_id` unconditionally, so a caller can never see
+    another user's inboxes or credentials.
+
+    Cross-user platform exports live behind the Super-Admin backup routes;
+    they are NOT reachable through this endpoint.
+
+    The CSV column layout matches the shape produced by
+    `/api/infrastructure/accounts/export?include_credentials=true` so the
+    exported file drops back into `/api/accounts/smtp/bulk-import`
+    verbatim (see iter-74 header normalizer).
+    """
+    fmt = (format or "csv").lower()
+    if fmt not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="format must be csv|xlsx")
+
+    accts = await db.email_accounts.find(
+        {"user_id": user.user_id}, {"_id": 0}
+    ).sort("email", 1).to_list(10000)
+
+    # Index active campaign + drip assignments per account_id — same shape
+    # as the Infrastructure export so downstream tools stay compatible.
+    from collections import defaultdict
+    assign = defaultdict(list)
+    camp_q = {
+        "user_id": user.user_id,
+        "status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]},
+    }
+    for c in await db.campaigns.find(
+        camp_q, {"_id": 0, "name": 1, "account_ids": 1}
+    ).to_list(5000):
+        for aid in c.get("account_ids") or []:
+            assign[aid].append(c.get("name") or "")
+    drip_q = {"user_id": user.user_id, "status": {"$in": ["running", "scheduled", "paused"]}}
+    for d in await db.drip_campaigns.find(
+        drip_q, {"_id": 0, "name": 1, "account_ids": 1}
+    ).to_list(5000):
+        for aid in d.get("account_ids") or []:
+            assign[aid].append(f"[drip] {d.get('name') or ''}")
+
+    base_headers = [
+        "email", "domain", "ownership",
+        "smtp_host", "smtp_port", "smtp_username",
+        "imap_host", "imap_port", "imap_username",
+        "daily_limit", "status",
+        "warmup_status", "last_activity", "date_added",
+        "campaign_assignments", "notes",
+    ]
+    cred_headers = [
+        "from_name",
+        "smtp_password", "smtp_ssl", "smtp_encryption",
+        "imap_password", "imap_ssl", "imap_encryption",
+        "send_delay", "warmup_enabled",
+        "priority", "tags",
+    ]
+    headers = base_headers + (cred_headers if include_credentials else [])
+
+    rows: List[List[Any]] = []
+    for a in accts:
+        email = a.get("email", "") or ""
+        base_row = [
+            email,
+            email.rsplit("@", 1)[-1] if "@" in email else "",
+            a.get("ownership") or "",
+            a.get("smtp_host") or "", a.get("smtp_port") or "", a.get("smtp_username") or "",
+            a.get("imap_host") or "", a.get("imap_port") or "", a.get("imap_username") or "",
+            int(a.get("daily_limit") or 50),
+            (a.get("status") or "").lower(),
+            (a.get("warmup_status") or "—") if a.get("warmup_enabled") else "—",
+            a.get("last_sent_at") or "",
+            a.get("created_at") or a.get("added_at") or "",
+            ", ".join(assign.get(a.get("account_id"), [])),
+            a.get("notes") or "",
+        ]
+        if include_credentials:
+            smtp_pw_blob = a.get("smtp_password_encrypted") or ""
+            imap_pw_blob = a.get("imap_password_encrypted") or ""
+            smtp_pw = decrypt_data(smtp_pw_blob) if smtp_pw_blob else ""
+            imap_pw = decrypt_data(imap_pw_blob) if imap_pw_blob else ""
+            # If IMAP password is missing but SMTP is present, mirror the
+            # SMTP password into the IMAP column so a re-import restores
+            # IMAP access when the mailbox uses the same password.
+            if not imap_pw and smtp_pw and a.get("imap_host"):
+                imap_pw = smtp_pw
+            smtp_enc = (a.get("smtp_encryption") or "").lower()
+            imap_enc = (a.get("imap_encryption") or "").lower()
+            tags = a.get("tags")
+            tags_str = ",".join(tags) if isinstance(tags, list) else (tags or "")
+            base_row += [
+                a.get("from_name") or a.get("display_name") or "",
+                smtp_pw,
+                "true" if smtp_enc in ("ssl", "true", "1") else "false",
+                smtp_enc or "tls",
+                imap_pw,
+                "true" if imap_enc in ("ssl", "true", "1") else "false",
+                imap_enc or "",
+                int(a.get("send_delay") or 30),
+                "true" if a.get("warmup_enabled") else "false",
+                int(a.get("priority") or 0),
+                tags_str,
+            ]
+        rows.append(base_row)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    suffix = "_with_credentials" if include_credentials else ""
+    fname = f"RouteMail_Email_Accounts{suffix}_{today}.{fmt}"
+
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Email Accounts"
+        font = Font(bold=True, color="FFFFFF")
+        pf = PatternFill("solid", fgColor="4338CA")
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=i, value=h)
+            c.font = font
+            c.fill = pf
+        for r_idx, row in enumerate(rows, 2):
+            for c_idx, val in enumerate(row, 1):
+                ws.cell(row=r_idx, column=c_idx, value=val)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            iter([buf.read()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
+    # CSV path
+    out = io.StringIO()
+    w = csv.writer(out, quoting=csv.QUOTE_MINIMAL)
+    w.writerow(headers)
+    for r in rows:
+        w.writerow(r)
+    return StreamingResponse(
+        iter([out.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
 @api_router.post("/accounts/smtp")
 async def add_smtp_account(request: AddSMTPAccountRequest, user: User = Depends(get_current_user)):
     """Add a new SMTP email account"""

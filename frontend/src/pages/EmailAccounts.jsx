@@ -663,7 +663,7 @@ export default function EmailAccounts({ user, setUser }) {
     const includeCreds = window.confirm(confirmMsg);
     try {
       const res = await api.get(
-        `/api/infrastructure/accounts/export?format=csv&include_credentials=${includeCreds ? "true" : "false"}`,
+        `/api/accounts/export?format=csv&include_credentials=${includeCreds ? "true" : "false"}`,
         { responseType: "blob" }
       );
       const cd = res.headers["content-disposition"] || "";

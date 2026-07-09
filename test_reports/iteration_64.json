@@ -1,0 +1,31 @@
+{
+  "summary": "Iter-75: Verified new /api/accounts/export endpoint for normal (non-admin) users. All 10 new tests + 5 iter-74 regression tests pass. Endpoint returns HTTP 200 for normal users with proper CSV body/headers, includes all 27 expected columns when include_credentials=true, hides passwords when false, decrypts SMTP+IMAP passwords correctly, mirrors SMTP into IMAP when imap_password_encrypted is missing but imap_host is set, strictly isolates data between normal users and super admin, round-trips through /api/accounts/smtp/bulk-import header normalizer, and returns 401 for unauthenticated requests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Login is gated by Turnstile in the preview environment — returns 400 'Security verification failed' for scripted logins. Tests that need real super-admin sessions had to insert user_sessions rows directly in Mongo. Not a bug in the new export endpoint, just a test-env constraint."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter75_normal_user_accounts_export.py",
+    "/app/backend/tests/test_iter74_email_accounts_export_credentials.py",
+    "/app/test_reports/pytest/iter75_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 8933 lines — exceeds the 700-line guideline and should be split into modules (email_accounts, campaigns, drips, backup, etc.). Not blocking, but a growing risk.",
+    "The new export endpoint correctly excludes MongoDB _id, uses async db calls, decrypts via decrypt_data helper, and gates on get_current_user with strict user_id filter — implementation looks solid.",
+    "Consider adding rate-limiting on /api/accounts/export since it returns plaintext credentials on demand."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter75_normal_user_accounts_export.py (new file)"
+  ],
+  "success_rate": {"backend": "100% (15/15 tests pass)", "frontend": "not tested (backend only per request)"},
+  "test_credentials": "Super admin dhruvmathur208@gmail.com available; login endpoint blocked by Turnstile in preview so tests seed sessions directly.",
+  "seed_data_creation": "Created 2 tagged normal users (user_a, user_b) + 1 super-admin session, each tagged with TAG='exp75_<uuid>'. All tag-prefixed docs cleaned up at module teardown across users, user_sessions, email_accounts, campaigns, drip_campaigns, tracked_domains collections.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter-75 export endpoint is fully verified. Test file at /app/backend/tests/test_iter75_normal_user_accounts_export.py; run with pytest. Note: login endpoint is Turnstile-gated in preview — use direct Mongo user_sessions inserts to obtain a session_token for any user (see _mk_user helper).",
+  "rca of the issue": "Original bug (404 on Export CSV for normal users) was caused by frontend calling /api/infrastructure/accounts/export which requires can_access_infrastructure permission. Fix added new /api/accounts/export endpoint gated on get_current_user (any authenticated user) with strict {user_id: user.user_id} Mongo filter. CSV shape mirrors the Infrastructure export so it re-imports cleanly via /api/accounts/smtp/bulk-import. Verified independently: no cross-user leaks, iter-72 isolation preserved for super admin, IMAP-password fallback works, unauthenticated calls return 401."
+}
