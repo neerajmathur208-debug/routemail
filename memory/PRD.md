@@ -1,5 +1,22 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 72 (Feb 2026)
+
+### Capacity Planner — Availability Calculation Fix + Copy UI (VERIFIED)
+- Backend `infra_projection.py`: fixed available capacity math so it now
+  computes `daily_limit − reserved` per inbox per execution date. Previously
+  returned 0 when no reservations existed, causing the planner to always show
+  "Insufficient". Backend pytest suite: **88/88 passing**.
+- Frontend `Infrastructure.jsx` → `CampaignCapacityPlannerSection`:
+  - Added **"Copy Recommended Inboxes"** button in the Recommended Inboxes
+    header (`data-testid="ccp-copy-inboxes-btn"`) that copies newline-separated
+    email addresses to clipboard with a success/failure toast.
+  - Added **Remaining** column per inbox row showing
+    `max(0, daily_limit × execution_dates − allocated_total)`.
+- Verified via Playwright: Recipients 2,400 / Daily target 600 →
+  Recommended 12 inboxes, Combined daily capacity 558, Copy button + Remaining
+  column render correctly, per-day breakdown + warnings displayed.
+
 ## Changelog — Iteration 64 (June 2026)
 
 ### Phase 3 Batch 3 — Backup & Restore enhancements (Infrastructure + success UI)

@@ -1245,8 +1245,27 @@ function CampaignCapacityPlannerSection() {
               {/* Selected inboxes list */}
               {plan.inboxes?.length > 0 && (
                 <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="ccp-inbox-list">
-                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Selected inboxes ({plan.inboxes.length})
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Recommended Inboxes ({plan.inboxes.length})
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const emails = plan.inboxes
+                          .map((r) => r.email)
+                          .filter(Boolean)
+                          .join("\n");
+                        navigator.clipboard.writeText(emails).then(
+                          () => toast.success(`Copied ${plan.inboxes.length} email address${plan.inboxes.length === 1 ? "" : "es"}`),
+                          () => toast.error("Failed to copy"),
+                        );
+                      }}
+                      data-testid="ccp-copy-inboxes-btn"
+                    >
+                      Copy Recommended Inboxes
+                    </Button>
                   </div>
                   <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
                     {plan.inboxes.map((r) => (
@@ -1255,10 +1274,11 @@ function CampaignCapacityPlannerSection() {
                           <div className="font-medium text-slate-900 truncate">{r.email || r.account_id}</div>
                           <div className="text-xs text-slate-500">{r.domain}</div>
                         </div>
-                        <div className="flex gap-4 text-xs tabular-nums text-slate-600">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-slate-600">
                           <span>Daily limit: <span className="font-semibold">{r.daily_limit}</span></span>
-                          <span>Min proj: <span className="font-semibold">{r.min_projected}</span></span>
-                          <span>Total alloc: <span className="font-semibold text-emerald-700">{r.allocated_total}</span></span>
+                          <span>Available: <span className="font-semibold">{r.min_projected}</span></span>
+                          <span>Allocated: <span className="font-semibold text-emerald-700">{r.allocated_total}</span></span>
+                          <span>Remaining: <span className="font-semibold">{Math.max(0, (r.daily_limit || 0) * plan.execution_dates.length - r.allocated_total)}</span></span>
                           <span>Dates: <span className="font-semibold">{r.dates_covered?.length || 0}/{plan.execution_dates.length}</span></span>
                         </div>
                       </div>

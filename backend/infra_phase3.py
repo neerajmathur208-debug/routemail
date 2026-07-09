@@ -819,23 +819,38 @@ def _plan_campaign(
             })
             continue
         proj_map = projection.get(r["account_id"]) or {}
-        # Total projected capacity across the campaign's execution days
-        total_across_dates = sum(int(proj_map.get(d, 0)) for d in execution_dates)
+        daily_limit = int(r.get("daily_limit", 0) or 0)
+        # `projection[account][date]` holds the **already-reserved** count
+        # for that date (from existing running / scheduled campaigns +
+        # drips). Available capacity on any execution date is therefore
+        # `daily_limit - reserved` (floor 0). When the account has no
+        # reservations at all, projection[account] is empty and every
+        # execution date returns the full daily_limit as available.
+        avails = [
+            max(0, daily_limit - int(proj_map.get(d, 0)))
+            for d in execution_dates
+        ]
+        total_across_dates = sum(avails)
+        if daily_limit <= 0:
+            excluded.append({
+                "account_id": r["account_id"], "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": "no configured daily limit",
+            })
+            continue
         if total_across_dates <= 0:
             excluded.append({
                 "account_id": r["account_id"], "email": r.get("email"),
                 "domain": r.get("domain"),
-                "reason": "no remaining projected campaign capacity on execution dates",
+                "reason": "daily capacity fully reserved on every execution date",
             })
             continue
         # Note the specific dates where the inbox is at zero (informational).
-        zero_dates = [d for d in execution_dates if int(proj_map.get(d, 0)) <= 0]
-        if len(zero_dates) == len(execution_dates):
-            # already handled above but defensive
-            continue
+        zero_dates = [d for d, a in zip(execution_dates, avails) if a <= 0]
         r["_zero_dates"] = zero_dates
+        r["_daily_available"] = {d: a for d, a in zip(execution_dates, avails)}
         r["_avg_daily_projected"] = int(total_across_dates / max(len(execution_dates), 1))
-        r["_min_daily_projected"] = min(int(proj_map.get(d, 0)) for d in execution_dates)
+        r["_min_daily_projected"] = min(avails)
         pool.append(r)
 
     # Step 1 — auto-recommend inbox count based on median projected capacity.
@@ -881,10 +896,16 @@ def _plan_campaign(
     for step_idx, d in enumerate(execution_dates):
         per_inbox = []
         for p in picked:
-            avail = int((projection.get(p["account_id"]) or {}).get(d, 0))
+            # Available = daily_limit − reserved-on-this-date. Empty
+            # projection entry means the mailbox has zero prior
+            # reservations → full daily_limit is available.
+            reserved = int((projection.get(p["account_id"]) or {}).get(d, 0))
+            dl = int(p.get("daily_limit", 0) or 0)
+            avail = max(0, dl - reserved)
             per_inbox.append({
                 "account_id": p["account_id"], "email": p.get("email"),
                 "domain": p.get("domain"), "available": avail,
+                "reserved": reserved, "daily_limit": dl,
             })
         total_avail = sum(x["available"] for x in per_inbox)
         need = daily_target

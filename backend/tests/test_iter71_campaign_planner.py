@@ -15,10 +15,22 @@ from infra_phase3 import _plan_campaign, _compute_execution_dates  # noqa: E402
 
 
 def _mk(aid, domain, projection, status="Available", daily_limit=50):
+    """Fixture helper. NOTE: after the availability-calc fix, the planner
+    interprets `projection[account][date]` as **already-reserved** counts
+    on that date and computes available = daily_limit - reserved. So to
+    give an inbox `N` available on a date we set projection[aid][date] = 0
+    and daily_limit = N. To simulate M already reserved out of L limit,
+    set projection[aid][date] = M and daily_limit = L.
+    """
+    # Legacy callers passed `projection = {date: available_on_that_date}`.
+    # Translate that into the new (reserved) semantics: reserved = 0,
+    # daily_limit = max(caller's daily_limit, max(projection.values())).
+    max_avail = max(projection.values(), default=0)
+    effective_limit = max_avail if projection else daily_limit
     return {
         "account_id": aid, "email": f"{aid}@{domain}", "domain": domain,
         "status": status, "ownership": "internal",
-        "daily_limit": daily_limit, "remaining_capacity": daily_limit,
+        "daily_limit": effective_limit, "remaining_capacity": effective_limit,
         "warmup_status": "Active", "warming_up": True,
         "projected_window_total": sum(projection.values()),
     }
@@ -54,7 +66,7 @@ def test_auto_derived_inbox_count_from_median_projection():
         proj = {d: 40 for d in dates}
         projection[aid] = proj
         inboxes.append(_mk(aid, f"d{i}.example", proj))
-    plan = _plan_campaign(inboxes, projection, dates,
+    plan = _plan_campaign(inboxes, {}, dates,
                           daily_target=500, domain_reserve=0)
     assert plan["auto_recommended_inboxes"] == 13
     # Picked count uses auto value when no override
@@ -74,7 +86,7 @@ def test_override_required_inboxes_takes_precedence():
         proj = {dates[0]: 20}
         projection[aid] = proj
         inboxes.append(_mk(aid, f"d{i}.example", proj))
-    plan = _plan_campaign(inboxes, projection, dates,
+    plan = _plan_campaign(inboxes, {}, dates,
                           daily_target=40, domain_reserve=0,
                           override_required=6)
     assert plan["requested_inboxes"] == 6
@@ -93,7 +105,7 @@ def test_partial_contributions_sum_to_target():
         proj = {dates[0]: 12}
         projection[aid] = proj
         inboxes.append(_mk(aid, f"d{i}.example", proj))
-    plan = _plan_campaign(inboxes, projection, dates,
+    plan = _plan_campaign(inboxes, {}, dates,
                           daily_target=50, domain_reserve=0)
     b = plan["date_plan"][0]
     assert b["selected"] == 50, f"got {b['selected']}"
@@ -114,7 +126,7 @@ def test_slight_over_allocation_allowed():
         proj = {d: 36 for d in dates}
         projection[aid] = proj
         inboxes.append(_mk(aid, f"d{i}.example", proj))
-    plan = _plan_campaign(inboxes, projection, dates,
+    plan = _plan_campaign(inboxes, {}, dates,
                           daily_target=500, domain_reserve=0)
     assert plan["combined_min_daily_capacity"] >= 500
     # Never picks LESS than needed
@@ -133,7 +145,7 @@ def test_warmup_active_inbox_is_allocated():
     warm["warmup_status"] = "Active"
     warm["domain_score"] = 5  # simulated low score
     plan = _plan_campaign(
-        [warm], {"warm": warm_proj}, dates,
+        [warm], {}, dates,
         daily_target=20, domain_reserve=0,
     )
     assert plan["recommended_inboxes_count"] == 1
@@ -152,12 +164,12 @@ def test_hard_blockers_excluded_with_reason():
     zero = _mk("z", "z.example", {dates[0]: 0})
     projection = {"ok": {dates[0]: 30}, "p": {dates[0]: 30},
                   "r": {dates[0]: 30}, "z": {dates[0]: 0}}
-    plan = _plan_campaign([ok, paused, risky, zero], projection, dates,
+    plan = _plan_campaign([ok, paused, risky, zero], {}, dates,
                           daily_target=10, domain_reserve=0)
     reasons = {e["account_id"]: e["reason"] for e in plan["excluded"]}
     assert "paused" in reasons["p"]
     assert "risky" in reasons["r"]
-    assert "no remaining projected campaign capacity" in reasons["z"]
+    assert "no configured daily limit" in reasons["z"]
     assert plan["recommended_inboxes_count"] == 1
     assert plan["inboxes"][0]["account_id"] == "ok"
 
@@ -170,7 +182,7 @@ def test_domain_reserve_caps_per_domain_contribution():
     a = _mk("a", "shared.example", {dates[0]: 30}, daily_limit=30)
     b = _mk("b", "shared.example", {dates[0]: 30}, daily_limit=30)
     projection = {"a": {dates[0]: 30}, "b": {dates[0]: 30}}
-    plan = _plan_campaign([a, b], projection, dates,
+    plan = _plan_campaign([a, b], {}, dates,
                           daily_target=60, domain_reserve=10)
     plan_b = plan["date_plan"][0]
     # domain pool 60, reserve 10 → allocatable 50, target 60 → shortfall 10
@@ -181,24 +193,21 @@ def test_domain_reserve_caps_per_domain_contribution():
 # ─── T9 — Future-date-only availability still qualifies ─────────────────
 
 def test_inbox_with_capacity_only_on_some_dates_still_used():
-    """Inbox A has capacity on step 1 & 2 but zero on step 3 — because the
-    plan requires positive projection on every execution date (total > 0),
-    but the min-projection may be 0. Confirm the inbox is EXCLUDED when
-    it has zero on any planning date and would prevent meeting daily_target."""
+    """Inbox B has 30/day capacity but 22 already reserved on the last
+    execution date, leaving 8 available there. It should still be picked
+    and contribute 8, while Inbox A picks up the slack."""
     dates = _dates(3)
-    # Inbox A: 30 avail on all three dates
-    a_proj = {dates[0]: 30, dates[1]: 30, dates[2]: 30}
-    # Inbox B: 30 on first two, 8 on the last
-    b_proj = {dates[0]: 30, dates[1]: 30, dates[2]: 8}
+    # Both inboxes have daily_limit=30.
+    a_proj = {dates[0]: 30, dates[1]: 30, dates[2]: 30}  # → daily_limit=30
+    b_proj = {dates[0]: 30, dates[1]: 30, dates[2]: 30}  # → daily_limit=30
     inboxes = [
         _mk("A", "a.example", a_proj),
         _mk("B", "b.example", b_proj),
     ]
-    projection = {"A": a_proj, "B": b_proj}
+    # B has 22 already reserved on the last date → 8 available.
+    projection = {"B": {dates[2]: 22}}
     plan = _plan_campaign(inboxes, projection, dates,
                           daily_target=30, domain_reserve=0)
-    # Both inboxes have SOME projected capacity → both in pool.
-    # B contributes 8 on the last date, A contributes the rest.
     ids = {r["account_id"] for r in plan["inboxes"]}
     assert "A" in ids and "B" in ids
     step3 = plan["date_plan"][2]
@@ -208,6 +217,38 @@ def test_inbox_with_capacity_only_on_some_dates_still_used():
 
 
 # ─── T10 — Insufficient capacity flagged clearly ─────────────────────────
+
+def test_no_reservations_means_full_daily_limit_available_REGRESSION():
+    """REPRODUCER for user dhruvmathur208@gmail.com's report:
+    7 inboxes, combined 260/day, no active/scheduled campaigns.
+    Planner MUST use full daily_limit as available on every execution date.
+    """
+    dates = _dates(3)
+    # 7 inboxes with total daily_limit 260 (mixed: 40+40+40+40+40+40+20 = 260)
+    inboxes = []
+    for lim in (40, 40, 40, 40, 40, 40, 20):
+        aid = f"a{lim}_{uuid.uuid4().hex[:4]}"
+        inboxes.append({
+            "account_id": aid, "email": f"{aid}@d.example",
+            "domain": f"d{aid[:6]}.example", "status": "Available",
+            "ownership": "internal", "daily_limit": lim,
+            "remaining_capacity": lim, "warmup_status": "Active",
+            "warming_up": True, "projected_window_total": 0,
+        })
+    # Empty projection = zero reservations everywhere
+    plan = _plan_campaign(inboxes, {}, dates,
+                          daily_target=100, domain_reserve=0)
+    # BEFORE the fix this returned 0/0/Insufficient; after the fix:
+    assert plan["combined_min_daily_capacity"] >= 100, (
+        f"expected ≥100 got {plan['combined_min_daily_capacity']}"
+    )
+    assert plan["infrastructure_status"] == "Healthy"
+    assert plan["recommended_inboxes_count"] > 0
+    # Every excluded inbox (if any) must have a truthful reason — NOT the old
+    # "no remaining projected campaign capacity"
+    for e in plan["excluded"]:
+        assert "no remaining projected campaign capacity" not in e["reason"]
+
 
 def test_infrastructure_status_partial_when_shortfall():
     """3 inboxes × 10 avail = 30 combined vs target 100 → shortfall on
@@ -220,7 +261,7 @@ def test_infrastructure_status_partial_when_shortfall():
         proj = {d: 10 for d in dates}
         projection[aid] = proj
         inboxes.append(_mk(aid, f"d{i}.example", proj))
-    plan = _plan_campaign(inboxes, projection, dates,
+    plan = _plan_campaign(inboxes, {}, dates,
                           daily_target=100, domain_reserve=0)
     assert plan["shortfall_days"] == 2
     assert plan["infrastructure_status"] == "Partial"
