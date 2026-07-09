@@ -549,6 +549,7 @@ export default function Infrastructure({ user, setUser }) {
 
         {/* Auto-Allocation + Capacity Planner — Phase 3 */}
         <AllocatorSection />
+        <CampaignCapacityPlannerSection />
         <PlannerSection />
         <ReplacementSection
           onRequestReplace={async (row) => {
@@ -967,6 +968,376 @@ function Mini({ label, value, highlight }) {
  *  Auto-Allocation — standalone tool (Phase 3)
  *  Diversification-aware inbox picker. Calls POST /infrastructure/allocate.
  * ============================================================ */
+/**
+ *  ─────────────────────────────────────────────────────────────────────────
+ *  CAMPAIGN CAPACITY PLANNER (Iteration 71)
+ *  ─────────────────────────────────────────────────────────────────────────
+ *  Complete redesign of Auto-Allocate — a capacity-planning engine, not a
+ *  same-day inbox filter. Given recipients + a full campaign schedule, this
+ *  card auto-derives the number of inboxes needed and simulates
+ *  proportional distribution across every execution date, honouring the
+ *  per-domain reserve and existing running/scheduled campaign reservations.
+ *  Ignores warmup and low domain-score entirely.
+ */
+function CampaignCapacityPlannerSection() {
+  const [open, setOpen] = useState(true);
+  const [recipients, setRecipients] = useState(2400);
+  const [dailyTarget, setDailyTarget] = useState(600);
+  const [startDate, setStartDate] = useState("");
+  const [steps, setSteps] = useState(3);
+  const [delayDays, setDelayDays] = useState(7);
+  const [sendingDays, setSendingDays] = useState([true, true, true, true, true, false, false]);
+  const [domainReserve, setDomainReserve] = useState(10);
+  const [override, setOverride] = useState("");
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const toggleDay = (i) => setSendingDays((prev) => prev.map((v, j) => (i === j ? !v : v)));
+
+  const run = async () => {
+    if (!startDate) {
+      toast.error("Pick a start date");
+      return;
+    }
+    setLoading(true);
+    setPlan(null);
+    try {
+      const payload = {
+        recipients: Number(recipients) || 1,
+        daily_send_target: Number(dailyTarget) || 1,
+        start_date: startDate,
+        steps: Number(steps) || 1,
+        delay_days_between_steps: Number(delayDays) || 0,
+        sending_days: sendingDays
+          .map((allowed, idx) => (allowed ? idx : null))
+          .filter((v) => v !== null),
+        domain_reserve: Number(domainReserve) || 0,
+      };
+      if (override !== "" && Number(override) > 0) {
+        payload.override_required_inboxes = Number(override);
+      }
+      const res = await api.post("/infrastructure/plan-campaign", payload);
+      setPlan(res.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Planner failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusTone = {
+    Healthy: "bg-emerald-100 text-emerald-800",
+    Partial: "bg-amber-100 text-amber-800",
+    Insufficient: "bg-rose-100 text-rose-800",
+  };
+
+  return (
+    <div
+      className="bg-white border border-slate-200 rounded-2xl p-5"
+      data-testid="infra-campaign-planner-section"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between mb-3"
+      >
+        <div className="text-left">
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <Wand2 size={18} className="text-violet-600" />
+            Campaign Capacity Planner
+          </h2>
+          <p className="text-sm text-slate-500 max-w-3xl">
+            Full capacity plan across every execution date. Auto-derives the
+            recommended inbox count from your daily send target, distributes
+            volume proportionally, allows partial contributions, and ignores
+            warmup / domain-score entirely.
+          </p>
+        </div>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+
+      {open && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Recipients</Label>
+              <Input
+                type="number" min={1} value={recipients}
+                onChange={(e) => setRecipients(e.target.value)}
+                data-testid="ccp-recipients-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Daily send target</Label>
+              <Input
+                type="number" min={1} value={dailyTarget}
+                onChange={(e) => setDailyTarget(e.target.value)}
+                data-testid="ccp-daily-target-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Start date</Label>
+              <Input
+                type="date" value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                data-testid="ccp-start-date-input"
+              />
+            </div>
+            <div>
+              <Label
+                className="text-[11px] uppercase tracking-wider text-slate-500 mb-1 inline-flex items-center gap-1"
+                title="Minimum campaign sending capacity to keep unused on each domain after allocation."
+              >
+                Reserve capacity / domain
+                <Info size={11} className="text-slate-400" />
+              </Label>
+              <Input
+                type="number" min={0} value={domainReserve}
+                onChange={(e) => setDomainReserve(e.target.value)}
+                data-testid="ccp-domain-reserve-input"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Steps</Label>
+              <Input
+                type="number" min={1} max={20} value={steps}
+                onChange={(e) => setSteps(e.target.value)}
+                data-testid="ccp-steps-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Delay (days)</Label>
+              <Input
+                type="number" min={0} max={365} value={delayDays}
+                onChange={(e) => setDelayDays(e.target.value)}
+                data-testid="ccp-delay-input"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">
+                Override inbox count <span className="text-slate-400 font-normal">(optional)</span>
+              </Label>
+              <Input
+                type="number" min={1} value={override}
+                placeholder="Auto"
+                onChange={(e) => setOverride(e.target.value)}
+                data-testid="ccp-override-input"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={run} disabled={loading}
+                className="bg-violet-600 hover:bg-violet-700 text-white w-full"
+                data-testid="ccp-run-btn"
+              >
+                {loading ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Wand2 className="mr-2" size={16} />}
+                Recommend
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">
+              Sending days
+            </Label>
+            <div className="flex flex-wrap gap-1.5">
+              {dayLabels.map((d, idx) => (
+                <button
+                  key={d} type="button" onClick={() => toggleDay(idx)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md border transition ${
+                    sendingDays[idx]
+                      ? "bg-violet-600 text-white border-violet-600"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                  }`}
+                  data-testid={`ccp-day-${idx}`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {plan && (
+            <div className="mt-4 space-y-4" data-testid="ccp-result">
+              {/* Summary card */}
+              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h3 className="text-sm font-bold text-slate-900">Campaign Capacity Plan</h3>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide ${
+                      statusTone[plan.infrastructure_status] || "bg-slate-200 text-slate-700"
+                    }`}
+                    data-testid="ccp-status-badge"
+                  >
+                    {plan.infrastructure_status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Recipients</div>
+                    <div className="font-semibold tabular-nums">{Number(plan.recipients || 0).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Daily requirement</div>
+                    <div className="font-semibold tabular-nums">{plan.daily_target}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Recommended inboxes</div>
+                    <div className="font-semibold tabular-nums" data-testid="ccp-recommended-count">
+                      {plan.recommended_inboxes_count}
+                      {plan.override_required_inboxes ? "" : (
+                        <span className="text-slate-400 text-xs ml-1">(auto {plan.auto_recommended_inboxes})</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Domains used</div>
+                    <div className="font-semibold tabular-nums">{plan.domains_used?.length || 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Combined daily capacity</div>
+                    <div className="font-semibold tabular-nums text-emerald-700">
+                      {plan.combined_min_daily_capacity}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-slate-500">Projected spare</div>
+                    <div className="font-semibold tabular-nums">{plan.projected_spare_capacity}</div>
+                  </div>
+                  <div className="col-span-2 md:col-span-2">
+                    <div className="text-[10px] uppercase text-slate-500">Execution dates</div>
+                    <div className="flex flex-wrap gap-1.5 mt-0.5">
+                      {(plan.execution_dates || []).map((d, i) => {
+                        const step = plan.date_plan?.[i];
+                        const ok = step && step.shortfall === 0;
+                        return (
+                          <span
+                            key={d}
+                            className={`text-xs px-2 py-0.5 rounded font-medium tabular-nums ${
+                              ok ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {ok ? "✓" : "✗"} {new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warnings */}
+              {plan.warnings?.length > 0 && (
+                <ul
+                  className="space-y-1 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3"
+                  data-testid="ccp-warnings"
+                >
+                  {plan.warnings.map((w, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Selected inboxes list */}
+              {plan.inboxes?.length > 0 && (
+                <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="ccp-inbox-list">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    Selected inboxes ({plan.inboxes.length})
+                  </div>
+                  <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                    {plan.inboxes.map((r) => (
+                      <div key={r.account_id} className="px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-slate-900 truncate">{r.email || r.account_id}</div>
+                          <div className="text-xs text-slate-500">{r.domain}</div>
+                        </div>
+                        <div className="flex gap-4 text-xs tabular-nums text-slate-600">
+                          <span>Daily limit: <span className="font-semibold">{r.daily_limit}</span></span>
+                          <span>Min proj: <span className="font-semibold">{r.min_projected}</span></span>
+                          <span>Total alloc: <span className="font-semibold text-emerald-700">{r.allocated_total}</span></span>
+                          <span>Dates: <span className="font-semibold">{r.dates_covered?.length || 0}/{plan.execution_dates.length}</span></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-execution-date breakdown */}
+              {plan.date_plan?.length > 0 && (
+                <div className="space-y-2" data-testid="ccp-date-plan">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                    Per-day allocation breakdown
+                  </div>
+                  {plan.date_plan.map((b) => (
+                    <div
+                      key={b.date}
+                      className={`border rounded-lg overflow-hidden ${
+                        b.shortfall > 0 ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"
+                      }`}
+                      data-testid={`ccp-day-row-${b.step_number}`}
+                    >
+                      <div className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 text-sm">
+                        <span className="font-semibold text-slate-800">
+                          Step {b.step_number} · {new Date(b.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                        </span>
+                        <span className="text-xs text-slate-600 tabular-nums flex flex-wrap gap-x-3">
+                          <span>Required: <span className="font-semibold">{b.required}</span></span>
+                          <span>Available: <span className="font-semibold">{b.available}</span></span>
+                          <span>Selected: <span className="font-semibold">{b.selected}</span></span>
+                          {b.shortfall > 0 && (
+                            <span className="text-amber-700 font-semibold">Short: {b.shortfall}</span>
+                          )}
+                        </span>
+                      </div>
+                      {b.domains_reserved?.length > 0 && (
+                        <div className="px-3 py-1.5 bg-slate-50 text-[11px] text-slate-600 flex flex-wrap gap-x-3">
+                          <span className="uppercase tracking-wider font-semibold">Per-domain reserved:</span>
+                          {b.domains_reserved.map((dr) => (
+                            <span key={dr.domain} className="tabular-nums">
+                              {dr.domain}: <span className="font-semibold">{dr.reserved}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Excluded inboxes */}
+              {plan.excluded?.length > 0 && (
+                <details
+                  className="border border-slate-200 rounded-lg overflow-hidden"
+                  data-testid="ccp-excluded"
+                >
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between">
+                    <span>Excluded inboxes ({plan.excluded.length})</span>
+                    <ChevronDown size={14} />
+                  </summary>
+                  <div className="border-t border-slate-200 divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                    {plan.excluded.map((x) => (
+                      <div key={x.account_id} className="px-3 py-1.5 flex justify-between items-center text-xs">
+                        <span className="text-slate-700 truncate mr-2">{x.email || x.account_id}</span>
+                        <span className="text-slate-500">{x.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function AllocatorSection() {
   const [open, setOpen] = useState(true);
   const [required, setRequired] = useState(8);

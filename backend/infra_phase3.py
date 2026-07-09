@@ -22,6 +22,36 @@ from pydantic import BaseModel, Field
 
 # ---------- request schemas -------------------------------------------------
 
+class CampaignPlanRequest(BaseModel):
+    """Input for the new Campaign Capacity Planner (spec items 1-16).
+
+    Given a campaign schedule + recipients, the planner:
+      1. computes the required daily send volume,
+      2. auto-derives the recommended number of inboxes (or honours a manual
+         override),
+      3. builds a per-execution-date capacity plan across the whole pool,
+      4. deducts capacity already reserved by other running/scheduled
+         campaigns and drips (via the projection map),
+      5. returns a full plan with contributions, spare capacity and reasons.
+    """
+    recipients: int = Field(..., ge=1, le=10_000_000)
+    daily_send_target: Optional[int] = Field(
+        None, ge=1, le=1_000_000,
+        description="Daily volume; if omitted we compute recipients / execution days.",
+    )
+    start_date: str = Field(..., description="Local ISO date the campaign starts.")
+    steps: int = Field(..., ge=1, le=20)
+    delay_days_between_steps: int = Field(..., ge=0, le=365)
+    sending_days: Optional[List[int]] = Field(None, description="Weekday ints (0=Mon..6=Sun).")
+    domain_reserve: int = Field(10, ge=0, le=10000,
+        description="Minimum campaign sending capacity to keep unused on each domain.")
+    override_required_inboxes: Optional[int] = Field(
+        None, ge=1, le=10000,
+        description="Manual override for auto-calculated inbox count.",
+    )
+    min_remaining_per_inbox: int = Field(1, ge=0, le=10000)
+
+
 class AllocateRequest(BaseModel):
     required: int = Field(..., ge=1, le=10000, description="How many inboxes the campaign needs")
     ownership: Optional[str] = None
@@ -725,6 +755,269 @@ def _plan(
 
 # ---------- router builder -------------------------------------------------
 
+def _compute_execution_dates(start_date_iso: str, steps: int, delay_days: int,
+                              sending_days: Optional[List[int]]) -> List[str]:
+    """Reusable: build the exact execution date list for a campaign,
+    rolling non-sending weekdays forward."""
+    from datetime import date, timedelta as _td
+    start = date.fromisoformat(start_date_iso)
+    allowed = set(sending_days or list(range(7)))
+    if not allowed:
+        allowed = set(range(7))
+    dates: List[str] = []
+    cursor = start
+    for step_idx in range(steps):
+        if step_idx > 0:
+            cursor = cursor + _td(days=delay_days)
+        safety = 0
+        while cursor.weekday() not in allowed and safety < 14:
+            cursor = cursor + _td(days=1)
+            safety += 1
+        dates.append(cursor.isoformat())
+    return dates
+
+
+def _plan_campaign(
+    inboxes: List[Dict[str, Any]],
+    projection: Dict[str, Dict[str, int]],
+    execution_dates: List[str],
+    daily_target: int,
+    domain_reserve: int,
+    override_required: Optional[int] = None,
+    min_remaining_per_inbox: int = 1,
+) -> Dict[str, Any]:
+    """Campaign Capacity Planner.
+
+    Distinct from ``_allocate`` (which is a same-day inbox filter): the
+    planner reasons across the ENTIRE execution calendar. Its job is to pick
+    a set of inboxes whose *combined* projected daily capacity on every one
+    of ``execution_dates`` meets ``daily_target`` — allowing partial
+    contributions from each inbox and slight over-allocation.
+
+    Warmup is intentionally NOT a filter here. Only these exclude an inbox:
+      * disconnected/errored (Risky)
+      * user-paused (Paused)
+      * zero projected capacity on ALL execution dates (Fully Reserved)
+    """
+    excluded: List[Dict[str, Any]] = []
+    hard_block = {"Paused", "Risky"}
+
+    # Filter to allocatable pool
+    pool: List[Dict[str, Any]] = []
+    for r in inboxes:
+        if r.get("status") in hard_block:
+            excluded.append({
+                "account_id": r["account_id"], "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": r["status"].lower(),
+            })
+            continue
+        if not r.get("domain"):
+            excluded.append({
+                "account_id": r["account_id"], "email": r.get("email"),
+                "domain": None, "reason": "missing domain",
+            })
+            continue
+        proj_map = projection.get(r["account_id"]) or {}
+        # Total projected capacity across the campaign's execution days
+        total_across_dates = sum(int(proj_map.get(d, 0)) for d in execution_dates)
+        if total_across_dates <= 0:
+            excluded.append({
+                "account_id": r["account_id"], "email": r.get("email"),
+                "domain": r.get("domain"),
+                "reason": "no remaining projected campaign capacity on execution dates",
+            })
+            continue
+        # Note the specific dates where the inbox is at zero (informational).
+        zero_dates = [d for d in execution_dates if int(proj_map.get(d, 0)) <= 0]
+        if len(zero_dates) == len(execution_dates):
+            # already handled above but defensive
+            continue
+        r["_zero_dates"] = zero_dates
+        r["_avg_daily_projected"] = int(total_across_dates / max(len(execution_dates), 1))
+        r["_min_daily_projected"] = min(int(proj_map.get(d, 0)) for d in execution_dates)
+        pool.append(r)
+
+    # Step 1 — auto-recommend inbox count based on median projected capacity.
+    if pool:
+        median_avail = int(median([r["_min_daily_projected"] for r in pool])) or 1
+    else:
+        median_avail = 1
+    auto_recommended = max(1, ceil(daily_target / max(median_avail, 1)))
+    requested_count = int(override_required or auto_recommended)
+
+    # Step 2 — sort pool for diversification-first pick (unique domains first,
+    # then by min-projected desc so the healthiest inboxes come first).
+    pool.sort(key=lambda r: (r.get("_min_daily_projected", 0)), reverse=True)
+    by_domain: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in pool:
+        by_domain[r["domain"]].append(r)
+
+    # Round-robin domain pick until we have `requested_count` picks or exhaust pool.
+    picked: List[Dict[str, Any]] = []
+    cursors: Dict[str, int] = {d: 0 for d in by_domain}
+    domain_order = sorted(by_domain.keys(), key=lambda d: -len(by_domain[d]))
+    while len(picked) < requested_count and any(
+        cursors[d] < len(by_domain[d]) for d in domain_order
+    ):
+        progress = False
+        for d in domain_order:
+            if len(picked) >= requested_count:
+                break
+            if cursors[d] < len(by_domain[d]):
+                picked.append(by_domain[d][cursors[d]])
+                cursors[d] += 1
+                progress = True
+        if not progress:
+            break
+
+    # Step 3 — simulate per-execution-date proportional distribution.
+    from collections import defaultdict as _dd
+    per_inbox_totals: Dict[str, int] = _dd(int)
+    per_inbox_by_date: Dict[str, Dict[str, int]] = _dd(dict)
+    per_domain_by_date: Dict[str, Dict[str, int]] = _dd(lambda: _dd(int))
+    date_plan: List[Dict[str, Any]] = []
+
+    for step_idx, d in enumerate(execution_dates):
+        per_inbox = []
+        for p in picked:
+            avail = int((projection.get(p["account_id"]) or {}).get(d, 0))
+            per_inbox.append({
+                "account_id": p["account_id"], "email": p.get("email"),
+                "domain": p.get("domain"), "available": avail,
+            })
+        total_avail = sum(x["available"] for x in per_inbox)
+        need = daily_target
+        # Enforce domain reserve — for each domain, cap the *total* usable
+        # capacity at (pool - reserve). Scale per-inbox availability
+        # proportionally so their sum respects the domain cap.
+        from collections import defaultdict as _dd2
+        domain_avail: Dict[str, int] = _dd2(int)
+        for x in per_inbox:
+            domain_avail[x["domain"]] += x["available"]
+        domain_cap: Dict[str, int] = {}
+        for dom, pool_tot in domain_avail.items():
+            domain_cap[dom] = max(0, pool_tot - domain_reserve)
+        for dom, cap in domain_cap.items():
+            if cap >= domain_avail[dom]:
+                continue  # nothing to cap
+            # Scale each inbox in this domain proportionally.
+            pool_tot = domain_avail[dom]
+            if pool_tot <= 0:
+                continue
+            for x in per_inbox:
+                if x["domain"] == dom:
+                    x["available"] = int(x["available"] * cap / pool_tot)
+        total_avail_after_reserve = sum(x["available"] for x in per_inbox)
+        # Proportional distribution: largest-first cap at ceil(need/N), then leftover fill.
+        n = max(len(per_inbox), 1)
+        cap_ceiling = ceil(need / n)
+        per_inbox.sort(key=lambda x: -x["available"])
+        contributions: Dict[str, int] = {x["account_id"]: 0 for x in per_inbox}
+        remaining = min(need, total_avail_after_reserve)
+        for x in per_inbox:
+            take = min(x["available"], cap_ceiling, remaining)
+            contributions[x["account_id"]] = take
+            remaining -= take
+            if remaining <= 0:
+                break
+        # Greedy leftover fill
+        i = 0
+        while remaining > 0 and i < n * 3:
+            slot = per_inbox[i % n]
+            headroom = slot["available"] - contributions[slot["account_id"]]
+            if headroom > 0:
+                take = min(headroom, remaining)
+                contributions[slot["account_id"]] += take
+                remaining -= take
+            i += 1
+
+        selected_lines = []
+        per_day_domain = _dd(int)
+        for x in per_inbox:
+            c = contributions[x["account_id"]]
+            per_inbox_totals[x["account_id"]] += c
+            per_inbox_by_date[x["account_id"]][d] = c
+            per_day_domain[x["domain"]] += c
+            selected_lines.append({**x, "contributes": c})
+        selected_total = sum(contributions.values())
+        for dom, tot in per_day_domain.items():
+            per_domain_by_date[d][dom] = tot
+        date_plan.append({
+            "step_number": step_idx + 1,
+            "date": d,
+            "required": need,
+            "available": total_avail,
+            "available_after_reserve": total_avail_after_reserve,
+            "selected": selected_total,
+            "shortfall": max(0, need - selected_total),
+            "inboxes": selected_lines,
+            "domains_reserved": [
+                {"domain": dom, "reserved": tot}
+                for dom, tot in sorted(per_day_domain.items(), key=lambda kv: -kv[1])
+            ],
+        })
+
+    # Aggregated view per selected inbox (used by the UI).
+    inbox_summaries = []
+    for p in picked:
+        aid = p["account_id"]
+        inbox_summaries.append({
+            "account_id": aid,
+            "email": p.get("email"),
+            "domain": p.get("domain"),
+            "daily_limit": p.get("daily_limit"),
+            "min_projected": p.get("_min_daily_projected", 0),
+            "avg_projected": p.get("_avg_daily_projected", 0),
+            "allocated_total": per_inbox_totals.get(aid, 0),
+            "per_date": per_inbox_by_date.get(aid, {}),
+            "dates_covered": [
+                d for d in execution_dates
+                if per_inbox_by_date.get(aid, {}).get(d, 0) > 0
+            ],
+        })
+
+    domains_used = sorted({p["domain"] for p in picked})
+    combined_min_daily = min((b["selected"] for b in date_plan), default=0)
+    projected_spare = max(0, combined_min_daily - daily_target)
+    total_shortfall_days = sum(1 for b in date_plan if b["shortfall"] > 0)
+
+    warnings: List[str] = []
+    if total_shortfall_days > 0:
+        warnings.append(
+            f"Group capacity insufficient on {total_shortfall_days} of "
+            f"{len(execution_dates)} execution date(s). Consider more inboxes."
+        )
+    if not picked:
+        warnings.append("No allocatable inboxes matched the campaign schedule.")
+    if len(picked) < requested_count:
+        warnings.append(
+            f"Only {len(picked)} inboxes available; recommended {requested_count}."
+        )
+
+    status = "Healthy" if total_shortfall_days == 0 and picked else (
+        "Partial" if picked else "Insufficient"
+    )
+    return {
+        "recipients": None,  # populated by endpoint
+        "daily_target": daily_target,
+        "auto_recommended_inboxes": auto_recommended,
+        "requested_inboxes": requested_count,
+        "median_daily_projected": median_avail,
+        "execution_dates": execution_dates,
+        "recommended_inboxes_count": len(picked),
+        "domains_used": domains_used,
+        "combined_min_daily_capacity": combined_min_daily,
+        "projected_spare_capacity": projected_spare,
+        "shortfall_days": total_shortfall_days,
+        "infrastructure_status": status,
+        "inboxes": inbox_summaries,
+        "date_plan": date_plan,
+        "excluded": excluded,
+        "warnings": warnings,
+    }
+
+
 def attach_phase3_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn, build_projection_fn, aggregate_capacity_fn):
     """Bolt the Phase-3 endpoints onto the existing /infrastructure router.
 
@@ -781,6 +1074,37 @@ def attach_phase3_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn,
         if execution_dates:
             result["execution_dates"] = execution_dates
         return result
+
+    @router.post("/plan-campaign")
+    async def plan_campaign(req: CampaignPlanRequest, user=Depends(get_infra_user)):
+        """Full Campaign Capacity Planner (spec items 1-16).
+
+        Redesign of Auto-Allocate as a capacity-planning engine:
+          * auto-derives the recommended inbox count from median projected
+            per-inbox capacity vs the daily send target,
+          * simulates per-execution-date proportional distribution across
+            the picked inboxes,
+          * accepts partial contributions,
+          * excludes only hard blockers (Paused / Risky / zero-projection),
+          * ignores warmup + domain score entirely,
+          * respects per-domain reserve.
+        """
+        rows = await load_inboxes_fn(db, user)
+        projection = await build_projection_fn(db, user, window_days=120)
+        execution_dates = _compute_execution_dates(
+            req.start_date, req.steps, req.delay_days_between_steps,
+            req.sending_days,
+        )
+        # Derive the effective daily target: user-supplied or recipients / #dates
+        daily_target = int(req.daily_send_target or ceil(req.recipients / max(len(execution_dates), 1)))
+        plan = _plan_campaign(
+            rows, projection, execution_dates, daily_target,
+            domain_reserve=req.domain_reserve,
+            override_required=req.override_required_inboxes,
+            min_remaining_per_inbox=req.min_remaining_per_inbox,
+        )
+        plan["recipients"] = req.recipients
+        return plan
 
     @router.post("/planner")
     async def planner(req: PlannerRequest, user=Depends(get_infra_user)):
