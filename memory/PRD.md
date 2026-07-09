@@ -1,5 +1,42 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 75 (Feb 2026)
+
+### Bugfix — Email Accounts Export 404/403 for Normal Users
+
+**Root cause**: The frontend Export CSV button on `/email-accounts` was
+calling `/api/infrastructure/accounts/export` (added in iter-74), which
+requires `can_access_infrastructure`. Normal users (role="user" without
+that flag) were rejected with 404/403.
+
+**Fix**: Added a new user-scoped endpoint
+`GET /api/accounts/export?format=csv&include_credentials=true` gated on
+`get_current_user` (any authenticated user, no infra permission needed).
+Query is strictly scoped to `user_id=user.user_id`, so a caller can
+never see another user's inboxes or credentials.
+
+CSV shape mirrors the Infrastructure export (16 base + 11 credential
+columns) so a file exported here re-imports through
+`/api/accounts/smtp/bulk-import` verbatim. New behaviour:
+- If `imap_password_encrypted` is missing but `smtp_password_encrypted`
+  is present AND `imap_host` is set, the SMTP password is mirrored into
+  the IMAP column so a re-import restores IMAP with the same password.
+
+**Frontend**: `EmailAccounts.jsx::handleExportAccountsCSV` now hits
+`/api/accounts/export` (was `/api/infrastructure/accounts/export`).
+
+**Verification** (testing-agent iter-75 report, **15/15 passing**):
+- Normal user gets HTTP 200 with the full 27-column CSV including
+  decrypted SMTP + IMAP passwords.
+- `include_credentials=false` correctly omits password columns.
+- Strict isolation — User B's export never contains User A's password.
+- Round-trip through the importer's header normalizer succeeds.
+- Unauthenticated requests get 401.
+- Super-admin's own view still respects iter-72 isolation.
+- iter-74 regression suite still passes.
+
+Test file: `/app/backend/tests/test_iter75_normal_user_accounts_export.py`
+
 ## Changelog — Iteration 74 (Feb 2026)
 
 ### Email Accounts Export — Include Credentials (TRUE BACKUP)
