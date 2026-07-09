@@ -1,5 +1,46 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 74 (Feb 2026)
+
+### Email Accounts Export — Include Credentials (TRUE BACKUP)
+
+Added an opt-in `include_credentials=true` mode to
+`GET /api/infrastructure/accounts/export` (CSV + XLSX) so the exported
+sheet can be used as a real backup that re-imports without any manual
+edits.
+
+**Base columns preserved** (nothing removed) — the new mode simply
+appends: `from_name`, `smtp_password`, `smtp_ssl`, `smtp_encryption`,
+`imap_password`, `imap_ssl`, `imap_encryption`, `send_delay`,
+`warmup_enabled`, `priority`, `tags`.
+
+Passwords are decrypted from the Fernet-encrypted vault columns
+(`smtp_password_encrypted` / `imap_password_encrypted`) using
+`server.decrypt_data`. Only the authenticated owner sees their own
+credentials — the endpoint is scoped by `user_id` (iter-72 isolation),
+so super_admins on their own Infrastructure page also get their own
+inboxes only.
+
+**Import round-trip**: `/api/accounts/smtp/bulk-import` header normalizer
+now maps `"SMTP Host"→smtp_host`, `"Send Delay"→delay_seconds`, etc., so
+the exported CSV can be dropped back in verbatim. Aliases:
+`send_delay → delay_seconds`, `smtp_encryption → smtp_ssl`.
+
+**Frontend**: Email Accounts page's Export CSV button now prompts
+"Include SMTP/IMAP passwords?" — OK = true backup, Cancel = safe-to-share
+export. Filename automatically annotates `_with_credentials` when creds
+are included.
+
+**Verification** (`test_iter74_email_accounts_export_credentials.py`,
+5/5 passing):
+- Default export never contains plain-text passwords.
+- With `include_credentials=true`, both SMTP + IMAP passwords appear
+  exactly as originally stored (decrypted).
+- Every existing column preserved.
+- Round-trip through the importer's header normalizer works — every
+  field re-imports to the same value.
+- A second user's export never contains the first user's credentials.
+
 ## Changelog — Iteration 73 (Feb 2026)
 
 ### Reports Module (NEW)

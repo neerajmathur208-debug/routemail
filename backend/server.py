@@ -4042,8 +4042,29 @@ async def bulk_import_smtp_accounts(
     
     text = content.decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
-    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
-    required = {"email", "password", "smtp_host", "smtp_port"}
+
+    def _normalize_header(h: str) -> str:
+        """Map exported headers ("SMTP Host", "SMTP Password") to the
+        importer's snake_case field names ("smtp_host", "smtp_password").
+        Also strips units and parenthetical annotations so the exported
+        file round-trips cleanly through the importer."""
+        s = (h or "").strip().lower()
+        # Drop things like "(seconds)" that human-friendly headers add
+        s = re.sub(r"\([^)]*\)", "", s).strip()
+        s = re.sub(r"[\s\-/]+", "_", s)
+        s = s.strip("_")
+        # Aliases so both the old and new export column names work
+        aliases = {
+            "sending_delay": "delay_seconds",
+            "send_delay": "delay_seconds",
+            "delay_between_sends": "delay_seconds",
+            "smtp_encryption": "smtp_ssl",
+            "imap_encryption": "imap_ssl",
+        }
+        return aliases.get(s, s)
+
+    headers = [_normalize_header(h) for h in (reader.fieldnames or [])]
+    required = {"email", "smtp_host", "smtp_port"}  # password required per-row (smtp_password OR password)
     missing = required - set(headers)
     if missing:
         raise HTTPException(status_code=400, detail=f"CSV is missing required columns: {', '.join(sorted(missing))}")
@@ -4073,9 +4094,9 @@ async def bulk_import_smtp_accounts(
     row_num = 1  # header is row 1 in user-facing terms
     for raw in all_rows:
         row_num += 1
-        normalized = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+        normalized = {_normalize_header(k): (v or "").strip() for k, v in raw.items() if k}
         email = normalized.get("email", "").strip().lower()
-        # Support both legacy "password" column and new explicit smtp_password column
+        # Support: legacy "password", exported "smtp_password" column
         password = (normalized.get("smtp_password") or normalized.get("password") or "").strip()
         smtp_host = normalized.get("smtp_host", "")
         smtp_port_raw = normalized.get("smtp_port", "")
@@ -4113,8 +4134,15 @@ async def bulk_import_smtp_accounts(
                             "error": "smtp_port must be a number"})
             continue
         
-        use_ssl_raw = normalized.get("use_ssl", "true").lower()
-        encryption = "ssl" if use_ssl_raw in ("ssl", "true", "1", "yes") and smtp_port in (465,) else "tls"
+        use_ssl_raw = normalized.get("smtp_ssl") or normalized.get("use_ssl") or "true"
+        use_ssl_raw = use_ssl_raw.lower()
+        # Honour explicit "tls" / "ssl" values from the export as-is
+        if use_ssl_raw in ("tls", "starttls"):
+            encryption = "tls"
+        elif use_ssl_raw == "ssl":
+            encryption = "ssl"
+        else:
+            encryption = "ssl" if use_ssl_raw in ("true", "1", "yes") and smtp_port in (465,) else "tls"
         # If use_ssl is true but the port is typical STARTTLS, keep tls
         
         try:
@@ -4124,7 +4152,7 @@ async def bulk_import_smtp_accounts(
         daily_limit = max(1, daily_limit)
         
         try:
-            send_delay = int(normalized.get("delay_seconds") or 30)
+            send_delay = int(normalized.get("delay_seconds") or normalized.get("send_delay") or 30)
         except ValueError:
             send_delay = 30
         send_delay = max(10, min(300, send_delay))

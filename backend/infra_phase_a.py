@@ -99,13 +99,39 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
 
     # ───────────── 1. EXPORT EMAIL ACCOUNTS ─────────────
     @router.get("/accounts/export")
-    async def export_accounts(format: str = Query("xlsx"), user=Depends(get_infra_user)):
+    async def export_accounts(
+        format: str = Query("xlsx"),
+        include_credentials: bool = Query(
+            False,
+            description=(
+                "When true, decrypts and includes SMTP + IMAP passwords in the "
+                "export so the file is a true backup that can be re-imported. "
+                "Strictly scoped to the requester's own inboxes."
+            ),
+        ),
+        user=Depends(get_infra_user),
+    ):
+        """Export the requester's email accounts as .xlsx or .csv.
+
+        `include_credentials=true` adds decrypted SMTP + IMAP passwords and
+        every other config field the importer accepts, making the exported
+        file a true backup: it can be fed back into `/api/accounts/smtp/
+        bulk-import` verbatim to restore the accounts on a fresh workspace.
+
+        Strict user isolation applies here too (see iter-72) — the query is
+        always scoped to `user_id`, even for super_admins. A super_admin
+        wanting to export another user's credentials must use the Super
+        Admin backup route, NOT this endpoint.
+        """
         fmt = (format or "xlsx").lower()
         if fmt not in ("xlsx", "csv"):
             raise HTTPException(status_code=400, detail="format must be xlsx|csv")
-        is_admin = user.get("role") == "super_admin"  # kept for audit only — NOT used for scoping
         q = {"user_id": user["user_id"]}
         accts = await db.email_accounts.find(q, {"_id": 0}).sort("email", 1).to_list(10000)
+
+        # Lazy import to avoid a circular dep between infra_phase_a → server
+        # (server imports infra_phase_a during router registration).
+        from server import decrypt_data
 
         # Index active campaign + drip assignments per account_id
         from collections import defaultdict
@@ -116,16 +142,35 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         drip_q = {"user_id": user["user_id"], "status": {"$in": ["running", "scheduled", "paused"]}}
         for d in await db.drip_campaigns.find(drip_q, {"_id": 0, "name": 1, "account_ids": 1}).to_list(5000):
             for aid in d.get("account_ids") or []: assign[aid].append(f"[drip] {d.get('name') or ''}")
-        _ = is_admin  # audit-only marker
 
-        headers = ["Email", "Domain", "Ownership", "SMTP Host", "SMTP Port", "SMTP Username",
-                   "IMAP Host", "IMAP Port", "IMAP Username", "Daily Limit", "Status",
-                   "Warmup Status", "Last Activity", "Date Added", "Campaign Assignments", "Notes"]
+        # ─── Column contract ────────────────────────────────────────────
+        # The base columns preserve the existing headers (backwards compat).
+        # When include_credentials=true we ADD credential + config columns
+        # using the SAME header names the bulk-importer expects (after
+        # `_normalize_header` maps them). No existing column is removed.
+        base_headers = [
+            "email", "domain", "ownership",
+            "smtp_host", "smtp_port", "smtp_username",
+            "imap_host", "imap_port", "imap_username",
+            "daily_limit", "status",
+            "warmup_status", "last_activity", "date_added",
+            "campaign_assignments", "notes",
+        ]
+        cred_headers = [
+            "from_name",
+            "smtp_password", "smtp_ssl", "smtp_encryption",
+            "imap_password", "imap_ssl", "imap_encryption",
+            "send_delay", "warmup_enabled",
+            "priority", "tags",
+        ]
+        headers = base_headers + (cred_headers if include_credentials else [])
+
         rows = []
         for a in accts:
-            email = a.get("email", "")
-            rows.append([
-                email, email.rsplit("@", 1)[-1] if "@" in email else "",
+            email = a.get("email", "") or ""
+            base_row = [
+                email,
+                email.rsplit("@", 1)[-1] if "@" in email else "",
                 a.get("ownership") or "",
                 a.get("smtp_host") or "", a.get("smtp_port") or "", a.get("smtp_username") or "",
                 a.get("imap_host") or "", a.get("imap_port") or "", a.get("imap_username") or "",
@@ -136,9 +181,34 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
                 a.get("created_at") or a.get("added_at") or "",
                 ", ".join(assign.get(a.get("account_id"), [])),
                 a.get("notes") or "",
-            ])
+            ]
+            if include_credentials:
+                smtp_pw_blob = a.get("smtp_password_encrypted") or ""
+                imap_pw_blob = a.get("imap_password_encrypted") or ""
+                smtp_pw = decrypt_data(smtp_pw_blob) if smtp_pw_blob else ""
+                imap_pw = decrypt_data(imap_pw_blob) if imap_pw_blob else ""
+                smtp_enc = (a.get("smtp_encryption") or "").lower()
+                imap_enc = (a.get("imap_encryption") or "").lower()
+                tags = a.get("tags")
+                tags_str = ",".join(tags) if isinstance(tags, list) else (tags or "")
+                base_row += [
+                    a.get("from_name") or a.get("display_name") or "",
+                    smtp_pw,
+                    "true" if smtp_enc in ("ssl", "true", "1") else "false",
+                    smtp_enc or "tls",
+                    imap_pw,
+                    "true" if imap_enc in ("ssl", "true", "1") else "false",
+                    imap_enc or "",
+                    int(a.get("send_delay") or 30),
+                    "true" if a.get("warmup_enabled") else "false",
+                    int(a.get("priority") or 0),
+                    tags_str,
+                ]
+            rows.append(base_row)
+
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        fname = f"RouteMail_Email_Accounts_{today}.{fmt}"
+        suffix = "_with_credentials" if include_credentials else ""
+        fname = f"RouteMail_Email_Accounts{suffix}_{today}.{fmt}"
         content = _xlsx(headers, rows, "Email Accounts") if fmt == "xlsx" else _csv_bytes(headers, rows)
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx" else "text/csv"
         return StreamingResponse(iter([content]), media_type=media,

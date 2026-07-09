@@ -651,50 +651,44 @@ export default function EmailAccounts({ user, setUser }) {
   // Client-side CSV export. The `/api/accounts` response already strips
   // `smtp_password_encrypted` / `imap_password_encrypted`, so plain-text
   // credentials NEVER leave the server — we cannot accidentally export them.
-  const handleExportAccountsCSV = () => {
-    const rows = filteredAccounts;
-    if (rows.length === 0) {
+  const handleExportAccountsCSV = async () => {
+    if (filteredAccounts.length === 0) {
       toast.error("No accounts to export");
       return;
     }
-    const headers = [
-      "email",
-      "from_name",
-      "smtp_host",
-      "smtp_port",
-      "smtp_username",
-      "smtp_use_ssl",
-      "imap_host",
-      "imap_port",
-      "imap_username",
-      "imap_use_ssl",
-      "daily_limit",
-      "send_delay",
-      "warmup_enabled",
-      "warmup_status",
-      "status",
-      "last_send_date",
-    ];
-    const esc = (v) => {
-      if (v == null) return "";
-      const s = String(v);
-      // CSV-safe quote/escape
-      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
-    const csv = [
-      headers.join(","),
-      ...rows.map((a) => headers.map((h) => esc(a[h])).join(",")),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-    link.href = url;
-    link.download = `email-accounts-${stamp}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    toast.success(`Exported ${rows.length} account${rows.length === 1 ? "" : "s"}`);
+    const confirmMsg =
+      "Include SMTP/IMAP passwords in the export?\n\n" +
+      "OK: export a TRUE BACKUP with credentials (can be re-imported).\n" +
+      "Cancel: export without credentials (safer to share).";
+    const includeCreds = window.confirm(confirmMsg);
+    try {
+      const res = await api.get(
+        `/api/infrastructure/accounts/export?format=csv&include_credentials=${includeCreds ? "true" : "false"}`,
+        { responseType: "blob" }
+      );
+      const cd = res.headers["content-disposition"] || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+      const fname = m
+        ? m[1]
+        : `email-accounts${includeCreds ? "_with_credentials" : ""}-${stamp}.csv`;
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(
+        includeCreds
+          ? "Exported with credentials — treat this file as sensitive"
+          : `Exported ${filteredAccounts.length} account${filteredAccounts.length === 1 ? "" : "s"}`
+      );
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err?.message || "Export failed";
+      toast.error(msg);
+    }
   };
 
   const resetForm = () => {
