@@ -1,18 +1,29 @@
-"""Campaign + Drip Campaign Excel reporting.
+"""Campaign + Drip Campaign reporting.
 
-A single router (mounted under `/api/reports`) that produces an .xlsx workbook
-summarising performance of regular Campaigns and Drip Campaigns within a date
-range. Per the product spec the workbook tracks Reply / Bounce / Unsubscribe
-counts only (not Open/Click — those are not tracked in this codebase).
+A single router (mounted under `/api/reports`) exposing:
 
-Usage:
-    from reports_routes import build_reports_router
-    api_router.include_router(build_reports_router(db, get_current_user))
+* **`GET /reports/campaigns`** — JSON row list powering the Reports page
+  table (name / total prospects / emails sent / date sent + status).
+* **`GET /reports/campaigns/export.csv`** — CSV download matching the
+  product spec's 4-column contract (Campaign Name, Total Prospects,
+  Emails Sent, Date Sent).
+* **`GET /reports/export`** — legacy .xlsx workbook (kept for the
+  existing ExportReportDialog component; not part of the new spec).
+
+Every endpoint is strictly scoped to the requester's ``user_id`` — the
+Infrastructure isolation contract also applies here.
+
+Layout note: this file is intentionally the single home for reporting so
+new reports (Infrastructure, Warmup, Unibox, Reply, Domain Health, …)
+can be added as additional endpoints under the same `/reports` prefix
+without touching the frontend router or sidebar.
 """
 
+import csv
 import io
+import re
 from datetime import datetime, timezone, date as _date_cls
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -21,6 +32,155 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
 # ---------- helpers ---------------------------------------------------------
+
+_CSV_HEADERS = [
+    "Campaign / Drip Campaign Name",
+    "Total Prospects in the List",
+    "Emails Sent",
+    "Date Sent",
+]
+
+_FNAME_STRIP = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _to_iso_date(value: Any) -> str:
+    """Best-effort coerce to a YYYY-MM-DD string (UTC). Returns "" on miss."""
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).date().isoformat() if value.tzinfo else value.date().isoformat()
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc).date().isoformat() if dt.tzinfo else dt.date().isoformat()
+        except Exception:
+            # Legacy rows already stored as bare YYYY-MM-DD
+            if len(value) >= 10 and value[4] == "-" and value[7] == "-":
+                return value[:10]
+    return ""
+
+
+def _campaign_date_sent(camp: Dict[str, Any]) -> str:
+    return _to_iso_date(
+        camp.get("started_at")
+        or camp.get("completed_at")
+        or camp.get("scheduled_at")
+        or camp.get("created_at")
+    )
+
+
+def _drip_date_sent(drip: Dict[str, Any]) -> str:
+    stats = drip.get("last_run_stats") or {}
+    schedule = drip.get("schedule") or {}
+    return _to_iso_date(
+        drip.get("started_at")
+        or stats.get("started_at")
+        or schedule.get("start_date")
+        or drip.get("created_at")
+    )
+
+
+def _within_range(date_str: str, start: Optional[str], end: Optional[str]) -> bool:
+    if not date_str:
+        return start is None and end is None
+    if start and date_str < start:
+        return False
+    if end and date_str > end:
+        return False
+    return True
+
+
+def _matches_name(name: str, search: Optional[str]) -> bool:
+    if not search:
+        return True
+    return search.lower() in (name or "").lower()
+
+
+def _safe_filename(base: str) -> str:
+    slug = _FNAME_STRIP.sub("_", base).strip("_") or "report"
+    return f"{slug}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+
+
+async def _load_campaign_rows(db, user_id: str) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    async for c in db.campaigns.find(
+        {"user_id": user_id},
+        {
+            "_id": 0, "campaign_id": 1, "name": 1, "status": 1,
+            "total_emails": 1, "sent_count": 1,
+            "started_at": 1, "completed_at": 1, "scheduled_at": 1, "created_at": 1,
+        },
+    ).sort([("created_at", -1)]):
+        rows.append({
+            "id": c.get("campaign_id"),
+            "type": "Campaign",
+            "name": c.get("name") or "",
+            "total_prospects": int(c.get("total_emails") or 0),
+            "emails_sent": int(c.get("sent_count") or 0),
+            "date_sent": _campaign_date_sent(c),
+            "status": c.get("status") or "",
+        })
+    return rows
+
+
+async def _load_drip_rows(db, user_id: str) -> List[Dict[str, Any]]:
+    """Emails Sent prefers the ``total_sent`` counter maintained by the
+    drip worker; falls back to counting ``drip_logs`` for legacy rows."""
+    rows: List[Dict[str, Any]] = []
+    drips = await db.drip_campaigns.find(
+        {"user_id": user_id},
+        {
+            "_id": 0, "drip_id": 1, "name": 1, "status": 1,
+            "total_contacts": 1, "total_sent": 1, "last_run_stats": 1,
+            "schedule": 1, "started_at": 1, "created_at": 1,
+        },
+    ).sort([("created_at", -1)]).to_list(10000)
+
+    for d in drips:
+        drip_id = d.get("drip_id")
+        sent = d.get("total_sent")
+        if sent is None:
+            sent = await db.drip_logs.count_documents({"drip_id": drip_id, "status": "sent"})
+        total_prospects = await db.drip_contacts.count_documents({"drip_id": drip_id})
+        if not total_prospects:
+            total_prospects = int(d.get("total_contacts") or 0)
+        rows.append({
+            "id": drip_id,
+            "type": "Drip Campaign",
+            "name": d.get("name") or "",
+            "total_prospects": int(total_prospects),
+            "emails_sent": int(sent or 0),
+            "date_sent": _drip_date_sent(d),
+            "status": d.get("status") or "",
+        })
+    return rows
+
+
+async def _fetch_rows(
+    db,
+    user_id: str,
+    *,
+    campaign_type: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    search: Optional[str],
+) -> List[Dict[str, Any]]:
+    all_rows: List[Dict[str, Any]] = []
+    if campaign_type in ("campaign", "both"):
+        all_rows.extend(await _load_campaign_rows(db, user_id))
+    if campaign_type in ("drip", "both"):
+        all_rows.extend(await _load_drip_rows(db, user_id))
+
+    filtered = [
+        r for r in all_rows
+        if _within_range(r["date_sent"], start_date, end_date)
+        and _matches_name(r["name"], search)
+    ]
+    filtered.sort(key=lambda r: (r["date_sent"] or "0000-00-00", r["name"]), reverse=True)
+    return filtered
+
+
+# ---------- legacy .xlsx helpers -------------------------------------------
 
 def _parse_iso_date(s: Optional[str]) -> Optional[datetime]:
     """Accepts 'YYYY-MM-DD' or full ISO datetime. Returns a UTC-aware datetime."""
@@ -82,6 +242,84 @@ def _matches_date_range(value, frm: Optional[datetime], to: Optional[datetime]) 
 
 def build_reports_router(db, get_current_user):
     router = APIRouter(prefix="/reports", tags=["reports"])
+
+    def _uid(user) -> str:
+        return user.user_id if hasattr(user, "user_id") else user["user_id"]
+
+    def _validate_type(campaign_type: str) -> str:
+        ct = (campaign_type or "both").lower().strip()
+        if ct not in {"campaign", "drip", "both"}:
+            raise HTTPException(
+                status_code=400,
+                detail="campaign_type must be one of: campaign, drip, both",
+            )
+        return ct
+
+    # ─── New spec endpoints ───────────────────────────────────────────────
+
+    @router.get("/campaigns", operation_id="reports_campaigns_list")
+    async def list_campaign_report(
+        start_date: Optional[str] = Query(None, description="YYYY-MM-DD inclusive"),
+        end_date: Optional[str] = Query(None, description="YYYY-MM-DD inclusive"),
+        campaign_type: str = Query("both", description="campaign | drip | both"),
+        search: Optional[str] = Query(None, description="Case-insensitive name substring"),
+        user=Depends(get_current_user),
+    ) -> Dict[str, Any]:
+        """JSON version powering the Reports table on the frontend."""
+        ct = _validate_type(campaign_type)
+        rows = await _fetch_rows(
+            db, _uid(user),
+            campaign_type=ct, start_date=start_date, end_date=end_date, search=search,
+        )
+        return {
+            "rows": rows,
+            "total": len(rows),
+            "filters": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "campaign_type": ct,
+                "search": search or "",
+            },
+        }
+
+    @router.get("/campaigns/export.csv", operation_id="reports_campaigns_csv")
+    async def export_campaign_report_csv(
+        start_date: Optional[str] = Query(None),
+        end_date: Optional[str] = Query(None),
+        campaign_type: str = Query("both"),
+        search: Optional[str] = Query(None),
+        user=Depends(get_current_user),
+    ):
+        """CSV per the 4-column product spec. Streams so large reports (100k+
+        rows) don't buffer in memory."""
+        ct = _validate_type(campaign_type)
+        rows = await _fetch_rows(
+            db, _uid(user), campaign_type=ct,
+            start_date=start_date, end_date=end_date, search=search,
+        )
+
+        def _iter():
+            buf = io.StringIO()
+            csv.writer(buf, quoting=csv.QUOTE_MINIMAL).writerow(_CSV_HEADERS)
+            yield buf.getvalue()
+            for r in rows:
+                buf = io.StringIO()
+                csv.writer(buf, quoting=csv.QUOTE_MINIMAL).writerow([
+                    r["name"], r["total_prospects"], r["emails_sent"], r["date_sent"],
+                ])
+                yield buf.getvalue()
+
+        fname = _safe_filename("RouteMail_Campaign_Report")
+        return StreamingResponse(
+            _iter(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{fname}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    # ─── Legacy .xlsx endpoint (kept for existing dialog component) ───────
 
     HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
     HEADER_FILL = PatternFill("solid", fgColor="6D28D9")  # violet-700

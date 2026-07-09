@@ -36,6 +36,7 @@ import InfrastructureReplacements from "./pages/InfrastructureReplacements";
 import InfrastructureIssues from "./pages/InfrastructureIssues";
 import InfrastructureInboxes from "./pages/InfrastructureInboxes";
 import SentEmails from "./pages/SentEmails";
+import Reports from "./pages/Reports";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Subscription from "./pages/Subscription";
@@ -280,6 +281,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             {({ user, setUser }) => <SentEmails user={user} setUser={setUser} />}
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            {({ user, setUser }) => <Reports user={user} setUser={setUser} />}
           </ProtectedRoute>
         }
       />

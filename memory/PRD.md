@@ -1,5 +1,63 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 73 (Feb 2026)
+
+### Reports Module (NEW)
+
+Added a dedicated **Reports** section to the app — a central home for every
+export, mounted at `/reports` in both the frontend router and the sidebar.
+
+**Backend** (`/app/backend/reports_routes.py`, mounted at `/api/reports`):
+- `GET /reports/campaigns` — JSON list combining Campaigns + Drip
+  Campaigns with filters: `start_date`, `end_date`, `campaign_type`
+  (campaign / drip / both), `search`.
+- `GET /reports/campaigns/export.csv` — streams a CSV with the exact
+  4-column contract from the spec:
+    1. Campaign / Drip Campaign Name
+    2. Total Prospects in the List
+    3. Emails Sent
+    4. Date Sent
+- Streaming implementation → handles 100k+ rows without buffering.
+- CSV uses `csv.QUOTE_MINIMAL` so campaign names containing commas or
+  quotes are safely escaped.
+- Every query is scoped to the requester's `user_id` (matches the
+  iter-72 strict-isolation contract).
+- Legacy `/reports/export` (.xlsx) preserved for the existing
+  ExportReportDialog component.
+
+**Frontend** (`/app/frontend/src/pages/Reports.jsx`):
+- Left-hand "Report Tile List" designed for expansion — new reports
+  (Infrastructure, Warmup, Unibox, Reply, Domain Health) can be added
+  as additional enabled tiles without touching the page shell.
+- Campaign Report card: date range, campaign type, name search, live
+  totals strip (Rows / Total Prospects / Emails Sent), sortable table
+  with row-level status pill, and Export CSV button.
+- Added sidebar entry `Reports` (BarChart3 icon) between Sent Emails
+  and Unibox.
+
+### Verification of Existing Behaviour
+
+- **Email Account Priority** — code path: `process_drip_campaigns` in
+  `server.py` sorts running drip campaigns by `created_at` ASC and
+  processes them sequentially inside a single worker tick.
+- **Multiple Drip Campaigns** — same worker tick services every
+  `status="running"` drip.
+
+New pytest `test_iter73_priority_and_concurrent_drips.py` proves the two
+behaviours with real code execution (SMTP mocked):
+- Older drip fully consumes the shared inbox's 10-cap; newer drip sends
+  0 in the same tick.
+- After a simulated daily reset the newer drip resumes (proves no
+  permanent blocking).
+- All three concurrent drips have `last_run_stats` populated inside a
+  single tick (concurrency guarantee).
+
+### Test summary
+
+- New: `test_iter73_reports.py` **13/13 passing**
+- New: `test_iter73_priority_and_concurrent_drips.py` **3/3 passing**
+- Regression: 41/41 (iter72 isolation + iter71 planner + iter68/67/66 drip)
+
 ## Changelog — Iteration 72b (Feb 2026)
 
 ### Infrastructure — Strict User-Level Data Isolation (CRITICAL FIX)

@@ -22,6 +22,7 @@ import {
   Server,
   PenSquare,
   Network,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { api } from "../App";
@@ -34,6 +35,7 @@ const navItems = [
   { path: "/campaign", label: "Campaign", icon: Send },
   { path: "/drip-campaigns", label: "Drip Campaigns", icon: Workflow },
   { path: "/sent-emails", label: "Sent Emails", icon: Mail },
+  { path: "/reports", label: "Reports", icon: BarChart3 },
   { path: "/unibox", label: "Unibox", icon: Inbox },
   { path: "/leads", label: "Responses / Leads", icon: Star },
   { path: "/do-not-email", label: "Do Not Email", icon: ShieldOff },
