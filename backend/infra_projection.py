@@ -71,12 +71,11 @@ async def build_projection(
 ) -> Dict[str, Dict[str, int]]:
     """Compute the per-account projection. See module docstring for shape.
 
-    Visibility scoping matches the rest of the Infrastructure module — super
-    admins see everything, infra-permitted users see only their own accounts /
-    campaigns / drip campaigns. We never project for accounts the requester
-    can't see.
+    STRICT USER ISOLATION — every projection query is scoped by `user_id`,
+    even for super_admins. When a super_admin opens the Infrastructure page
+    the projection engine only reads THEIR OWN inboxes / campaigns / drips.
+    Never returns another user's reserved capacity.
     """
-    is_admin = user_doc.get("role") == "super_admin"
     user_id = user_doc["user_id"]
 
     today_utc = datetime.now(timezone.utc)
@@ -85,9 +84,10 @@ async def build_projection(
     projection: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
     # ---------- 1. Drip projections ----------------------------------------
-    drip_query: Dict[str, Any] = {"status": {"$in": ["running", "scheduled", "paused"]}}
-    if not is_admin:
-        drip_query["user_id"] = user_id
+    drip_query: Dict[str, Any] = {
+        "user_id": user_id,
+        "status": {"$in": ["running", "scheduled", "paused"]},
+    }
 
     drips = await db.drip_campaigns.find(
         drip_query,
@@ -211,9 +211,10 @@ async def build_projection(
                     step_idx = next_step_idx
 
     # ---------- 2. Scheduled / running regular campaigns -------------------
-    camp_query: Dict[str, Any] = {"status": {"$in": ["scheduled", "running"]}}
-    if not is_admin:
-        camp_query["user_id"] = user_id
+    camp_query: Dict[str, Any] = {
+        "user_id": user_id,
+        "status": {"$in": ["scheduled", "running"]},
+    }
 
     camps = await db.campaigns.find(
         camp_query,

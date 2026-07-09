@@ -221,9 +221,9 @@ def _score_from_counts(counts: Dict[str, int], account: Dict[str, Any]) -> Dict[
 
 
 async def _compute_reputation_for_user(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Compute (and upsert into `domain_reputation`) one document per (user, domain)."""
-    is_admin = user_doc.get("role") == "super_admin"
-    q: Dict[str, Any] = {} if is_admin else {"user_id": user_doc["user_id"]}
+    """Compute (and upsert into `domain_reputation`) one document per (user, domain).
+    Strict user isolation — only scores the current user's own inboxes."""
+    q: Dict[str, Any] = {"user_id": user_doc["user_id"]}
     accounts = await db.email_accounts.find(q, {"_id": 0}).to_list(10000)
 
     now = _now()
@@ -295,8 +295,8 @@ async def _compute_reputation_for_user(db, user_doc: Dict[str, Any]) -> List[Dic
 
 
 async def _read_reputation_cache(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    is_admin = user_doc.get("role") == "super_admin"
-    q: Dict[str, Any] = {} if is_admin else {"user_id": user_doc["user_id"]}
+    # Strict user isolation — never mix another user's reputation into the read
+    q: Dict[str, Any] = {"user_id": user_doc["user_id"]}
     return await db.domain_reputation.find(q, {"_id": 0}).sort("score_30d", 1).to_list(10000)
 
 
@@ -424,11 +424,10 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         if action not in ("resume", "pause", "replace", "delete"):
             raise HTTPException(status_code=400, detail="action must be resume|pause|replace|delete")
 
-        is_admin = user.get("role") == "super_admin"
-        # Verify ownership for non-admin users
-        scope: Dict[str, Any] = {"account_id": {"$in": payload.account_ids}}
-        if not is_admin:
-            scope["user_id"] = user["user_id"]
+        # Strict user isolation — even super_admins must own the target inboxes
+        # via the primary Infrastructure endpoints. Global bulk actions must
+        # live behind a separate admin panel endpoint.
+        scope: Dict[str, Any] = {"account_id": {"$in": payload.account_ids}, "user_id": user["user_id"]}
         targets = await db.email_accounts.find(scope, {"_id": 0}).to_list(1000)
         if not targets:
             raise HTTPException(status_code=404, detail="No matching inboxes")
@@ -481,11 +480,8 @@ def attach_phase_c_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
             # Build the candidate pool ourselves to avoid circular imports.
             rows = await load_inboxes_fn(db, user)
             # busy = all accounts currently in any running campaign/drip
-            cq: Dict[str, Any] = {"status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]}}
-            dq: Dict[str, Any] = {"status": {"$in": ["running", "scheduled", "paused"]}}
-            if not is_admin:
-                cq["user_id"] = user["user_id"]
-                dq["user_id"] = user["user_id"]
+            cq: Dict[str, Any] = {"user_id": user["user_id"], "status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]}}
+            dq: Dict[str, Any] = {"user_id": user["user_id"], "status": {"$in": ["running", "scheduled", "paused"]}}
             busy: set = set()
             async for c in db.campaigns.find(cq, {"_id": 0, "account_ids": 1}):
                 for a in c.get("account_ids") or []:

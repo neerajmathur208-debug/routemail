@@ -1,5 +1,53 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 72b (Feb 2026)
+
+### Infrastructure — Strict User-Level Data Isolation (CRITICAL FIX)
+
+Removed every "super_admin sees everything" bypass across the Infrastructure
+module. Every widget, calculation, recommendation, chart, statistic, planner
+and automation on the Infrastructure page now uses ONLY the currently
+logged-in user's data — even for super_admins on their own Infrastructure
+page.
+
+**Files fixed (5):**
+- `infrastructure_routes.py::_load_inboxes` — always filters by `user_id`
+  (previously omitted the filter for super_admins → global inbox leak)
+- `infra_projection.py::build_projection` — always scopes drip + campaign
+  reservations by `user_id`
+- `infra_phase_a.py` — `/accounts/export`, `/forecast`, `/domains`,
+  `/domains/renewal-report` all strictly scoped to current user
+- `infra_phase_b.py` — `_busy_account_ids`, `_affected_campaigns`,
+  `_swap_in_collections`, `/replacements` history — strictly scoped
+- `infra_phase_c.py` — `_compute_reputation_for_user`,
+  `_read_reputation_cache`, `/issues/bulk`, replace flow — strictly scoped
+
+**Downstream endpoints inheriting the fix (via the shared helpers above):**
+`/infrastructure/inboxes`, `/summary`, `/calendar/{id}`, `/export`,
+`/plan-campaign` (Campaign Capacity Planner), `/allocate` (Auto-Allocate),
+`/planner`, `/batch-planner`, `/forecast`, `/reputation`,
+`/reputation/recompute`, `/issues`, `/issues/bulk`,
+`/replacements/candidate/{id}`, `/replacements/execute/{id}`,
+`/replacements/auto-scan`, `/replacements`, `/domains`, `/domains/*`.
+
+**Verification:**
+- New pytest suite `test_iter72_infra_user_isolation.py`: **8/8 passing**
+  (inboxes, summary+capacity, domains, forecast, planner, replacements
+  history, issues dashboard, reputation — all verified to isolate a
+  regular user vs. a super_admin using their own Infrastructure page).
+- Broader infra regression suite: **154 passing** (2 pre-existing
+  Google-auth failures unrelated to this change).
+- Live-preview screenshot: super-admin dhruvmathur208's Infrastructure
+  page now shows only their own 7 inboxes / 4 domains / 260 daily emails
+  (previously leaked 23 inboxes / 8 domains globally).
+
+**Spec compliance (per user's requirement list):**
+Infrastructure Summary Cards ✓ · Remaining Capacity ✓ · Next 7/30/120 Days
+Capacity ✓ · Infrastructure Forecast ✓ · Domain Reputation ✓ · Domain
+Tracking & Expiry ✓ · Domain Capacity ✓ · Inbox Availability ✓ ·
+Auto Allocate ✓ · Campaign Capacity Planner ✓ · Capacity Planner ✓ ·
+Automatic Infrastructure Replacement ✓ · Issues Dashboard ✓.
+
 ## Changelog — Iteration 72 (Feb 2026)
 
 ### Capacity Planner — Availability Calculation Fix + Copy UI (VERIFIED)

@@ -103,21 +103,20 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         fmt = (format or "xlsx").lower()
         if fmt not in ("xlsx", "csv"):
             raise HTTPException(status_code=400, detail="format must be xlsx|csv")
-        is_admin = user.get("role") == "super_admin"
-        q = {} if is_admin else {"user_id": user["user_id"]}
+        is_admin = user.get("role") == "super_admin"  # kept for audit only — NOT used for scoping
+        q = {"user_id": user["user_id"]}
         accts = await db.email_accounts.find(q, {"_id": 0}).sort("email", 1).to_list(10000)
 
         # Index active campaign + drip assignments per account_id
         from collections import defaultdict
         assign = defaultdict(list)
-        camp_q = {"status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]}}
-        if not is_admin: camp_q["user_id"] = user["user_id"]
+        camp_q = {"user_id": user["user_id"], "status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]}}
         for c in await db.campaigns.find(camp_q, {"_id": 0, "name": 1, "account_ids": 1}).to_list(5000):
             for aid in c.get("account_ids") or []: assign[aid].append(c.get("name") or "")
-        drip_q = {"status": {"$in": ["running", "scheduled", "paused"]}}
-        if not is_admin: drip_q["user_id"] = user["user_id"]
+        drip_q = {"user_id": user["user_id"], "status": {"$in": ["running", "scheduled", "paused"]}}
         for d in await db.drip_campaigns.find(drip_q, {"_id": 0, "name": 1, "account_ids": 1}).to_list(5000):
             for aid in d.get("account_ids") or []: assign[aid].append(f"[drip] {d.get('name') or ''}")
+        _ = is_admin  # audit-only marker
 
         headers = ["Email", "Domain", "Ownership", "SMTP Host", "SMTP Port", "SMTP Username",
                    "IMAP Host", "IMAP Port", "IMAP Username", "Daily Limit", "Status",
@@ -235,8 +234,8 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
 
     @router.get("/domains")
     async def list_domains(user=Depends(get_infra_user)):
-        is_admin = user.get("role") == "super_admin"
-        q = {} if is_admin else {"user_id": user["user_id"]}
+        # STRICT USER ISOLATION — never surface another user's tracked domains
+        q = {"user_id": user["user_id"]}
         docs = await db.tracked_domains.find(q, {"_id": 0}).sort("domain", 1).to_list(10000)
         enriched = []
         for d in docs:
@@ -294,8 +293,8 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         fmt = (format or "xlsx").lower()
         if fmt not in ("xlsx", "csv"):
             raise HTTPException(status_code=400, detail="format must be xlsx|csv")
-        is_admin = user.get("role") == "super_admin"
-        q = {} if is_admin else {"user_id": user["user_id"]}
+        is_admin = user.get("role") == "super_admin"  # kept for audit only — NOT used for scoping
+        q = {"user_id": user["user_id"]}
         docs = await db.tracked_domains.find(q, {"_id": 0}).sort("domain", 1).to_list(10000)
         headers = ["Domain", "Registrar", "Expiry Date", "Days Remaining", "Status", "Renewal Date", "Notes"]
         rows = []
@@ -306,6 +305,7 @@ def attach_phase_a_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
             )
             rows.append([d.get("domain", ""), d.get("registrar") or "", d.get("expiry_date") or "",
                          days if days is not None else "", status, d.get("renewal_date") or "", d.get("notes") or ""])
+        _ = is_admin  # audit-only marker
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         fname = f"RouteMail_Domain_Renewal_Report_{today}.{fmt}"
         content = _xlsx(headers, rows, "Renewal Report", fill="B45309") if fmt == "xlsx" else _csv_bytes(headers, rows)

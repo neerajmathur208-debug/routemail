@@ -106,24 +106,27 @@ def _compute_status(
 async def _load_inboxes(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Returns Inbox rows the requester is allowed to see.
 
-    Super admin → everything in the platform.
-    Other infra-permitted users → their own accounts (same scoping as the rest
-    of the app — no cross-tenant leakage).
+    STRICT USER ISOLATION: every Infrastructure query is scoped to the
+    logged-in user's `user_id`, even for super_admins. When a super_admin
+    opens the Infrastructure page they see ONLY their own inboxes /
+    campaigns / drips / domains. A separate admin-only workspace view (if
+    ever introduced) must be a distinct endpoint — never a hidden bypass
+    on the primary Infrastructure APIs.
     """
-    is_admin = (user_doc.get("role") == "super_admin")
-    q: Dict[str, Any] = {}
-    if not is_admin:
-        q["user_id"] = user_doc["user_id"]
+    user_id = user_doc["user_id"]
 
-    accounts = await db.email_accounts.find(q, {"_id": 0}).sort("email", 1).to_list(10000)
+    accounts = await db.email_accounts.find(
+        {"user_id": user_id}, {"_id": 0}
+    ).sort("email", 1).to_list(10000)
 
     # Pre-build active campaign assignments in one round trip rather than
     # N queries (matters once a workspace gets to a few hundred accounts).
     campaign_account_map: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
-    camp_query = {"status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]}}
-    if not is_admin:
-        camp_query["user_id"] = user_doc["user_id"]
+    camp_query = {
+        "user_id": user_id,
+        "status": {"$in": ["running", "scheduled", "paused", "paused_daily_limit"]},
+    }
     camps = await db.campaigns.find(
         camp_query,
         {"_id": 0, "campaign_id": 1, "name": 1, "status": 1, "account_ids": 1, "scheduled_at": 1},
@@ -138,9 +141,10 @@ async def _load_inboxes(db, user_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "scheduled_at": c.get("scheduled_at"),
             })
 
-    drip_query = {"status": {"$in": ["running", "scheduled", "paused"]}}
-    if not is_admin:
-        drip_query["user_id"] = user_doc["user_id"]
+    drip_query = {
+        "user_id": user_id,
+        "status": {"$in": ["running", "scheduled", "paused"]},
+    }
     drips = await db.drip_campaigns.find(
         drip_query,
         {"_id": 0, "drip_id": 1, "name": 1, "status": 1, "account_ids": 1, "schedule": 1},

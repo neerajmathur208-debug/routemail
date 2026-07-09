@@ -36,13 +36,10 @@ def attach_phase_b_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
 
     async def _busy_account_ids(user_doc: Dict[str, Any]) -> set:
         """Return the set of account_ids currently assigned to ANY running /
-        scheduled / paused campaign or drip the user can see."""
-        is_admin = user_doc.get("role") == "super_admin"
-        cq: Dict[str, Any] = {"status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
-        dq: Dict[str, Any] = {"status": {"$in": ACTIVE_DRIP_STATUSES}}
-        if not is_admin:
-            cq["user_id"] = user_doc["user_id"]
-            dq["user_id"] = user_doc["user_id"]
+        scheduled / paused campaign or drip belonging to the current user.
+        Strict user isolation — never counts another user's reservations."""
+        cq: Dict[str, Any] = {"user_id": user_doc["user_id"], "status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
+        dq: Dict[str, Any] = {"user_id": user_doc["user_id"], "status": {"$in": ACTIVE_DRIP_STATUSES}}
 
         busy: set = set()
         async for c in db.campaigns.find(cq, {"_id": 0, "account_ids": 1}):
@@ -54,13 +51,10 @@ def attach_phase_b_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         return busy
 
     async def _affected_campaigns(user_doc: Dict[str, Any], account_id: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Return campaigns + drips that currently contain the given account_id."""
-        is_admin = user_doc.get("role") == "super_admin"
-        cq: Dict[str, Any] = {"account_ids": account_id, "status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
-        dq: Dict[str, Any] = {"account_ids": account_id, "status": {"$in": ACTIVE_DRIP_STATUSES}}
-        if not is_admin:
-            cq["user_id"] = user_doc["user_id"]
-            dq["user_id"] = user_doc["user_id"]
+        """Return campaigns + drips that currently contain the given account_id.
+        Strict user isolation — never inspects another user's campaigns/drips."""
+        cq: Dict[str, Any] = {"user_id": user_doc["user_id"], "account_ids": account_id, "status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
+        dq: Dict[str, Any] = {"user_id": user_doc["user_id"], "account_ids": account_id, "status": {"$in": ACTIVE_DRIP_STATUSES}}
         camps = await db.campaigns.find(cq, {"_id": 0, "campaign_id": 1, "name": 1, "status": 1}).to_list(2000)
         drips = await db.drip_campaigns.find(dq, {"_id": 0, "drip_id": 1, "name": 1, "status": 1}).to_list(2000)
         return {"campaigns": camps, "drips": drips}
@@ -105,13 +99,10 @@ def attach_phase_b_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
         return pool[0]
 
     async def _swap_in_collections(user_doc: Dict[str, Any], old_id: str, new_id: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Replace old_id with new_id inside campaign + drip `account_ids` arrays."""
-        is_admin = user_doc.get("role") == "super_admin"
-        cq: Dict[str, Any] = {"account_ids": old_id, "status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
-        dq: Dict[str, Any] = {"account_ids": old_id, "status": {"$in": ACTIVE_DRIP_STATUSES}}
-        if not is_admin:
-            cq["user_id"] = user_doc["user_id"]
-            dq["user_id"] = user_doc["user_id"]
+        """Replace old_id with new_id inside campaign + drip `account_ids` arrays.
+        Strict user isolation — only modifies the current user's own docs."""
+        cq: Dict[str, Any] = {"user_id": user_doc["user_id"], "account_ids": old_id, "status": {"$in": ACTIVE_CAMPAIGN_STATUSES}}
+        dq: Dict[str, Any] = {"user_id": user_doc["user_id"], "account_ids": old_id, "status": {"$in": ACTIVE_DRIP_STATUSES}}
 
         camps = await db.campaigns.find(cq, {"_id": 0, "campaign_id": 1, "name": 1, "status": 1, "account_ids": 1}).to_list(2000)
         drips = await db.drip_campaigns.find(dq, {"_id": 0, "drip_id": 1, "name": 1, "status": 1, "account_ids": 1}).to_list(2000)
@@ -290,8 +281,8 @@ def attach_phase_b_routes(router: APIRouter, db, get_infra_user, load_inboxes_fn
     @router.get("/replacements")
     async def history(limit: int = 200, status: Optional[str] = None,
                       triggered_by: Optional[str] = None, user=Depends(get_infra_user)):
-        is_admin = user.get("role") == "super_admin"
-        q: Dict[str, Any] = {} if is_admin else {"user_id": user["user_id"]}
+        # Strict user isolation — never surface another user's replacement history
+        q: Dict[str, Any] = {"user_id": user["user_id"]}
         if status:
             q["status"] = status
         if triggered_by:
