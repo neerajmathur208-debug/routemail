@@ -1,5 +1,48 @@
 # RouteMail - Email Rotation SaaS Platform
 
+## Changelog — Iteration 76 (Feb 2026)
+
+### Bugfix — Email Accounts Export CSV 404 (Frontend URL Double-Prefix)
+
+**Root cause**: The frontend `api` axios instance in `App.js` already has
+`baseURL = ${REACT_APP_BACKEND_URL}/api`, so `api.get('/api/accounts/
+export')` produced `${BACKEND_URL}/api/api/accounts/export` — the double
+`/api` prefix returned 404. Every other call in the file uses paths
+without the `/api` prefix (e.g. `api.get('/accounts')`) which is why
+they all worked; my iter-75 change was the only one to include it.
+
+**Fix**: single line change in `EmailAccounts.jsx::handleExportAccountsCSV`
+— dropped the leading `/api` from the request path:
+`api.get('/accounts/export?...')` (was `api.get('/api/accounts/export?...')`).
+
+**Verified by testing-agent (iter-76 / report_65)**:
+- Frontend now issues GET to `${BACKEND_URL}/api/accounts/export?...`
+  (single `/api` prefix, exact URL captured via Playwright request
+  listener).
+- Response: **HTTP 200**, `Content-Type: text/csv`, `Content-Disposition:
+  attachment; filename="RouteMail_Email_Accounts_with_credentials_
+  2026-07-10.csv"`.
+- Downloaded CSV has **27 columns × 8 rows** (7 accounts + header),
+  with `smtp_password` and `imap_password` columns populated.
+- Success toast displayed, no 404 toast.
+- Double-prefix URL still correctly returns 404 (proves the fix is in
+  URL construction, not a backend hack).
+- iter-75 regression suite: **10/10 passing**.
+
+### What caused the 404, what changed, endpoint now used
+
+1. **Cause**: The `api` axios instance has `baseURL` set to
+   `${REACT_APP_BACKEND_URL}/api`. Passing `/api/accounts/export` to
+   `api.get()` produced the double-prefixed URL
+   `${BACKEND_URL}/api/api/accounts/export`, which the backend correctly
+   rejects with 404 (no such route).
+2. **Change**: `/app/frontend/src/pages/EmailAccounts.jsx` —
+   `api.get('/api/accounts/export?...')` →
+   `api.get('/accounts/export?...')`. Now matches the pattern of every
+   other API call in the file.
+3. **Endpoint now used**: `GET ${REACT_APP_BACKEND_URL}/api/accounts/
+   export?format=csv&include_credentials=true|false`.
+
 ## Changelog — Iteration 75 (Feb 2026)
 
 ### Bugfix — Email Accounts Export 404/403 for Normal Users
