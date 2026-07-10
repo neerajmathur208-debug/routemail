@@ -1,0 +1,37 @@
+{
+  "summary": "Verified iter-76 frontend URL fix for Email Accounts Export CSV. Frontend now calls the correct single-/api-prefix endpoint, receives a proper CSV download with 27 columns incl. decrypted credentials, and shows a success toast. Backend regression suite (10 iter-75 tests) still passes. Double-prefix URL correctly returns 404 (backend-side untouched).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter75_normal_user_accounts_export.py",
+    "/app/test_reports/pytest/iter76_iter75_regression.xml"
+  ],
+  "action_items": [
+    "Docs/PR description: the route is /accounts not /email-accounts (the review request called it /email-accounts, which is actually a catch-all redirect to /). This is not a bug, just an authoring nit."
+  ],
+  "critical_code_review_comments": [
+    "EmailAccounts.jsx handleExportAccountsCSV correctly uses api.get('/accounts/export?...') without leading /api (axios instance already has baseURL=`${REACT_APP_BACKEND_URL}/api`). This matches the pattern of every other call in the file.",
+    "Consider adding a small unit/integration test in the frontend that asserts axios instance baseURL ends with '/api' exactly once, to prevent future double-prefix regressions."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Super admin dhruvmathur208@gmail.com / user_b3e333b0f467 (session seeded directly in Mongo user_sessions to bypass Turnstile).",
+  "seed_data_creation": "Inserted one temporary session_token doc for user_b3e333b0f467 to authenticate the Playwright browser; deleted after test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Frontend E2E for authenticated flows in this preview env must seed a user_sessions doc in Mongo (Turnstile blocks scripted login). Authenticated app routes live at /accounts, /dashboard, /email-lists etc. — NOT /email-accounts (that hits the * catch-all). Add cookie via context.add_cookies with url=<origin>, httpOnly=True, secure=True, sameSite='None'. iter-76 fix verified: URL is now `${BACKEND_URL}/api/accounts/export?...` (single /api prefix).",
+  "verification_evidence": {
+    "network_request_url": "https://routemail-demo.preview.emergentagent.com/api/accounts/export?format=csv&include_credentials=true",
+    "response_status": 200,
+    "response_content_type": "text/csv; charset=utf-8",
+    "content_disposition": "attachment; filename=\"RouteMail_Email_Accounts_with_credentials_2026-07-10.csv\"",
+    "csv_rows_including_header": 8,
+    "csv_columns": 27,
+    "credentials_columns_present": ["smtp_password", "imap_password"],
+    "success_toast": "Exported with credentials — treat this file as sensitive",
+    "no_404_toast": true,
+    "double_prefix_url_returns": "404 (backend correctly rejects /api/api/accounts/export)",
+    "single_prefix_url_unauth_returns": "401 (endpoint exists)",
+    "iter75_regression_suite": "10/10 passed"
+  }
+}
